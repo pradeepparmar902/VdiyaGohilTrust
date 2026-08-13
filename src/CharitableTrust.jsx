@@ -193,6 +193,29 @@ const fbUpdateRegistration = async (docId, newData, idToken) => {
   return true;
 };
 
+const fbRestoreDocument = async (collection, docId, data, idToken) => {
+  const REG_URL = `https://firestore.googleapis.com/v1/projects/${getFB().projectId}/databases/(default)/documents/${collection}/${docId}`;
+  const headers = { "Content-Type": "application/json" };
+  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+  
+  // Format data specifically for our stringValue architecture
+  const bodyData = {
+    fields: {
+      data: { stringValue: JSON.stringify(data) },
+      // Optional: Restore original timestamp if it exists, otherwise use current
+      submittedAt: { timestampValue: data._submittedAt || new Date().toISOString() }
+    }
+  };
+
+  const res = await fetch(REG_URL, {
+    method: "PATCH", // PATCH creates the document if it doesn't exist
+    headers: headers,
+    body: JSON.stringify(bodyData)
+  });
+  if (!res.ok) throw new Error(`Restore failed for ${collection}/${docId}`);
+  return true;
+};
+
 const fbDeleteRegistration = async (docId, idToken) => {
   const REG_URL = `https://firestore.googleapis.com/v1/projects/${getFB().projectId}/databases/(default)/documents/registrations/${docId}`;
   const headers = {};
@@ -226,7 +249,10 @@ const fbFetchRegistrations = async (idToken) => {
   const REG_URL = `https://firestore.googleapis.com/v1/projects/${getFB().projectId}/databases/(default)/documents/registrations?pageSize=300`;
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, { headers });
+  let res = await fetch(REG_URL, { headers });
+  if (res.status === 401 && idToken) {
+    res = await fetch(REG_URL);
+  }
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Failed to fetch registrations (${res.status}): ${errText}`);
@@ -320,7 +346,10 @@ const fbFetchDonations = async (idToken) => {
   const REG_URL = `https://firestore.googleapis.com/v1/projects/${getFB().projectId}/databases/(default)/documents/donations?pageSize=300`;
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, { headers });
+  let res = await fetch(REG_URL, { headers });
+  if (res.status === 401 && idToken) {
+    res = await fetch(REG_URL);
+  }
   if (!res.ok) throw new Error("Failed to fetch donations");
   const data = await res.json();
   if (!data.documents) return [];
@@ -595,12 +624,12 @@ const G = ({ theme = "classic" }) => {
 
 const DC = {
   theme: "warm",
-  trust:{name:"Mumbai Meghwal Panchayat",nameGu:"મુંબઈ મેઘવાળ પંચાયત",subtitle:"MMP",phone:"+919819984437",email:"mmpcwc13507@gmail.com",address:"123 Community Drive, Main Street, Global City - 12345",hours:"Mon–Sat: 9:00 AM – 6:00 PM",estd:"2024",reg80G:"REG/2024/123",panNo:"ABCDE1234F",cin:"U12345AB2024CDE012345",
+  trust:{name:"My Community",nameGu:"મારો સમુદાય",subtitle:"MC",phone:"+919819984437",email:"myCommunitydummy@gmail.com",address:"123 Community Drive, Main Street, Global City - 12345",hours:"Mon–Sat: 9:00 AM – 6:00 PM",estd:"2024",reg80G:"REG/2024/123",panNo:"ABCDE1234F",cin:"U12345AB2024CDE012345",
     logo:{
       visible:  true,
       type:     "image",      // "text" | "image"
-      text:     "MMP",        // shown when type=text
-      url:      "./logo.png", // image URL when type=image
+      text:     "MC",        // shown when type=text
+      url:      "mc_logo.jpg", // image URL when type=image
       size:     50,           // px — applies to both types
       shape:    "circle",     // "circle" | "rounded" | "square"
       bgColor:  "transparent",// "gradient" | "white" | "transparent"
@@ -612,7 +641,7 @@ const DC = {
     labelGu: "ડેશબોર્ડ",
     linkTarget: "events"
   },
-  hero:{badge:"ESTD. 2024 · COMMUNITY PLATFORM",title:"Empowering Our Community Together",titleGu:"આપણા સમુદાયને સાથે મળીને સશક્તિકરણ",subtitle:"The Mumbai Meghwal Panchayat is a prominent, caste-based community organization representing the Gujarati Meghwal community in Mumbai.",showTopBanner:true,topBanner:"https://firebasestorage.googleapis.com/v0/b/vdiyagohilcharitable.firebasestorage.app/o/gallery%2Fphoto_1784960859028.png?alt=media&token=bb929555-b202-4e79-a43e-81a418acd8bd",topBannerHeight:120,showRegBtn:true,regBtnLabel:"Education Form Registration",regBtnLink:"?event=0",subtitleGu:"મુંબઈ મેઘવાળ પંચાયત એ મુંબઈમાં રહેતા ગુજરાતી મેઘવાળ જ્ઞાતિનું પ્રતિનિધિત્વ કરતી અગ્રણી સામાજિક સંસ્થા છે.",cta1:"Donate Now",cta1Gu:"દાન આપો",cta2:"Our Programs",cta2Gu:"અમારા કાર્યક્રમો",badge1:"Verified",badge2:"Registered",badge3:"Audited",showStats:false,showImage:true,image:"https://firebasestorage.googleapis.com/v0/b/vdiyagohilcharitable.firebasestorage.app/o/gallery%2Fphoto_1784962387597.png?alt=media&token=1e0d8fa3-723a-42a3-b878-09acf74d54ce"},
+  hero:{badge:"ESTD. 2024 · COMMUNITY PLATFORM",title:"Empowering Our Community Together",titleGu:"આપણા સમુદાયને સાથે મળીને સશક્તિકરણ",subtitle:"My Community is a prominent organization dedicated to empowering and uplifting the community.",showTopBanner:true,topBanner:"",topBannerHeight:120,showRegBtn:true,regBtnLabel:"Education Form Registration",regBtnLink:"?event=0",subtitleGu:"મારો સમુદાય એ સમુદાયને સશક્તિકરણ અને ઉત્થાન માટે સમર્પિત એક અગ્રણી સંસ્થા છે.",cta1:"Donate Now",cta1Gu:"દાન આપો",cta2:"Our Programs",cta2Gu:"અમારા કાર્યક્રમો",badge1:"Verified",badge2:"Registered",badge3:"Audited",showStats:false,showImage:true,image:""},
   stats:[{num:"10,000+",label:"Members",labelGu:"સભ્યો"},{num:"$100k",label:"Funds Raised",labelGu:"ભંડોળ એકત્ર"},{num:"50+",label:"Volunteers",labelGu:"સ્વયંસેવકો"},{num:"10",label:"Active Programs",labelGu:"સક્રિય કાર્યક્રમો"}],
   about:{heading:"Rooted in Compassion, Driven by Purpose",headingGu:"કરુણામાં મૂળ, ઉદ્દેશ્ય દ્વારા ચાલિત",body1:"myCommunity was founded to create a dignified life for every individual regardless of caste, creed, or economic status. This is fallback data when Firebase is not connected.",body1Gu:"મારો સમુદાય દરેક વ્યક્તિ માટે સન્માનજનક જીવન બનાવવા માટે સ્થાપિત કરવામાં આવ્યો હતો.",body2:"Our work spans education, healthcare, and empowerment through community participation.",body2Gu:"અમારું કાર્ય શિક્ષણ, આરોગ્ય અને સશક્તિકરણ સુધી ફેલાયેલું છે.",points:["Transparent Governance","Community-Led Programs","Annual Public Audit","Zero Admin Fee Policy"],yearsLabel:"Years of Service",cta:"Read Our Story"},
   programs:[{icon:"📚",title:"Education for All",sub:"Scholarships and learning centers for underprivileged children",details:"### Our Mission\nOur Education for All initiative focuses on providing quality education to children from marginalized communities. \n\n### What We Do\n- **Evening Centers**: We run evening learning centers for over 500 children.\n- **Scholarships**: We offer merit-based scholarships to help students pursue higher education.\n- **Free Supplies**: Distribute free school supplies, uniforms, and textbooks.\n\n> *\"Education is the most powerful weapon which you can use to change the world.\"*",color:"#FFF4EC",border:"#FDDBB8"},{icon:"🏥",title:"Health and Wellness",sub:"Free medical camps, medicines and health awareness drives",details:"### Healthcare for Everyone\nWe organize monthly free medical camps in rural areas, offering:\n\n1. General physical checkups\n2. Eye and dental exams\n3. Free basic medicines\n\nOur health awareness drives educate communities on hygiene, nutrition, and preventative care.",color:"#E8F4F8",border:"#B8D8E8"},{icon:"🌾",title:"Livelihood Support",sub:"Skill development and micro-finance for rural communities",details:"### Economic Independence\nTo foster economic independence, we provide skill development workshops in:\n- **Tailoring & Sewing**\n- **Computer Literacy**\n- **Basic Mechanics**\n\nWe also offer micro-finance support to help families start small sustainable businesses.",color:"#EDFAF1",border:"#B8E8CC"},{icon:"🤝",title:"Women Empowerment",sub:"Self-help groups, vocational training and legal aid",details:"### Empowering Women\nOur Women Empowerment programs create **self-help groups** where women can save and invest together.\n\nWe offer specialized vocational training and free legal aid to ensure women are aware of and can protect their rights.",color:"#F9F0FF",border:"#D8B8E8"},{icon:"🌊",title:"Disaster Relief",sub:"Rapid response support for flood and earthquake victims",details:"### Emergency Response\nIn times of natural calamities, our rapid response teams distribute:\n- Emergency ration kits\n- Clean drinking water\n- Temporary shelter materials\n\nWe work closely with local authorities to ensure aid reaches the most affected areas quickly.",color:"#FEF9EC",border:"#F5E8B8"},{icon:"🌱",title:"Environment",sub:"Tree plantation drives and clean water initiatives",details:"### A Greener Future\nCommitted to a greener future, we conduct regular **tree plantation drives** and maintain them with community support.\n\nWe also install water purification systems in schools and villages to ensure access to safe drinking water.",color:"#EDFAF1",border:"#B8E8CC"}],
@@ -754,7 +783,7 @@ function Navbar({ C, lang, setLang, setPage, auth, onShowLogin, globalProfile, o
         <div style={{background:"var(--dt)",color:"white",fontSize:".72rem",padding:"6px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
           <span>Tel: {C.trust.phone} | Email: {C.trust.email}</span>
           <div style={{display:"flex",gap:16,alignItems:"center"}}>
-            <span>80G Tax Exemption Available</span>
+            <span>{C.trust?.topBarNotice !== undefined ? C.trust.topBarNotice : "80G Tax Exemption Available"}</span>
             <div style={{width:1,height:12,background:"rgba(255,255,255,.3)"}}/>
             <button onClick={()=>setLang(lang==="en"?"gu":"en")} style={{background:"transparent",border:"none",color:"white",cursor:"pointer",fontSize:".75rem",fontWeight:700}}>{lang==="en"?"ગુજરાતી":"English"}</button>
             
@@ -943,9 +972,19 @@ function Navbar({ C, lang, setLang, setPage, auth, onShowLogin, globalProfile, o
 // ── HERO ──────────────────────────────────────────────────────────────────────
 function Hero({ C, lang }) {
   const w = useW(); const mob = w < 768; const h = C.hero;
+  const [slideIndex, setSlideIndex] = useState(0);
+
+  useEffect(() => {
+    if (h?.heroType === 'slider' && h?.sliderImages?.length > 1) {
+      const interval = setInterval(() => {
+        setSlideIndex(prev => (prev + 1) % h.sliderImages.length);
+      }, 3500);
+      return () => clearInterval(interval);
+    }
+  }, [h?.heroType, h?.sliderImages]);
   const isTopBannerShown = (h?.showTopBanner === true || h?.showTopBanner === "true") && Boolean(h?.topBanner);
   const isStatsShown = h?.showStats !== false && h?.showStats !== "false" && h?.showStats !== 0;
-  const isImageShown = (h?.showImage === true || h?.showImage === "true") && Boolean(h?.image);
+  const isImageShown = (h?.showImage === true || h?.showImage === "true") && (h?.heroType === 'slider' ? h?.sliderImages?.length > 0 : Boolean(h?.image));
   const isRegBtnShown = h?.showRegBtn === true || h?.showRegBtn === "true";
 
   return (
@@ -985,6 +1024,8 @@ function Hero({ C, lang }) {
           {isImageShown && (
             <div style={{
               width:"100%",
+              height:"100%",
+              alignSelf:"stretch",
               borderRadius:16,
               overflow:"hidden",
               background: h?.imageBg === "white" ? "white" : h?.imageBg === "glass" ? "rgba(255,255,255,0.15)" : "transparent",
@@ -994,24 +1035,65 @@ function Hero({ C, lang }) {
               display:"flex",
               alignItems:"center",
               justifyContent:"center",
+              position: "relative",
               padding: (h?.imageFit || "contain") === "contain" && h?.imageBg && h?.imageBg !== "transparent" ? 16 : 0
             }}>
-              <img 
-                src={h.image} 
-                alt="Campaign Image" 
-                style={{
-                  maxWidth:"100%",
-                  width: h?.imageWidth ? `${h.imageWidth}px` : "320px",
-                  maxHeight: h?.imageMaxHeight || 420,
-                  height:"auto",
-                  objectFit: h?.imageFit || "contain",
-                  imageRendering: (h?.imageRendering === "smooth") ? "auto" : "-webkit-optimize-contrast",
-                  filter: h?.imageRendering === "super-sharp" ? "contrast(1.1) brightness(1.02)" : "none",
-                  borderRadius:12,
-                  display:"block",
-                  margin:"0 auto"
-                }} 
-              />
+              {h?.heroType === 'slider' && h?.sliderImages?.length > 0 ? (
+                <div style={{width: "100%", height: "100%", maxHeight: h?.imageMaxHeight || 420, position:"relative", overflow:"hidden", borderRadius:12}}>
+                  <div style={{
+                    display:"flex", 
+                    width:`${h.sliderImages.length * 100}%`, 
+                    height:"100%",
+                    transform: `translateX(-${slideIndex * (100 / h.sliderImages.length)}%)`,
+                    transition: "transform 0.6s ease-in-out"
+                  }}>
+                    {h.sliderImages.map((img, i) => (
+                      <div key={i} style={{width: `${100 / h.sliderImages.length}%`, height:"100%", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                        <img src={img} alt={`Slide ${i}`} style={{
+                          maxWidth:"100%",
+                          width: "100%",
+                          maxHeight: h?.imageMaxHeight || 420,
+                          height:"100%",
+                          objectFit: h?.imageFit || "contain",
+                          imageRendering: (h?.imageRendering === "smooth") ? "auto" : "-webkit-optimize-contrast",
+                          filter: h?.imageRendering === "super-sharp" ? "contrast(1.1) brightness(1.02)" : "none",
+                          display:"block",
+                          margin:"0 auto"
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                  {h.sliderImages.length > 1 && (
+                    <div style={{position:"absolute", bottom:12, left:0, right:0, display:"flex", justifyContent:"center", gap:8}}>
+                      {h.sliderImages.map((_, i) => (
+                        <div key={i} onClick={() => setSlideIndex(i)} style={{
+                          width: 10, height: 10, borderRadius: "50%", cursor: "pointer",
+                          background: slideIndex === i ? "var(--dt, #fff)" : "rgba(255,255,255,0.5)",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                          transition: "background 0.3s"
+                        }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <img 
+                  src={h.image} 
+                  alt="Campaign Image" 
+                  style={{
+                    maxWidth:"100%",
+                    width: h?.imageWidth ? `${h.imageWidth}px` : "320px",
+                    maxHeight: h?.imageMaxHeight || 420,
+                    height:"auto",
+                    objectFit: h?.imageFit || "contain",
+                    imageRendering: (h?.imageRendering === "smooth") ? "auto" : "-webkit-optimize-contrast",
+                    filter: h?.imageRendering === "super-sharp" ? "contrast(1.1) brightness(1.02)" : "none",
+                    borderRadius:12,
+                    display:"block",
+                    margin:"0 auto"
+                  }} 
+                />
+              )}
             </div>
           )}
           {isRegBtnShown && (
@@ -1404,12 +1486,13 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
 
   const [selectedEvent, setSelectedEvent] = useState(getInitialEvent);
   const [formData, setFormData] = useState({});
+  const [formBase64Data, setFormBase64Data] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [waMessageLink, setWaMessageLink] = useState("");
   
-  // Auth State: default directly to form step (1) for direct QR scans
-  const [authStep, setAuthStep] = useState(1);
+  // Auth State: default to login (0) if not logged in, or form step (1) if logged in
+  const [authStep, setAuthStep] = useState(() => globalAuthToken ? 1 : 0);
   const [mobile, setMobile] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
 
@@ -1426,9 +1509,9 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
     const openForEventIndex = (idx) => {
       if (C.events && C.events[idx]) {
         setSelectedEvent({ type: 'register', event: C.events[idx] });
-        // For direct QR scans or registrations, default directly to form step (1)
-        setAuthToken(globalAuthToken || "public_qr_user");
-        setAuthStep(1);
+        // Check if logged in. If not, enforce login step (0)
+        setAuthToken(globalAuthToken || "");
+        setAuthStep(globalAuthToken ? 1 : 0);
         const newForm = { "Submitted By": globalProfile?.name || globalProfile?.['Full Name'] || globalProfile?.mobile || "" };
         const formSpec = C.forms?.find(f => f.id === C.events[idx].formId) || { fields: [] };
         formSpec.fields.forEach(f => {
@@ -1471,9 +1554,21 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
     setUploadingFields(prev => ({...prev, [fKey]: true}));
     try {
       const urls = [];
+      const b64s = [];
       for (const file of files) {
+        if (selectedEvent?.event?.saveToGoogleDrive) {
+          const b64Obj = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve({ data: ev.target.result.split(',')[1], name: file.name, type: file.type });
+            reader.readAsDataURL(file);
+          });
+          b64s.push(b64Obj);
+        }
         const url = await fbUploadPublicFile(file, authToken);
         if (url) urls.push(url);
+      }
+      if (b64s.length > 0) {
+        setFormBase64Data(prev => ({...prev, [fKey]: [...(prev[fKey]||[]), ...b64s]}));
       }
       setFormData(prev => {
         const existing = prev[fKey] ? prev[fKey].split(",").map(s => s.trim()).filter(Boolean) : [];
@@ -1635,9 +1730,9 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
           remarks: "Initial form submission"
         };
         await fbSubmitRegistration({
-          eventId: selectedEvent.event.title,
+          eventId: selectedEvent.event.id,
           eventTitle: selectedEvent.event.title,
-          submitterMob: (globalProfile?.mobile || mobile || ""),
+          submitterMob: (globalProfile?.mobile || `${countryCode} ${mobile.replace(/\D/g, '').slice(-10)}`),
           formData: {
             ...formData,
             logHistory: [initialLog]
@@ -1646,6 +1741,38 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
       } catch (fbErr) {
         console.warn("Firebase save skipped (Update Security Rules to enable database logging). Proceeding to WhatsApp.");
       }
+      
+      // Option C: Google Sheets & Drive Integration via Webhook
+      if (selectedEvent?.event?.googleSheetsWebhookUrl) {
+        try {
+          const payload = {
+            eventName: selectedEvent.event.title,
+            ...formData
+          };
+          
+          if (selectedEvent.event.saveToGoogleDrive) {
+            const fileKeys = Object.keys(formBase64Data);
+            if (fileKeys.length > 0) {
+              const files = formBase64Data[fileKeys[0]];
+              if (files && files.length > 0) {
+                payload.fileBase64 = files[0].data;
+                payload.fileName = files[0].name;
+                payload.fileMimeType = files[0].type;
+              }
+            }
+          }
+
+          fetch(selectedEvent.event.googleSheetsWebhookUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          }).catch(err => console.error("Google Sheets Webhook Error:", err));
+        } catch (err) {
+          console.error("Webhook prepare error:", err);
+        }
+      }
+
       // Option A: WhatsApp redirection
       let msg = `*New Registration: ${selectedEvent.event.title}*\n\n`;
       Object.entries(formData).forEach(([k,v]) => {
@@ -1687,14 +1814,43 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                 <h4 style={{color:"#1A7A3E",fontWeight:700,marginBottom:6}}>Registration Successful!</h4>
                 <p style={{fontSize:".85rem",color:"var(--mu)",marginBottom:24}}>Thank you for registering. Please choose an option below:</p>
                 <div style={{display:"flex",flexDirection:"column",gap:12,alignItems:"center"}}>
-                  <a href={waMessageLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#F5F5F5",color:"var(--dt)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--bd)"}}>
-                    📤 Send Details to Admin (WhatsApp)
-                  </a>
-                  {selectedEvent.event.waGroupLink && (
-                    <a href={selectedEvent.event.waGroupLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"linear-gradient(135deg, #25D366, #128C7E)",color:"white",fontWeight:700,textDecoration:"none",fontSize:".9rem",boxShadow:"0 4px 10px rgba(37,211,102,0.3)"}}>
-                      💬 Join Event WhatsApp Group
-                    </a>
-                  )}
+                  {(() => {
+                    const loggedInMob = (globalProfile?.mobile || mobile || "").replace(/\D/g, '').slice(-10);
+                    const formObj = getForm(selectedEvent.event.formId);
+                    const telField = formObj?.fields?.find(f => f.type === 'tel' || f.label.toLowerCase().includes('mobile') || f.label.includes('મોબાઇલ'))?.label || "";
+                    const nameField = formObj?.fields?.find(f => f.type === 'text' && (f.label.toLowerCase().includes('name') || f.label.includes('નામ')) && !f.label.toLowerCase().includes('event'))?.label || "";
+                    
+                    const targetMobileRaw = telField ? formData[telField] : Object.values(formData).find(v => String(v).replace(/\D/g, '').length >= 10);
+                    const targetMobile = String(targetMobileRaw || "").replace(/\D/g, '').slice(-10);
+                    const targetName = nameField ? formData[nameField] : "Student";
+                    
+                    const isProxy = targetMobile && targetMobile !== loggedInMob;
+                    
+                    return (
+                      <>
+                        <a href={waMessageLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#F5F5F5",color:"var(--dt)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--bd)"}}>
+                          📤 Send Details to Admin (WhatsApp)
+                        </a>
+                        {selectedEvent.event.waGroupLink && (
+                          <a href={selectedEvent.event.waGroupLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"linear-gradient(135deg, #25D366, #128C7E)",color:"white",fontWeight:700,textDecoration:"none",fontSize:".9rem",boxShadow:"0 4px 10px rgba(37,211,102,0.3)"}}>
+                            💬 Join Event WhatsApp Group
+                          </a>
+                        )}
+                          {selectedEvent.event.waGroupQrCode && (
+                            <div style={{marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center"}}>
+                              <span style={{fontSize: ".75rem", color: "var(--mu)", marginBottom: 6}}>Or Scan QR Code to Join:</span>
+                              <img src={selectedEvent.event.waGroupQrCode} alt="WhatsApp Group QR Code" style={{width: 150, height: 150, objectFit: "contain", borderRadius: 8, border: "1px solid var(--bd)", boxShadow: "0 2px 8px rgba(0,0,0,0.1)"}} />
+                            </div>
+                          )}
+                        {isProxy && selectedEvent.event.waGroupLink && (
+                          <a href={`https://wa.me/91${targetMobile}?text=${encodeURIComponent(`Hello ${targetName},\n\nYou have been successfully registered for *${selectedEvent.event.title}*.\n\nPlease join the official WhatsApp group for updates: ${selectedEvent.event.waGroupLink}`)}`} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#FFF4EC",color:"var(--sf)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--sf)", marginTop: 10}}>
+                            ➡️ Forward Group Link to {targetName}
+                          </a>
+                        )}
+
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ) : authStep === 0 ? (
@@ -1863,8 +2019,61 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                         <input type="number" step="0.01" min="0" max="100" placeholder="e.g. 85.50" required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" style={{paddingRight:32}}/>
                         <span style={{position:"absolute",right:12,fontWeight:700,color:"var(--dt)",fontSize:".9rem",pointerEvents:"none"}}>%</span>
                       </div>
+                    ) : (f.type === 'tel' || (f.label || "").toLowerCase().includes("phone") || (f.label || "").toLowerCase().includes("mobile") || fKey.toLowerCase().includes("phone") || fKey.toLowerCase().includes("mobile")) ? (
+                      <div style={{display:"flex",gap:8}}>
+                        {(() => {
+                          const rawVal = formData[fKey] || "";
+                          let currentCode = "+91";
+                          let currentNum = "";
+                          if (rawVal.startsWith("+")) {
+                            const spaceIdx = rawVal.indexOf(" ");
+                            if (spaceIdx !== -1) {
+                              currentCode = rawVal.substring(0, spaceIdx);
+                              currentNum = rawVal.substring(spaceIdx + 1).replace(/\\D/g, "");
+                            } else {
+                              if (rawVal.startsWith("+91") && rawVal.length > 3) {
+                                currentCode = "+91";
+                                currentNum = rawVal.substring(3).replace(/\\D/g, "");
+                              } else {
+                                currentNum = rawVal.replace(/\\D/g, "");
+                              }
+                            }
+                          } else {
+                            currentNum = rawVal.replace(/\\D/g, "");
+                          }
+                          return (
+                            <>
+                              <select 
+                                value={currentCode} 
+                                onChange={e => setFormData({...formData, [fKey]: `${e.target.value} ${currentNum}`})}
+                                style={{padding:"14px 8px", borderRadius:12, border:"1px solid #E2E8F0", fontSize:".95rem", fontWeight:700, background:"#F8FAFC", color:"#1E293B", outline:"none", cursor:"pointer", width: 85, boxSizing: "border-box"}}
+                              >
+                                <option value="+91">+91</option>
+                                <option value="+1">+1</option>
+                                <option value="+44">+44</option>
+                                <option value="+971">+971</option>
+                                <option value="+966">+966</option>
+                                <option value="+61">+61</option>
+                                <option value="+65">+65</option>
+                              </select>
+                              <input 
+                                type="tel" 
+                                required={f.required} 
+                                value={currentNum} 
+                                onChange={e => {
+                                  const val = e.target.value.replace(/\\D/g, "").slice(0, 10);
+                                  setFormData({...formData, [fKey]: `${currentCode} ${val}`});
+                                }} 
+                                className="modern-input" 
+                                style={{flex:1}} 
+                                autoComplete="tel" 
+                              />
+                            </>
+                          );
+                        })()}
+                      </div>
                     ) : (
-                      <input type={f.type} required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" />
+                      <input type={f.type} required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" autoComplete={f.type === 'email' ? 'email' : 'off'} />
                     )}
                   </div>
                 )})}
@@ -1979,16 +2188,43 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                     <div style={{fontSize:"3rem",marginBottom:10}}>✅</div>
                     <h4 style={{color:"#1A7A3E",fontWeight:700,marginBottom:6}}>Registration Successful!</h4>
                     <p style={{fontSize:".85rem",color:"var(--mu)",marginBottom:24}}>Thank you for registering. Please choose an option below:</p>
-                    <div style={{display:"flex",flexDirection:"column",gap:12,alignItems:"center"}}>
-                      <a href={waMessageLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#F5F5F5",color:"var(--dt)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--bd)"}}>
-                        📤 Send Details to Admin (WhatsApp)
-                      </a>
-                      {selectedEvent.event.waGroupLink && (
-                        <a href={selectedEvent.event.waGroupLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"linear-gradient(135deg, #25D366, #128C7E)",color:"white",fontWeight:700,textDecoration:"none",fontSize:".9rem",boxShadow:"0 4px 10px rgba(37,211,102,0.3)"}}>
-                          💬 Join Event WhatsApp Group
-                        </a>
-                      )}
-                    </div>
+                    {(() => {
+                      const loggedInMob = (globalProfile?.mobile || mobile || "").replace(/\D/g, '').slice(-10);
+                      const formObj = getForm(selectedEvent.event.formId);
+                      const telField = formObj?.fields?.find(f => f.type === 'tel' || f.label.toLowerCase().includes('mobile') || f.label.includes('મોબાઇલ'))?.label || "";
+                      const nameField = formObj?.fields?.find(f => f.type === 'text' && (f.label.toLowerCase().includes('name') || f.label.includes('નામ')) && !f.label.toLowerCase().includes('event'))?.label || "";
+                      
+                      const targetMobileRaw = telField ? formData[telField] : Object.values(formData).find(v => String(v).replace(/\D/g, '').length >= 10);
+                      const targetMobile = String(targetMobileRaw || "").replace(/\D/g, '').slice(-10);
+                      const targetName = nameField ? formData[nameField] : "Student";
+                      
+                      const isProxy = targetMobile && targetMobile !== loggedInMob;
+                      
+                      return (
+                        <div style={{display:"flex",flexDirection:"column",gap:12,alignItems:"center"}}>
+                          <a href={waMessageLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#F5F5F5",color:"var(--dt)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--bd)"}}>
+                            📤 Send Details to Admin (WhatsApp)
+                          </a>
+                          {selectedEvent.event.waGroupLink && (
+                            <a href={selectedEvent.event.waGroupLink} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"linear-gradient(135deg, #25D366, #128C7E)",color:"white",fontWeight:700,textDecoration:"none",fontSize:".9rem",boxShadow:"0 4px 10px rgba(37,211,102,0.3)"}}>
+                              💬 Join Event WhatsApp Group
+                            </a>
+                          )}
+                          {selectedEvent.event.waGroupQrCode && (
+                            <div style={{marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center"}}>
+                              <span style={{fontSize: ".75rem", color: "var(--mu)", marginBottom: 6}}>Or Scan QR Code to Join:</span>
+                              <img src={selectedEvent.event.waGroupQrCode} alt="WhatsApp Group QR Code" style={{width: 150, height: 150, objectFit: "contain", borderRadius: 8, border: "1px solid var(--bd)", boxShadow: "0 2px 8px rgba(0,0,0,0.1)"}} />
+                            </div>
+                          )}
+                          {isProxy && selectedEvent.event.waGroupLink && (
+                            <a href={`https://wa.me/91${targetMobile}?text=${encodeURIComponent(`Hello ${targetName},\n\nYou have been successfully registered for *${selectedEvent.event.title}*.\n\nPlease join the official WhatsApp group for updates: ${selectedEvent.event.waGroupLink}`)}`} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"10px 20px",borderRadius:20,background:"#FFF4EC",color:"var(--sf)",fontWeight:700,textDecoration:"none",fontSize:".9rem",border:"1px solid var(--sf)", marginTop: 10}}>
+                              ➡️ Forward Group Link to {targetName}
+                            </a>
+                          )}
+
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : authStep === 0 ? (
                   <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2222,13 +2458,18 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                               );
                             })()}
                           </div>
-                        ) : (f.type === 'tel' || fKey.toLowerCase().includes("phone") || fKey.toLowerCase().includes("mobile")) ? (
-                          <div style={{display:"flex", gap:8}}>
+
+                        ) : f.type === 'percentage' ? (
+                          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                            <input type="number" step="0.01" min="0" max="100" placeholder="e.g. 85.50" required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" style={{paddingRight:32}}/>
+                            <span style={{position:"absolute",right:12,fontWeight:700,color:"var(--dt)",fontSize:".9rem",pointerEvents:"none"}}>%</span>
+                          </div>
+                        ) : (f.type === 'tel' || (f.label || "").toLowerCase().includes("phone") || (f.label || "").toLowerCase().includes("mobile") || fKey.toLowerCase().includes("phone") || fKey.toLowerCase().includes("mobile")) ? (
+                          <div style={{display:"flex",gap:8}}>
                             {(() => {
                               const rawVal = formData[fKey] || "";
                               let currentCode = "+91";
                               let currentNum = "";
-                              
                               if (rawVal.startsWith("+")) {
                                 const spaceIdx = rawVal.indexOf(" ");
                                 if (spaceIdx !== -1) {
@@ -2245,47 +2486,39 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                               } else {
                                 currentNum = rawVal.replace(/\D/g, "");
                               }
-                              
                               return (
                                 <>
                                   <select 
                                     value={currentCode} 
-                                    onChange={e=>{
-                                      const nextCode = e.target.value;
-                                      setFormData({...formData, [fKey]: `${nextCode} ${currentNum}`});
-                                    }} 
-                                    style={{padding:"10px 8px", borderRadius:8, border:"1px solid var(--bd)", fontSize:".9rem", background:"white", outline:"none", cursor:"pointer", width: 85, boxSizing: "border-box"}}
+                                    onChange={e => setFormData({...formData, [fKey]: `${e.target.value} ${currentNum}`})}
+                                    style={{padding:"14px 8px", borderRadius:12, border:"1px solid #E2E8F0", fontSize:".95rem", fontWeight:700, background:"#F8FAFC", color:"#1E293B", outline:"none", cursor:"pointer", width: 85, boxSizing: "border-box"}}
                                   >
-                                    <option value="+91">+91 (IN)</option>
-                                    <option value="+1">+1 (US)</option>
-                                    <option value="+44">+44 (UK)</option>
-                                    <option value="+971">+971 (AE)</option>
-                                    <option value="+966">+966 (SA)</option>
-                                    <option value="+61">+61 (AU)</option>
-                                    <option value="+65">+65 (SG)</option>
+                                    <option value="+91">+91</option>
+                                    <option value="+1">+1</option>
+                                    <option value="+44">+44</option>
+                                    <option value="+971">+971</option>
+                                    <option value="+966">+966</option>
+                                    <option value="+61">+61</option>
+                                    <option value="+65">+65</option>
                                   </select>
                                   <input 
                                     type="tel" 
                                     required={f.required} 
                                     value={currentNum} 
-                                    onChange={e=>{
+                                    onChange={e => {
                                       const val = e.target.value.replace(/\D/g, "").slice(0, 10);
                                       setFormData({...formData, [fKey]: `${currentCode} ${val}`});
                                     }} 
-                                    style={{flex:1, padding:"10px", borderRadius:8, border:"1px solid var(--bd)", fontFamily:"inherit", fontSize:".9rem", boxSizing: "border-box"}} 
-                                    placeholder="10-digit number"
+                                    className="modern-input" 
+                                    style={{flex:1}} 
+                                    autoComplete="tel" 
                                   />
                                 </>
                               );
                             })()}
                           </div>
-                        ) : f.type === 'percentage' ? (
-                          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                            <input type="number" step="0.01" min="0" max="100" placeholder="e.g. 85.50" required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" style={{paddingRight:32}}/>
-                            <span style={{position:"absolute",right:12,fontWeight:700,color:"var(--dt)",fontSize:".9rem",pointerEvents:"none"}}>%</span>
-                          </div>
                         ) : (
-                          <input type={f.type} required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" />
+                          <input type={f.type} required={f.required} value={formData[fKey]||""} onChange={e=>setFormData({...formData, [fKey]:e.target.value})} className="modern-input" autoComplete={f.type === 'email' ? 'email' : 'off'} />
                         )}
                       </div>
                     )})}
@@ -3003,74 +3236,94 @@ export const generateCertificatePDF = async (certConfig, fieldsData, fallbackNam
       actualType = 'cert';
     }
 
-    const img = new Image();
     const isInvite = actualType === 'invite';
-    let srcUrl = isInvite ? certConfig.inviteBgUrl : certConfig.certBgUrl;
-    
-    if (srcUrl && srcUrl.startsWith('http')) {
-      img.crossOrigin = "Anonymous";
-      srcUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(srcUrl)}`;
+    let srcUrl = isInvite ? certConfig?.inviteBgUrl : certConfig?.certBgUrl;
+
+    if (!srcUrl) {
+      reject(new Error(`No ${isInvite ? 'Invite' : 'Certificate'} Template background image has been uploaded for this event. Please go to Admin -> Content Editor -> Events -> Edit Event -> '${isInvite ? '✉️ Configure Template' : '⚙️ Configure Template'}' to upload a background image.`));
+      return;
     }
-    
-    img.onload = () => {
-      try {
-        const doc = new jsPDF({ orientation: img.width > img.height ? 'landscape' : 'portrait', unit: 'px', format: [img.width, img.height] });
-        doc.addImage(img, 'JPEG', 0, 0, img.width, img.height);
-        
-        const fontSize = isInvite ? certConfig.inviteFontSize : certConfig.certFontSize;
-        const fontColor = isInvite ? certConfig.inviteFontColor : certConfig.certFontColor;
-        
-        doc.setFontSize(fontSize || 30);
-        doc.setTextColor(fontColor || "#000000");
-        doc.setFont("helvetica", "bold");
 
-        const m = (isInvite ? certConfig.inviteMap : certConfig.certMap) || {};
+    const loadImg = (urlToLoad, useProxy = false) => {
+      const img = new Image();
+      if (urlToLoad.startsWith('http')) {
+        img.crossOrigin = "Anonymous";
+      }
+      
+      let targetUrl = urlToLoad;
+      if (useProxy && urlToLoad.startsWith('http')) {
+        targetUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToLoad)}`;
+      }
 
-        Object.entries(m).forEach(([key, pos]) => {
-          if (pos.visible) {
-            const xPx = (parseFloat(pos.x) / 100) * img.width;
-            const yPx = (parseFloat(pos.y) / 100) * img.height;
-            let val = fieldsData[key] || "";
-            
-            if (key.startsWith("[TEXT] ")) {
-                val = key.replace("[TEXT] ", "");
-            } else if (!val) {
-                // Special fallback for standard fields if not provided
-                if (key.toLowerCase().includes("name") && !key.toLowerCase().includes("event")) val = fallbackName;
+      img.onload = () => {
+        try {
+          const doc = new jsPDF({ orientation: img.width > img.height ? 'landscape' : 'portrait', unit: 'px', format: [img.width, img.height] });
+          doc.addImage(img, 'JPEG', 0, 0, img.width, img.height);
+          
+          const fontSize = isInvite ? certConfig.inviteFontSize : certConfig.certFontSize;
+          const fontColor = isInvite ? certConfig.inviteFontColor : certConfig.certFontColor;
+          
+          doc.setFontSize(fontSize || 30);
+          doc.setTextColor(fontColor || "#000000");
+          doc.setFont("helvetica", "bold");
+
+          const m = (isInvite ? certConfig.inviteMap : certConfig.certMap) || {};
+
+          Object.entries(m).forEach(([key, pos]) => {
+            if (pos.visible) {
+              const xPx = (parseFloat(pos.x) / 100) * img.width;
+              const yPx = (parseFloat(pos.y) / 100) * img.height;
+              let val = fieldsData[key] || "";
+              
+              if (key.startsWith("[TEXT] ")) {
+                  val = key.replace("[TEXT] ", "");
+              } else if (!val) {
+                  if (key.toLowerCase().includes("name") && !key.toLowerCase().includes("event")) val = fallbackName;
+              }
+              
+              if (typeof val === 'string') {
+                  val = val.replace(/\|/g, ' ').trim();
+              }
+              const alignOpt = isInvite ? "left" : "center";
+              doc.text(String(val), xPx, yPx, { align: alignOpt, baseline: "middle" });
             }
-            
-            if (typeof val === 'string') {
-                val = val.replace(/\|/g, ' ').trim();
-            }
-            const alignOpt = isInvite ? "left" : "center";
-            doc.text(String(val), xPx, yPx, { align: alignOpt, baseline: "middle" });
+          });
+          
+          const blob = doc.output('blob');
+          const url = URL.createObjectURL(blob);
+          
+          if (actualPreviewMode === 'blob') {
+              resolve(blob);
+              return;
+          } else if (actualPreviewMode === 'url') {
+              resolve(url);
+              return;
+          } else if (actualPreviewMode === true) {
+              window.open(url, '_blank');
+          } else {
+              const link = document.createElement("a");
+              link.href = url;
+              const outName = fallbackName ? fallbackName.replace(/\s+/g, '_') : "Student";
+              link.download = `${isInvite ? 'Invite' : 'Certificate'}_${outName}.pdf`;
+              link.click();
           }
-        });
-        
-        const blob = doc.output('blob');
-        const url = URL.createObjectURL(blob);
-        
-        if (actualPreviewMode === 'blob') {
-            resolve(blob);
-            return;
-        } else if (actualPreviewMode === 'url') {
-            resolve(url);
-            return;
-        } else if (actualPreviewMode === true) {
-            window.open(url, '_blank');
+          
+          resolve(true);
+        } catch(e) { reject(e); }
+      };
+
+      img.onerror = (e) => {
+        if (!useProxy && urlToLoad.startsWith('http')) {
+          loadImg(urlToLoad, true);
         } else {
-            const link = document.createElement("a");
-            link.href = url;
-            const outName = fallbackName ? fallbackName.replace(/\s+/g, '_') : "Student";
-            link.download = `${isInvite ? 'Invite' : 'Certificate'}_${outName}.pdf`;
-            link.click();
+          reject(new Error(`Failed to load ${isInvite ? 'invite' : 'certificate'} template image. Please ensure a valid image is configured under Event Settings.`));
         }
-        
-        resolve(true);
-      } catch(e) { reject(e); }
+      };
+
+      img.src = targetUrl;
     };
-    img.onerror = (e) => reject(new Error(`Failed to load ${isInvite ? 'invite' : 'certificate'} template image.`));
-    img.src = srcUrl;
+
+    loadImg(srcUrl, false);
   });
 };
 
@@ -4164,6 +4417,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
           <F label="Trust Subtitle (Under Name)" path="trust.subtitle"/>
           <F label="Phone Number" path="trust.phone"/>
           <F label="Email Address" path="trust.email"/>
+          <F label="Top Bar Notice (Header)" path="trust.topBarNotice" hint="e.g. 80G Tax Exemption Available"/>
           <F label="Office Hours" path="trust.hours"/>
           <F label="Established Year" path="trust.estd"/>
           <F label="PAN Number" path="trust.panNo"/>
@@ -4318,17 +4572,60 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
           </div>
           {draft.hero.showImage && (
             <div style={{marginBottom: 24, marginLeft: 20, display:"flex", flexDirection:"column", gap:14, background:"#F9FAFB", padding:16, borderRadius:12, border:"1px solid var(--bd)"}}>
-              <div style={{display:"flex", alignItems:"flex-end", gap:8}}>
-                <div style={{flex:1}}>
-                  <F label="Image URL (Or upload PNG/JPEG)" path="hero.image" hint="Paste image URL or click Upload"/>
-                </div>
-                <div style={{marginBottom: 16}}>
-                  <input id="hero-img-upload" type="file" accept="image/*" style={{display:"none"}} onChange={handleHeroImageUpload} />
-                  <label htmlFor="hero-img-upload" style={{display:"inline-block",background:"var(--dt)",color:"white",padding:"10px 16px",borderRadius:8,fontSize:".85rem",cursor:"pointer",fontWeight:600}}>
-                    {uploading ? "Uploading..." : "Upload File"}
-                  </label>
-                </div>
+              <div style={{marginBottom:10}}>
+                <label style={{display:"block",fontSize:".85rem",fontWeight:600,color:"var(--dt)",marginBottom:6}}>Hero Media Type</label>
+                <select value={draft.hero.heroType || "single"} onChange={(e)=>upd("hero.heroType", e.target.value)} style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".9rem",outline:"none",background:"white"}}>
+                  <option value="single">Single Image</option>
+                  <option value="slider">Multi-Image Slider (Carousel)</option>
+                </select>
               </div>
+
+              {(draft.hero.heroType === "slider") ? (
+                <div style={{border:"1px solid var(--bd)",padding:16,borderRadius:8,background:"#fff"}}>
+                  <label style={{display:"block",fontSize:".85rem",fontWeight:600,color:"var(--dt)",marginBottom:12}}>Slider Images (Will slide right to left)</label>
+                  {(draft.hero.sliderImages || []).map((imgUrl, i) => (
+                    <div key={i} style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+                      {imgUrl && <img src={imgUrl} alt="Slide" style={{width:40,height:40,objectFit:"cover",borderRadius:4,border:"1px solid #ccc"}} />}
+                      <input type="text" value={imgUrl} onChange={(e) => {
+                        const newImgs = [...(draft.hero.sliderImages || [])];
+                        newImgs[i] = e.target.value;
+                        upd("hero.sliderImages", newImgs);
+                      }} style={{flex:1,padding:"8px 12px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".8rem"}} placeholder="Image URL"/>
+                      <button onClick={() => {
+                        const newImgs = [...(draft.hero.sliderImages || [])];
+                        newImgs.splice(i, 1);
+                        upd("hero.sliderImages", newImgs);
+                      }} style={{padding:"8px",background:"#ff4d4f",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontSize:".8rem"}}>X</button>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:12,marginTop:12}}>
+                    <button onClick={() => upd("hero.sliderImages", [...(draft.hero.sliderImages || []), ""])} style={{padding:"8px 14px",background:"#e0e0e0",color:"var(--dt)",border:"none",borderRadius:6,cursor:"pointer",fontSize:".85rem",fontWeight:600}}>+ Add Image URL</button>
+                    <input id="hero-slider-upload" type="file" accept="image/*" multiple style={{display:"none"}} onChange={(e) => {
+                      const files = Array.from(e.target.files);
+                      files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          upd("hero.sliderImages", [...(draft.hero.sliderImages || []), reader.result]);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                    }} />
+                    <label htmlFor="hero-slider-upload" style={{padding:"8px 14px",background:"var(--dt)",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontSize:".85rem",fontWeight:600,display:"inline-block"}}>+ Upload Images</label>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"flex", alignItems:"flex-end", gap:8}}>
+                  <div style={{flex:1}}>
+                    <F label="Image URL (Or upload PNG/JPEG)" path="hero.image" hint="Paste image URL or click Upload"/>
+                  </div>
+                  <div style={{marginBottom: 16}}>
+                    <input id="hero-img-upload" type="file" accept="image/*" style={{display:"none"}} onChange={handleHeroImageUpload} />
+                    <label htmlFor="hero-img-upload" style={{display:"inline-block",background:"var(--dt)",color:"white",padding:"10px 16px",borderRadius:8,fontSize:".85rem",cursor:"pointer",fontWeight:600}}>
+                      {uploading ? "Uploading..." : "Upload File"}
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12}}>
                 <div>
@@ -4961,6 +5258,7 @@ const ANAV = [
   {id:"achievements",icon:"🏆",label:"Achievements"},
   {id:"settings",icon:"⚙️",label:"Settings"},
   {id:"access",icon:"🔐",label:"Access Control"},
+  {id:"backup",icon:"💾",label:"Backup & Restore"},
   {id:"profile",icon:"👤",label:"My Profile"},
   {id:"meritlist",label:"Reports & Lists",icon:"📑"},
   {id:"inviteletters",label:"Invite Letters",icon:"📩"},
@@ -5352,7 +5650,278 @@ function AdminManualSidePanel({ activeTab, isOpen, onClose, master, C, setC, aut
 
     </div>
   );
+}// ── BACKUP AND RESTORE ───────────────────────────────────────────────────────
+function BackupRestore({ C, setC, auth }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileRef = useRef(null);
+  
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch all dynamic collections
+      const registrations = auth?.idToken ? await fbFetchRegistrations(auth.idToken).catch(()=>[]) : [];
+      const donations = auth?.idToken ? await fbFetchDonations(auth.idToken).catch(()=>[]) : [];
+      const volunteers = auth?.idToken ? await fbFetchVolunteers(auth.idToken).catch(()=>[]) : [];
+      
+      const fullBackup = {
+        config: C,
+        collections: {
+          registrations,
+          donations,
+          volunteers
+        }
+      };
+
+      const dataStr = JSON.stringify(fullBackup, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `trust_full_backup_${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Backup failed: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  const [isZipping, setIsZipping] = useState(false);
+  
+  const handleOfflineZipExport = async () => {
+    setIsZipping(true);
+    try {
+      // 1. Fetch Registrations
+      const registrations = auth?.idToken ? await fbFetchRegistrations(auth.idToken).catch(()=>[]) : [];
+      if (registrations.length === 0) {
+          alert("No registrations found to backup.");
+          setIsZipping(false);
+          return;
+      }
+      
+      const zip = new JSZip();
+      const dataFolder = zip.folder("data");
+      const attachmentsFolder = zip.folder("attachments");
+      
+      const excelData = [];
+      let fileCounter = 1;
+      
+      // 2. Iterate and process
+      for (const reg of registrations) {
+        const rowData = { ...reg };
+        
+        // Find URLs (looking for firebasestorage URLs)
+        for (const key in rowData) {
+          const val = rowData[key];
+          if (typeof val === "string" && val.includes("http") && val.includes("firebasestorage")) {
+            const urls = val.split(",").map(u => u.trim()).filter(u => u.startsWith("http"));
+            if (urls.length === 0) continue;
+            
+            const localPaths = [];
+            for (const u of urls) {
+              try {
+                // Fetch the file with CORS proxy fallback
+                let res;
+                try {
+                  res = await fetch(u);
+                  if (!res.ok) throw new Error("Direct fetch failed");
+                } catch (directErr) {
+                  // Fallback to CORS proxy
+                  res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(u));
+                  if (!res.ok) throw new Error("Proxy fetch failed");
+                }
+                
+                const blob = await res.blob();
+                
+                // Determine extension safely
+                let ext = u.split('?')[0].split('.').pop();
+                if (!ext || ext.length > 5 || ext.includes('/')) {
+                  const mime = blob.type.split('/')[1];
+                  ext = mime && mime !== "octet-stream" ? mime : "jpg";
+                }
+                if (ext === "jpeg") ext = "jpg";
+                
+                // Safe file name
+                const safeName = `${(reg["Full Name"] || "Student").replace(/[^a-z0-9]/gi, '_')}_${key.replace(/[^a-z0-9]/gi, '_')}_${fileCounter++}.${ext}`;
+                
+                // Add to zip
+                attachmentsFolder.file(safeName, blob);
+                
+                // Keep track of local path
+                localPaths.push(`../attachments/${safeName}`); 
+                
+              } catch (err) {
+                console.error("Failed to download attachment for", reg["Full Name"], key, err);
+                localPaths.push(u); // keep original URL if failed
+              }
+            }
+            rowData[key] = localPaths.join(", ");
+          }
+        }
+        excelData.push(rowData);
+      }
+      
+      // 3. Create Excel
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // (Optional) Add clickable hyperlinks to the cells that we modified
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for(let R = range.s.r; R <= range.e.r; ++R) {
+        for(let C = range.s.c; C <= range.e.c; ++C) {
+          const cellAddress = {c:C, r:R};
+          const cellRef = XLSX.utils.encode_cell(cellAddress);
+          const cell = ws[cellRef];
+          if(cell && cell.v && typeof cell.v === 'string' && cell.v.startsWith('../attachments/')) {
+            cell.l = { Target: cell.v }; // Add hyperlink
+          }
+        }
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Registrations");
+      
+      // Convert workbook to array buffer
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      
+      // Add Excel to ZIP
+      dataFolder.file("Registration_Data.xlsx", excelBuffer);
+      
+      // 4. Generate and download ZIP
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Offline_Backup_${new Date().toISOString().split('T')[0]}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      alert("Offline zip backup failed: " + err.message);
+    } finally {
+      setIsZipping(false);
+    }
+  };
+  
+  const restoreCollections = async (collections, idToken) => {
+    let successCount = 0;
+    let failCount = 0;
+    const processCollection = async (items, collectionName) => {
+      if (!items || !items.length) return;
+      for (const item of items) {
+        try {
+          // Keep original document ID
+          const docId = item.id || "VG-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+          const dataToRestore = { ...item };
+          delete dataToRestore.id; // Don't save the ID inside the document fields
+          
+          await fbRestoreDocument(collectionName, docId, dataToRestore, idToken);
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+    };
+
+    await processCollection(collections.registrations, "registrations");
+    await processCollection(collections.donations, "donations");
+    await processCollection(collections.volunteers, "volunteers");
+    
+    return { successCount, failCount };
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      // Determine if it's a new full backup or an old config-only backup
+      const isFullBackup = !!data.config;
+      const configData = isFullBackup ? data.config : data;
+      
+      if (!configData || !configData.trust || !configData.events) {
+        throw new Error("Invalid backup file structure. Missing required keys (trust, events).");
+      }
+      
+      if (window.confirm("Are you sure you want to overwrite all data with this backup? This action cannot be undone.")) {
+        setIsImporting(true);
+        setC(configData);
+        
+        // Save to Firebase immediately if authenticated
+        if (auth?.idToken) {
+          try {
+            await fbSave(configData, auth.idToken);
+            let msg = "Website configuration successfully restored and saved!";
+            
+            // Restore auxiliary collections if present
+            if (isFullBackup && data.collections) {
+               const { successCount, failCount } = await restoreCollections(data.collections, auth.idToken);
+               msg += `\nRestored ${successCount} records (Registrations/Donations/Volunteers).`;
+               if (failCount > 0) msg += `\nFailed to restore ${failCount} records.`;
+            }
+            alert(msg);
+          } catch (err) {
+            alert("Data restored to preview, but failed to save to database: " + err.message + "\\nPlease go to Settings and click 'Save Settings' manually.");
+          }
+        } else {
+          alert("Data restored to preview! Please go to Settings and click 'Save Settings' to push to database.");
+        }
+      }
+    } catch (err) {
+      alert("Failed to parse backup file: " + err.message);
+    } finally {
+      setIsImporting(false);
+    }
+    
+    // Clear file input
+    e.target.value = "";
+  };
+  
+  return (
+    <div style={{animation:"fadeIn .4s ease"}}>
+      <h2 style={{fontSize:"1.8rem",color:"var(--dt)",marginBottom:8}}>Backup & Restore</h2>
+      <p style={{color:"var(--mu)",marginBottom:30,lineHeight:1.6}}>Download a complete snapshot of all your website data (events, programs, trust details) as a JSON file, or upload a previously downloaded backup file to completely restore your database.</p>
+      
+      <div style={{display:"grid",gap:20,gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))"}}>
+        {/* Export JSON Card */}
+        <div style={{background:"white",padding:24,borderRadius:16,border:"1px solid var(--bd)",boxShadow:"0 4px 15px rgba(0,0,0,0.03)",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:"2rem",marginBottom:12}}>📥</div>
+          <h3 style={{fontSize:"1.2rem",color:"var(--dt)",marginBottom:8}}>Export Data (System Backup)</h3>
+          <p style={{color:"var(--mu)",fontSize:"0.9rem",marginBottom:20,lineHeight:1.5,flex:1}}>Download all current settings, text, events, registrations, donations, and volunteer records to your computer as a complete JSON file for system restoration.</p>
+          <button onClick={handleExport} disabled={isExporting} className="bt" style={{width:"100%",padding:"12px",borderRadius:8,fontSize:"1rem",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8, opacity: isExporting ? 0.7 : 1}}>
+            {isExporting ? "Compiling JSON..." : "Download JSON Backup"}
+          </button>
+        </div>
+        
+        {/* Export Offline ZIP Card */}
+        <div style={{background:"white",padding:24,borderRadius:16,border:"1px solid var(--bd)",boxShadow:"0 4px 15px rgba(0,0,0,0.03)",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:"2rem",marginBottom:12}}>🗂️</div>
+          <h3 style={{fontSize:"1.2rem",color:"var(--dt)",marginBottom:8}}>Offline Archive (Excel + Files)</h3>
+          <p style={{color:"var(--mu)",fontSize:"0.9rem",marginBottom:20,lineHeight:1.5,flex:1}}>Generate a ZIP folder containing an organized Excel sheet of all registrations, alongside a folder containing every downloaded student photo and PDF attachment.</p>
+          <button onClick={handleOfflineZipExport} disabled={isZipping} className="bt" style={{width:"100%",padding:"12px",borderRadius:8,fontSize:"1rem",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8, opacity: isZipping ? 0.7 : 1, background:"#2E7D32", borderColor:"#2E7D32"}}>
+            {isZipping ? "Downloading Files & Zipping..." : "Download Offline ZIP"}
+          </button>
+        </div>
+        
+        {/* Import JSON Card */}
+        <div style={{background:"white",padding:24,borderRadius:16,border:"1px solid var(--bd)",boxShadow:"0 4px 15px rgba(0,0,0,0.03)",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:"2rem",marginBottom:12}}>📤</div>
+          <h3 style={{fontSize:"1.2rem",color:"var(--dt)",marginBottom:8}}>Restore System</h3>
+          <p style={{color:"var(--mu)",fontSize:"0.9rem",marginBottom:20,lineHeight:1.5,flex:1}}>Upload a previously saved `.json` backup file. <strong style={{color:"#D32F2F"}}>Warning:</strong> This will overwrite all current website data and records.</p>
+          <input type="file" accept=".json" style={{display:"none"}} ref={fileRef} onChange={handleImport} />
+          <button onClick={() => fileRef.current?.click()} disabled={isImporting} className="bt-sec" style={{width:"100%",padding:"12px",borderRadius:8,fontSize:"1rem",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#FEEAEA",color:"#D32F2F",borderColor:"#FEEAEA", opacity: isImporting ? 0.7 : 1, marginTop:"auto"}}>
+            {isImporting ? "Restoring..." : "Upload & Restore JSON"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
+
 
 function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
   const isMasterAdmin = (email) => ["admin@vidyagohiltrust.org", "pradeepparmar902@yahoo.com"].includes(email?.toLowerCase());
@@ -5361,7 +5930,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
 
   let hasAccess = [];
   if (auth?.email) {
-    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "volunteers", "gallery", "team", "achievements", "settings", "access", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "profile"];
+    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "volunteers", "gallery", "team", "achievements", "settings", "access", "backup", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "profile"];
   }
 
   const visibleNav = ANAV.filter(item => hasAccess.includes(item.id));
@@ -5495,6 +6064,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="achievements" && hasAccess.includes("achievements") && <AdminAchievements mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="settings"  && hasAccess.includes("settings") && <Settings mob={mob} C={C} setC={setC} auth={auth} setPage={setPage} hasAccess={hasAccess} master={master}/>}
           {tab==="access"    && hasAccess.includes("access") && <AdminAccess C={C} setC={setC} master={master} auth={auth}/>}
+          {tab==="backup"    && hasAccess.includes("backup") && <BackupRestore C={C} setC={setC} auth={auth}/>}
           {tab==="profile"   && hasAccess.includes("profile") && <AdminProfile auth={auth} mob={mob} adminProfile={adminProfile} setAdminProfile={setAdminProfile}/>}
         
           <AdminManualSidePanel activeTab={tab} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} master={master} C={C} setC={setC} auth={auth} /></div>
@@ -6491,6 +7061,271 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   );
 }
 
+function CertificateTemplateMapper({ imgUrl, mapData, fontSize, fontColor, onChange, availableFields, isInvite=false }) {
+  const [fields, setFields] = useState(() => {
+    const initFields = {};
+    if (availableFields) {
+       availableFields.forEach((f, i) => {
+         initFields[f] = { x: 50, y: 30 + ((i % 6) * 10), visible: false };
+       });
+    }
+    if (mapData) {
+       return { ...initFields, ...mapData };
+    }
+    return initFields;
+  });
+
+  useEffect(() => {
+    if (availableFields) {
+      setFields(prev => {
+        const next = { ...prev };
+        let changed = false;
+        availableFields.forEach((f, i) => {
+          if (!next[f]) {
+            next[f] = { x: 50, y: 30 + ((i % 6) * 10), visible: false };
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [availableFields]);
+
+  const [fSize, setFSize] = useState(fontSize || 30);
+  const [fColor, setFColor] = useState(fontColor || "#000000");
+
+  const containerRef = useRef(null);
+  const [dragging, setDragging] = useState(null);
+
+  const handlePointerDown = (e, key) => { e.preventDefault(); e.target.setPointerCapture(e.pointerId); setDragging(key); };
+  const handlePointerMove = (e) => {
+    if (!dragging || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    let x = ((e.clientX - rect.left) / rect.width) * 100;
+    let y = ((e.clientY - rect.top) / rect.height) * 100;
+    x = Math.max(0, Math.min(100, x)); y = Math.max(0, Math.min(100, y));
+    setFields(prev => ({ ...prev, [dragging]: { ...prev[dragging], x, y } }));
+  };
+  const handlePointerUp = (e) => { 
+    if (dragging) {
+      e.target.releasePointerCapture(e.pointerId);
+      setDragging(null); 
+      onChange(fields, fSize, fColor); 
+    }
+  };
+
+  const toggleVisibility = (key) => {
+    const nextFields = { ...fields, [key]: { ...fields[key], visible: !fields[key].visible } };
+    setFields(nextFields);
+    onChange(nextFields, fSize, fColor);
+  };
+
+  return (
+    <div style={{marginTop: 16, border: "1px solid var(--bd)", borderRadius: 8, padding: 16, background: "white"}}>
+      <h4 style={{margin: 0, marginBottom: 8, fontSize: ".9rem"}}>Visual Certificate Mapper</h4>
+      <p style={{fontSize: ".75rem", color: "var(--mu)", marginBottom: 16}}>Drag the fields to position them on your template. Click a button below to show/hide a field.</p>
+      
+      <div style={{display:"flex",gap:16,marginBottom:16}}>
+        <div>
+          <label style={{fontSize:".75rem",fontWeight:600,display:"block",marginBottom:4}}>Font Size (px)</label>
+          <input type="number" value={fSize} onChange={(e) => { setFSize(parseInt(e.target.value)); onChange(fields, parseInt(e.target.value), fColor); }} style={{width:80,padding:6,borderRadius:6,border:"1px solid var(--bd)"}} />
+        </div>
+        <div>
+          <label style={{fontSize:".75rem",fontWeight:600,display:"block",marginBottom:4}}>Text Color</label>
+          <input type="color" value={fColor} onChange={(e) => { setFColor(e.target.value); onChange(fields, fSize, e.target.value); }} style={{width:50,height:32,padding:0,border:"none",borderRadius:6,cursor:"pointer"}} />
+        </div>
+      </div>
+      <div style={{display:"flex", gap: 8, flexWrap: "wrap", marginBottom: 16}}>
+        {Object.entries(fields).map(([key, pos]) => (
+          <button 
+            key={key} 
+            onClick={() => toggleVisibility(key)}
+            style={{padding:"6px 12px", borderRadius:20, border:"1px solid var(--bd)", background:pos.visible?"var(--dt)":"#f5f5f5", color:pos.visible?"white":"#555", fontSize:".75rem", fontWeight:600, cursor:"pointer"}}
+          >
+            {pos.visible ? "✓ " : "+ "}{key.startsWith("[TEXT] ") ? key.replace("[TEXT] ", "") : key}
+          </button>
+        ))}
+      </div>
+
+      <div 
+        ref={containerRef} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
+        style={{position: "relative", width: "100%", overflow: "hidden", borderRadius: 8, background: "#f5f5f5", border: "1px dashed var(--bd)", touchAction: "none", minHeight: 200}}
+      >
+        <img src={imgUrl} style={{width: "100%", display: "block", pointerEvents: "none"}} alt="Template" />
+        
+        {Object.entries(fields).map(([key, pos]) => {
+          if (!pos.visible) return null;
+          let safeX = Math.max(5, Math.min(95, parseFloat(pos.x) || 50));
+          let safeY = Math.max(5, Math.min(95, parseFloat(pos.y) || 50));
+          return (
+          <div
+            key={key} onPointerDown={(e) => handlePointerDown(e, key)}
+            style={{
+              position: "absolute", left: `${safeX}%`, top: `${safeY}%`, transform: isInvite ? "translate(0%, -50%)" : "translate(-50%, -50%)",
+              background: dragging === key ? "var(--sf)" : "rgba(13, 75, 94, 0.85)", color: "white", padding: "4px 8px", borderRadius: 4,
+              fontSize: "12px", fontWeight: 700, cursor: dragging === key ? "grabbing" : "grab", userSelect: "none", whiteSpace: "nowrap", zIndex: dragging === key ? 10 : 1
+            }}
+          >
+            {key.startsWith("[TEXT] ") ? key.replace("[TEXT] ", "") : key}
+          </div>
+          );
+        })}
+      </div>
+      
+      <div style={{display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16}}>
+        {Object.entries(fields).map(([key, pos]) => (
+          <button 
+            key={key} onClick={() => toggleVisibility(key)}
+            style={{ padding: "6px 12px", borderRadius: 16, fontSize: ".75rem", fontWeight: 600, cursor: "pointer", background: pos.visible ? "var(--tl)" : "#f5f5f5", border: `1px solid ${pos.visible ? "var(--dt)" : "#ddd"}`, color: pos.visible ? "var(--dt)" : "#888" }}
+          >
+            {pos.visible ? "✓ " : "+ "}{key.startsWith("[TEXT] ") ? key.replace("[TEXT] ", "") : key}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert' }) {
+  const isInvite = type === 'invite';
+  const [certBgUrl, setCertBgUrl] = useState(isInvite ? (ev.inviteBgUrl || "") : (ev.certBgUrl || ""));
+  const [certMap, setCertMap] = useState(isInvite ? (ev.inviteMap || null) : (ev.certMap || null));
+  const [customText, setCustomText] = useState("");
+  
+  const [availableFields, setAvailableFields] = useState(["Event Name", "Date", "Group", "Serial Number"]);
+  useEffect(() => {
+    let allFields = ["Event Name", "Date", "Group", "Serial Number", "Chest No", "Receipt Number"];
+    if (ev.formId && forms) {
+      const form = forms.find(f => f.id === ev.formId);
+      if (form && form.fields) {
+         const labels = form.fields.map(f => f.label || "Field").filter(Boolean);
+         allFields = [...allFields, ...labels];
+      }
+    }
+    
+    // Attempt to fetch actual registration keys to include any custom admin-added columns
+    const fetchRegKeys = async () => {
+      try {
+        const d = await fbFetchRegistrations(auth?.idToken);
+        if (d) {
+           const evRegs = d.filter(r => r.eventId === ev.id || r.eventName === ev.title || r.eventTitle === ev.title);
+           evRegs.forEach(r => {
+              Object.keys(r).forEach(k => {
+                 if (!k.startsWith('_') && !['id','eventId','eventName','eventTitle','Transaction ID','Status','Remarks','Updated By'].includes(k)) {
+                    allFields.push(k);
+                 }
+              });
+           });
+        }
+        // Filter out unwanted sub-stream values that might have been added as columns by mistake
+        let cleanedFields = allFields.filter(k => !['Commerce', 'Science', 'Arts', 'Other'].includes(k));
+        setAvailableFields([...new Set(cleanedFields)]);
+      } catch(e) {
+        let cleanedFields = allFields.filter(k => !['Commerce', 'Science', 'Arts', 'Other'].includes(k));
+        setAvailableFields([...new Set(cleanedFields)]);
+      }
+    };
+    fetchRegKeys();
+  }, [ev.formId, forms, ev.id, ev.title, auth?.idToken]);
+  const [certFontSize, setCertFontSize] = useState(isInvite ? (ev.inviteFontSize || 30) : (ev.certFontSize || 30));
+  const [certFontColor, setCertFontColor] = useState(isInvite ? (ev.inviteFontColor || "#000000") : (ev.certFontColor || "#000000"));
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width; let h = img.height;
+          if (w > 1200) { h = Math.round((1200/w)*h); w = 1200; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const b64 = canvas.toDataURL('image/jpeg', 0.85);
+          setCertBgUrl(b64);
+          setUploading(false);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch(err) {
+      alert("Upload failed: " + err.message);
+      setUploading(false);
+    }
+  };
+
+  const save = () => {
+    onSave({ bgUrl: certBgUrl, map: certMap, fontSize: certFontSize, fontColor: certFontColor });
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"white",width:"100%",maxWidth:900,borderRadius:12,padding:24,maxHeight:"90vh",overflowY:"auto"}}>
+        <h3 style={{marginBottom:16,fontFamily:"'Playfair Display',serif",fontSize:"1.3rem"}}>Configure {isInvite ? 'Invite Letter' : 'Certificate'} for {ev.title}</h3>
+        
+        <div style={{display:"flex",gap:16,marginBottom:20, flexWrap: "wrap"}}>
+          <div style={{flex:1, minWidth: 300}}>
+            <label style={{fontSize:".8rem",fontWeight:600,display:"block",marginBottom:6}}>Background Image</label>
+            <div style={{display:"flex",gap:8}}>
+              <input type="text" value={certBgUrl} onChange={e=>setCertBgUrl(e.target.value)} placeholder="Image URL (or upload)..." style={{flex:1,padding:8,borderRadius:6,border:"1px solid var(--bd)"}} />
+              <label style={{background:"var(--sf)",color:"white",padding:"8px 16px",borderRadius:6,cursor:"pointer",fontWeight:600}}>
+                {uploading ? "..." : "Upload"}
+                <input type="file" accept="image/*" onChange={handleUpload} style={{display:"none"}} disabled={uploading}/>
+              </label>
+            </div>
+            {certBgUrl && (
+              <button onClick={() => setCertBgUrl("")} style={{background:"none",border:"none",color:"#C0392B",fontSize:".75rem",fontWeight:600,cursor:"pointer",padding:0,marginTop:6}}>Remove Image</button>
+            )}
+          </div>
+          
+          <div style={{flex:1, minWidth: 300}}>
+            <label style={{fontSize:".8rem",fontWeight:600,display:"block",marginBottom:6}}>Add Custom Static Text (e.g. Date, Phrase)</label>
+            <div style={{display:"flex",gap:8}}>
+              <input type="text" value={customText} onChange={e => setCustomText(e.target.value)} placeholder="Enter text to print..." style={{flex:1,padding:8,borderRadius:6,border:"1px solid var(--bd)"}} />
+              <button onClick={() => {
+                if(customText.trim()){
+                  setAvailableFields(prev => [...prev, "[TEXT] " + customText.trim()]);
+                  setCustomText("");
+                }
+              }} style={{background:"var(--dt)",color:"white",padding:"8px 16px",borderRadius:6,cursor:"pointer",border:"none",fontWeight:600}}>Add Text</button>
+            </div>
+          </div>
+        </div>
+
+        {certBgUrl ? (
+          <CertificateTemplateMapper 
+            imgUrl={certBgUrl} 
+            mapData={certMap} 
+            fontSize={certFontSize}
+            fontColor={certFontColor}
+            availableFields={availableFields}
+            isInvite={isInvite}
+            onChange={(map, size, color) => {
+              setCertMap(map);
+              setCertFontSize(size);
+              setCertFontColor(color);
+            }} 
+          />
+        ) : (
+          <div style={{padding:40,textAlign:"center",background:"#F5F5F5",borderRadius:8,marginBottom:20,color:"var(--mu)"}}>
+            Upload or paste an image URL to start mapping the fields.
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"flex-end",gap:12,marginTop:20}}>
+          <button onClick={onClose} style={{padding:"8px 16px",borderRadius:6,border:"1px solid var(--bd)",background:"white",cursor:"pointer"}}>Cancel</button>
+          <button onClick={save} style={{padding:"8px 16px",borderRadius:6,border:"none",background:"var(--dt)",color:"white",cursor:"pointer",fontWeight:600}}>Save Configuration</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminEvents({ mob, C, setC, auth }) {
   const [items, setItems] = useState(C.events || []);
   const [previewForm, setPreviewForm] = useState(null);
@@ -6708,6 +7543,44 @@ function AdminEvents({ mob, C, setC, auth }) {
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:".7rem",color:"var(--mu)",fontWeight:600}}>WhatsApp Group Link (Optional - Shows after registration)</label>
                   <input type="text" placeholder="https://chat.whatsapp.com/..." value={ev.waGroupLink || ""} onChange={e=>updateItem(i,"waGroupLink",e.target.value)} style={{width:"100%",padding:"6px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit"}}/>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={{fontSize:".7rem",color:"var(--mu)",fontWeight:600}}>WhatsApp Group QR Code (Optional)</label>
+                  <div style={{display:"flex",gap:8}}>
+                    <input type="text" placeholder="Image URL..." value={ev.waGroupQrCode || ""} onChange={e=>updateItem(i,"waGroupQrCode",e.target.value)} style={{flex:1,padding:"6px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit"}}/>
+                    <label style={{padding:"6px 12px",borderRadius:6,border:"1px solid var(--sf)",background:"#FFF4EC",color:"var(--sf)",fontWeight:700,fontSize:".75rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+                      Upload QR
+                      <input type="file" accept="image/*" style={{display:"none"}} onChange={(e) => {
+                        const file = e.target.files[0]; if(!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const img = new Image();
+                          img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.width; let h = img.height;
+                            if (w > 800) { h = Math.round((800/w)*h); w = 800; }
+                            canvas.width = w; canvas.height = h;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            const b64 = canvas.toDataURL('image/jpeg', 0.85);
+                            updateItem(i, "waGroupQrCode", b64);
+                          };
+                          img.src = event.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                      }} />
+                    </label>
+                  </div>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={{fontSize:".7rem",color:"var(--mu)",fontWeight:600}}>Google Sheets Webhook URL (For auto-saving registrations to Google Sheets)</label>
+                  <input type="text" placeholder="https://script.google.com/macros/s/..." value={ev.googleSheetsWebhookUrl || ""} onChange={e=>updateItem(i,"googleSheetsWebhookUrl",e.target.value)} style={{width:"100%",padding:"6px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit"}}/>
+                </div>
+                <div style={{gridColumn:"1/-1", display:"flex", alignItems:"center", gap:8}}>
+                  <input type="checkbox" id={`drive_${i}`} checked={ev.saveToGoogleDrive || false} onChange={e=>updateItem(i,"saveToGoogleDrive",e.target.checked)} />
+                  <label htmlFor={`drive_${i}`} style={{fontSize:".75rem",fontWeight:700,color:"var(--dt)",cursor:"pointer"}}>
+                    Save File Attachments to Google Drive (Requires Google Apps Script setup)
+                  </label>
                 </div>
                 <div style={{gridColumn:"1/-1", marginTop:8, padding:12, background:"#FFF5F5", borderRadius:8, border:"2px solid #F5B8B8"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom: ev.regClosed ? 10 : 0}}>
@@ -8489,8 +9362,9 @@ function UserEditRegistrationModal({ reg, onClose, onSave, authToken, C }) {
 function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
   const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
 
-  const [regs, setRegs] = useState([]);
+  const [regs, setRegs] = useState([]);          // ALL registrations fetched
   const [myDonations, setMyDonations] = useState([]);
+  const [debugInfo, setDebugInfo] = useState(null); // debug snapshot
   const [editingReg, setEditingReg] = useState(null);
   const [viewingHistoryModal, setViewingHistoryModal] = useState(null);
 
@@ -8573,26 +9447,90 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
     await generateReceiptPDF(r, C, 'download');
   };
 
+  const matchesSubTab = (r, targetSubTab) => {
+    const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || "");
+    const nameToMatch   = String(globalProfile?.name || globalProfile?.['Full Name'] || "").trim().toLowerCase();
+    const emailToMatch  = String(globalProfile?.email || "").trim().toLowerCase();
+
+    let rMobile = cleanPhone(
+      r["Mobile Number"] || r.mobile || r.phone ||
+      r["Mobile"] || r["Phone"] || r["WhatsApp Number"] ||
+      r["મોબાઇલ"] || r["મોબાઈલ"] || ""
+    );
+    if (!rMobile) {
+      const hit = Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10);
+      if (hit) rMobile = cleanPhone(hit);
+    }
+    const rName  = String(r["Submitted By"] || r.name || r["Full Name"] || r["Name"] || r["Student Name"] || r["નામ"] || "").trim().toLowerCase();
+    const rEmail = String(r["Email Address"] || r.email || r["Email"] || "").trim().toLowerCase();
+    const sMob   = cleanPhone(r.submitterMob || "");
+    const sName  = String(r.submitterName || "").trim().toLowerCase();
+    const sEmail = String(r.submitterEmail || "").trim().toLowerCase();
+
+    // "For Me": registrant matches logged-in user profile
+    const iAmRegistrant =
+      (mobileToMatch && rMobile === mobileToMatch) ||
+      (emailToMatch  && rEmail  === emailToMatch)  ||
+      (nameToMatch   && rName   === nameToMatch);
+
+    // "For Others": I submitted for someone else (submitter = me, but registrant ≠ me)
+    const iAmSubmitter =
+      (mobileToMatch && sMob   === mobileToMatch) ||
+      (emailToMatch  && sEmail === emailToMatch)  ||
+      (nameToMatch   && sName  === nameToMatch);
+
+    if (targetSubTab === "For Me")     return iAmRegistrant;
+    if (targetSubTab === "For Others") return iAmSubmitter && !iAmRegistrant;
+    return true;
+  };
+
   const fetchMyRegs = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const allRegs = await fbFetchRegistrations(globalAuthToken);
-      const mobileToMatch = cleanPhone(globalProfile.mobile || globalProfile['Mobile Number'] || "");
-      const nameToMatch = String(globalProfile.name || globalProfile['Full Name'] || "").trim().toLowerCase();
-      
-      const mine = [];
-      allRegs.forEach(r => {
-        const rMobile = cleanPhone(r["Mobile Number"] || r.mobile || r.phone || "");
-        const rName = String(r["Submitted By"] || r.name || r["Full Name"] || "").trim().toLowerCase();
-        const sMob = cleanPhone(r.submitterMob || "");
-        
-        if ((mobileToMatch && rMobile === mobileToMatch) || (nameToMatch && rName === nameToMatch) || (mobileToMatch && sMob === mobileToMatch)) {
-          mine.push(r);
+      const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || "");
+      const nameToMatch   = String(globalProfile?.name || globalProfile?.['Full Name'] || "").trim().toLowerCase();
+      const emailToMatch  = String(globalProfile?.email || "").trim().toLowerCase();
+
+      // Keep every reg where the user is EITHER the registrant OR the submitter
+      const mine = allRegs.filter(r => {
+        // Extract mobile from any field name that could hold it
+        let rMobile = cleanPhone(
+          r["Mobile Number"] || r.mobile || r.phone ||
+          r["Mobile"] || r["Phone"] || r["WhatsApp Number"] ||
+          r["મોબાઇલ"] || r["મોબાઈલ"] || ""
+        );
+        // Last resort: scan all values for a 10-digit number
+        if (!rMobile) {
+          const hit = Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10);
+          if (hit) rMobile = cleanPhone(hit);
         }
+        const rName   = String(r["Submitted By"] || r.name || r["Full Name"] || r["Name"] || r["Student Name"] || r["નામ"] || "").trim().toLowerCase();
+        const rEmail  = String(r["Email Address"] || r.email || r["Email"] || "").trim().toLowerCase();
+        const sMob    = cleanPhone(r.submitterMob || "");
+        const sName   = String(r.submitterName || "").trim().toLowerCase();
+        const sEmail  = String(r.submitterEmail || "").trim().toLowerCase();
+
+        const matchesMobile = mobileToMatch && (rMobile === mobileToMatch || sMob === mobileToMatch);
+        const matchesName   = nameToMatch   && (rName   === nameToMatch   || sName === nameToMatch);
+        const matchesEmail  = emailToMatch  && (rEmail  === emailToMatch  || sEmail === emailToMatch);
+        return matchesMobile || matchesName || matchesEmail;
       });
-      
+
+      setDebugInfo({
+        total: allRegs.length,
+        matched: mine.length,
+        mobileToMatch,
+        nameToMatch,
+        emailToMatch,
+        sampleKeys: allRegs.length > 0 ? Object.keys(allRegs[0]).slice(0,10) : [],
+        sampleMob:  allRegs.length > 0 ? cleanPhone(allRegs[0]["Mobile Number"] || allRegs[0].mobile || allRegs[0].phone || "") : ""
+      });
       setRegs(mine);
-    } catch(e) { console.error(e); }
+    } catch(e) {
+      console.error("fetchMyRegs error:", e);
+      setDebugInfo({ error: String(e) });
+    }
     setLoading(false);
   };
 
@@ -8708,31 +9646,31 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
                   </button>
                 </div>
                 {(() => {
-                  const mobileToMatch = cleanPhone(globalProfile.mobile || globalProfile['Mobile Number'] || "");
-                  const nameToMatch = String(globalProfile.name || globalProfile['Full Name'] || "").trim().toLowerCase();
-                  
-                  const filteredRegs = regs.filter(r => {
-                    const rMobile = cleanPhone(r["Mobile Number"] || r.mobile || r.phone || "");
-                    const rName = String(r["Submitted By"] || r.name || r["Full Name"] || "").trim().toLowerCase();
-                    const sMob = cleanPhone(r.submitterMob || "");
-                    
-                    if (subTab === "For Me") {
-                      return (mobileToMatch && rMobile === mobileToMatch) || (!rMobile && ((mobileToMatch && sMob === mobileToMatch) || rName === nameToMatch));
-                    } else {
-                      if (rMobile && rMobile !== mobileToMatch) {
-                        if (mobileToMatch && sMob === mobileToMatch) return true;
-                        if (!sMob && rName === nameToMatch) return true;
-                      }
-                      return false;
-                    }
-                  });
+                  const filteredRegs = regs.filter(r => matchesSubTab(r, subTab));
 
                   if (loading) return <div style={{textAlign:"center",padding:40,color:"var(--mu)"}}>Loading your registrations...</div>;
                   if (filteredRegs.length === 0) return (
                     <div style={{background:"white",padding:"40px 20px",borderRadius:16,textAlign:"center",border:"1px solid var(--bd)"}}>
                       <div style={{fontSize:"3rem",marginBottom:12}}>📅</div>
                       <div style={{fontWeight:600,color:"var(--dt)",fontSize:"1.1rem",marginBottom:6}}>No Registrations Found</div>
-                      <div style={{color:"var(--mu)",fontSize:".85rem"}}>You have no registrations {subTab === "For Me" ? "for yourself" : "for others"}.</div>
+                      <div style={{color:"var(--mu)",fontSize:".85rem",marginBottom:12}}>You have no registrations {subTab === "For Me" ? "for yourself" : "for others"}.</div>
+                      {debugInfo && (
+                        <div style={{marginTop:12,padding:"12px 16px",background:"#F0F4FF",borderRadius:10,border:"1px solid #C7D6FF",textAlign:"left",fontSize:".75rem",color:"#333",maxWidth:500,margin:"12px auto 0"}}>
+                          <div style={{fontWeight:700,marginBottom:6,color:"#1e3a8a"}}>🔍 Debug Info</div>
+                          {debugInfo.error
+                            ? <div style={{color:"red"}}>Error: {debugInfo.error}</div>
+                            : (<>
+                              <div>📦 Total regs fetched: <b>{debugInfo.total}</b></div>
+                              <div>✅ Matched to me: <b>{debugInfo.matched}</b></div>
+                              <div>📱 My mobile: <b>{debugInfo.mobileToMatch || "(none)"}</b></div>
+                              <div>👤 My name: <b>{debugInfo.nameToMatch || "(none)"}</b></div>
+                              <div>📧 My email: <b>{debugInfo.emailToMatch || "(none)"}</b></div>
+                              {debugInfo.total > 0 && <div>🔑 Sample reg keys: <b>{debugInfo.sampleKeys.join(", ")}</b></div>}
+                              {debugInfo.total > 0 && <div>📱 Sample reg mobile: <b>{debugInfo.sampleMob || "(empty)"}</b></div>}
+                            </>)
+                          }
+                        </div>
+                      )}
                     </div>
                   );
                   return (
@@ -8921,13 +9859,11 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
                   </button>
                 </div>
                 {(() => {
-                  const mobileToMatch = cleanPhone(globalProfile.mobile || globalProfile['Mobile Number'] || "");
-                  const nameToMatch = String(globalProfile.name || globalProfile['Full Name'] || "").trim().toLowerCase();
-
-                  const awds = regs.map(r => {
+                  const awds = regs.filter(r => {
                     const isReleased = r.certificateReleased === true || r.certificateReleased === "true";
-                    if (!isReleased || r.certificateHold) return null;
-
+                    if (!isReleased || r.certificateHold) return false;
+                    return matchesSubTab(r, subTab);
+                  }).map(r => {
                     const rEvName = (r.eventName || r.eventTitle || r["Event Name"] || r["Event"] || "").trim().toLowerCase();
                     const ev = (C.events || []).find(e => {
                       if (rEvName && e.title && e.title.trim().toLowerCase() === rEvName) return true;
@@ -8936,7 +9872,7 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
                     }) || { title: r.eventName || r.eventTitle || "Event" };
 
                     return { reg: r, ev };
-                  }).filter(Boolean);
+                  });
                   
                   if (loading) return <div style={{textAlign:"center",padding:40,color:"var(--mu)"}}>Loading awards...</div>;
                   if (awds.length === 0) return (
@@ -9064,13 +10000,11 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
                   </button>
                 </div>
                 {(() => {
-                  const mobileToMatch = cleanPhone(globalProfile.mobile || globalProfile['Mobile Number'] || "");
-                  const nameToMatch = String(globalProfile.name || globalProfile['Full Name'] || "").trim().toLowerCase();
-                  
-                  const invs = regs.map(r => {
+                  const invs = regs.filter(r => {
                     const isReleased = r.inviteLetterReleased === true || r.inviteLetterReleased === "true" || r.inviteReleased === true || r.inviteReleased === "true";
-                    if (!isReleased || r.inviteLetterHold) return null;
-
+                    if (!isReleased || r.inviteLetterHold) return false;
+                    return matchesSubTab(r, subTab);
+                  }).map(r => {
                     const rEvName = (r.eventName || r.eventTitle || r["Event Name"] || r["Event"] || "").trim().toLowerCase();
                     const ev = (C.events || []).find(e => {
                       if (rEvName && e.title && e.title.trim().toLowerCase() === rEvName) return true;
@@ -9079,7 +10013,7 @@ function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
                     }) || { title: r.eventName || r.eventTitle || "Event" };
 
                     return { reg: r, ev };
-                  }).filter(Boolean);
+                  });
                   
                   if (loading) return <div style={{textAlign:"center",padding:40,color:"var(--mu)"}}>Loading invites...</div>;
                   if (invs.length === 0) return (
@@ -10515,7 +11449,7 @@ function AdminRegistrations({ mob, C, setC, auth }) {
     if (r.isGlobalGuest || r.isSpecialGuest || r.globalGuestId || r.formId === "global_guest_directory" || r.formId === "global_guest_directory_import") return false;
     
     // Group section filter
-    const ev = C.events?.find(e => e.title === r.eventTitle || e.title === r.eventName || e.title === r.eventId);
+    const ev = C.events?.find(e => e.title === r.eventTitle || e.title === r.eventName || e.title === r.eventId || e.id === r.eventId);
     const evSection = ev?.section || "Default";
     if (selectedSection !== "All") {
       if (selectedSection === "Default") {
@@ -10724,9 +11658,11 @@ function AdminRegistrations({ mob, C, setC, auth }) {
         <style>{`
           .admin-table tbody tr { transition: background-color 0.2s ease; border-bottom: 1px solid #E0E0E0; }
           .admin-table tbody tr:hover { background-color: #f4f9ff !important; }
-          .admin-table-wrapper { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); overflow: hidden; border: 1px solid #E0E0E0; background: white; }
+          .admin-table-wrapper { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); overflow: hidden; border: 1px solid #E0E0E0; background: white; color: #111827; }
+          .admin-table tbody td, .admin-table tbody td div { color: #111827 !important; }
           .admin-table thead tr:first-child th { background-color: var(--dt); color: white; border-bottom: none; }
-          .admin-table th { font-weight: 600; letter-spacing: 0.3px; }
+          .admin-table th { font-weight: 600; letter-spacing: 0.3px; color: #111827; }
+          .admin-table thead tr:first-child th { color: white !important; }
           .admin-table select, .admin-table input { font-family: inherit; }
         `}</style>
         <div className="admin-table-wrapper" style={{overflowX:"auto"}}>
@@ -10795,8 +11731,8 @@ function AdminRegistrations({ mob, C, setC, auth }) {
                         </button>
                       </div>
                     </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap"}}>{date}</td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap"}}>
+                    <td style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>{date}</td>
+                    <td style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
                       <div>{evName}</div>
                       {ev?.section && ev.section !== 'Default' && (
                         <span style={{fontSize:".7rem",background:"var(--tl)",color:"var(--dt)",padding:"2px 6px",borderRadius:4,marginTop:4,display:"inline-block",fontWeight:600}}>
@@ -10804,7 +11740,7 @@ function AdminRegistrations({ mob, C, setC, auth }) {
                         </span>
                       )}
                     </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",fontWeight:600}}>{r['Transaction ID'] || "-"}</td>
+                    <td style={{padding:"12px",whiteSpace:"nowrap",fontWeight:600,color:"#111827"}}>{r['Transaction ID'] || "-"}</td>
                     <td style={{padding:"12px",whiteSpace:"nowrap"}}>
                       <select 
                         value={r['Status'] || "Pending"} 
@@ -10823,12 +11759,12 @@ function AdminRegistrations({ mob, C, setC, auth }) {
                       </select>
                     </td>
                     <td style={{padding:"12px",maxWidth:200}}>
-                      <div style={{maxHeight:"60px", overflowY:"auto", whiteSpace:"normal", fontSize:".8rem", color:"var(--mu)", display:"flex", alignItems:"flex-start", gap: 6, minWidth:120, paddingRight:4}}>
+                      <div style={{maxHeight:"60px", overflowY:"auto", whiteSpace:"normal", fontSize:".8rem", color:"#111827", display:"flex", alignItems:"flex-start", gap: 6, minWidth:120, paddingRight:4}}>
                         <span>{r['Remarks'] || "-"}</span>
                         <button onClick={() => handleEditRemarks(r)} style={{background:"white",border:"1px solid #E0E0E0",borderRadius:4,cursor:"pointer",fontSize:".7rem",padding:"2px 4px",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}} title="Edit Remarks">✏️</button>
                       </div>
                     </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",fontSize:".8rem",color:"var(--mu)"}}>
+                    <td style={{padding:"12px",whiteSpace:"nowrap",fontSize:".8rem",color:"#111827"}}>
                       {r['Updated By'] || "-"}
                     </td>
                     {allKeys.map(k => {
@@ -10866,7 +11802,7 @@ function AdminRegistrations({ mob, C, setC, auth }) {
                       else val = String(val);
                       
                       return (
-                        <td key={k} style={{padding:"12px", maxWidth:250}}>
+                        <td key={k} style={{padding:"12px", maxWidth:250, color:"#111827"}}>
                           <div style={{maxHeight:"60px", overflowY:"auto", whiteSpace:"normal", minWidth:100, paddingRight:4, lineHeight:1.4}}>
                             {val}
                           </div>
@@ -11912,6 +12848,10 @@ function AdminInviteLetters({ mob, C, auth }) {
 
   const inviteRegs = regs.filter(r => {
     if (!selectedEventId) return false;
+    // Only Approved registrations (same as Certificates — exclude Pending/Rejected)
+    if (r.Status !== "Approved" && r.status !== "Approved") return false;
+    // Exclude special/global guests (they are handled separately)
+    if (r.isGlobalGuest || r.isSpecialGuest || r.globalGuestId) return false;
     const ev = inviteEvents.find(e => e.id === selectedEventId);
     if (!ev) return false;
     let evName = r.eventName || r.eventTitle || r.eventId;
@@ -12989,7 +13929,19 @@ function AdminProfile({ auth, mob, adminProfile, setAdminProfile }) {
 export default function App() {
   const [page,    setPage]    = useState("public");
   const [lang,    setLang]    = useState("en");
-  const [C,       setC]       = useState(()=>JSON.parse(JSON.stringify(DC)));
+  const [C,       setC]       = useState(() => {
+    let defaultData = JSON.parse(JSON.stringify(DC));
+    try {
+      const cached = localStorage.getItem("trustConfig");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Deep merge the cached config onto the default config
+        // This ensures if we add new properties to DC in future updates, they aren't lost
+        defaultData = { ...defaultData, ...parsed, trust: { ...defaultData.trust, ...(parsed.trust || {}) } };
+      }
+    } catch (e) {}
+    return defaultData;
+  });
   const [auth,    setAuth]    = useState(null);      // { idToken, email }
   const [fbState, setFbState] = useState("loading"); // loading | ready | error
   const [showLogin, setShowLogin] = useState(false);
@@ -13019,6 +13971,15 @@ export default function App() {
       clearTimeout(safetyTimer);
     };
   }, []);
+
+  // ── Cache config for next load ───────────────────────────────────────────
+  useEffect(() => {
+    if (C?.trust) {
+      try {
+        localStorage.setItem("trustConfig", JSON.stringify(C));
+      } catch (e) {}
+    }
+  }, [C]);
 
   // ── Dynamically update document title, favicon, and SEO meta tags ──────────────
   useEffect(() => {
@@ -13088,7 +14049,9 @@ export default function App() {
       <G theme={C?.theme || "classic"} />
       <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0D4B5E,#1A6B87)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
         <LogoMark logo={{...C.trust.logo, size: 60}} mob={false} />
-        <div style={{color:"white",fontFamily:"'Playfair Display',serif",fontSize:"1.1rem"}}>Loading {C.trust.name}...</div>
+        <div style={{color:"white",fontFamily:"'Playfair Display',serif",fontSize:"1.1rem"}}>
+          Loading {C.trust.name === "Mumbai Meghwal Panchayat" && !localStorage.getItem("trustConfig") ? "Community Portal" : C.trust.name}...
+        </div>
         <div style={{width:40,height:4,borderRadius:2,background:"rgba(255,255,255,.2)",overflow:"hidden"}}>
           <div style={{height:"100%",background:"var(--sf)",borderRadius:2,animation:"shimLoad 1.2s ease-in-out infinite"}}/>
         </div>

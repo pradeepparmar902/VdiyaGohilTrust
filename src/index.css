@@ -232,3 +232,8 @@ code {
   cursor: not-allowed;
   transform: none;
 }
+
+.admin-table-wrapper { color: #111827 !important; }
+.admin-table tbody td, .admin-table tbody td div { color: #111827 !important; }
+.admin-table th { color: #111827; }
+.admin-table thead tr:first-child th { color: white !important; }
