@@ -2666,13 +2666,32 @@ function Achievements({ C, lang }) {
 function Team({ C, lang }) {
   const [activeMember, setActiveMember] = useState(null);
   const [fullScreenMode, setFullScreenMode] = useState(null);
+  const [activeCommittee, setActiveCommittee] = useState("All");
   const items = C.teamItems || [];
   const layout = C.teamLayout || "plain";
   const w = useW(); const mob = w<768;
 
   if(items.length === 0) return null;
 
-  const plainItems = items.filter(i => i.parentId === "plain" || typeof i.parentId === "undefined");
+  const defaultCommittees = [
+    "Central Working Committee (CWC)",
+    "Education Committee",
+    "Marriage Consultation Committee",
+    "Executive Committee"
+  ];
+  const customCommittees = Array.from(new Set(items.map(i => i.committee).filter(Boolean)));
+  const allCommittees = ["All", ...Array.from(new Set([...defaultCommittees, ...customCommittees]))];
+
+  const getCommitteeCount = (comm) => {
+    if (comm === "All") return items.length;
+    return items.filter(i => (i.committee || "Central Working Committee (CWC)") === comm).length;
+  };
+
+  const filteredItems = activeCommittee === "All"
+    ? items
+    : items.filter(i => (i.committee || "Central Working Committee (CWC)") === activeCommittee);
+
+  const plainItems = filteredItems.filter(i => i.parentId === "plain" || typeof i.parentId === "undefined");
   const sortedPlainItems = [...plainItems].sort((a,b)=>(a.order||0)-(b.order||0));
 
   const openModal = (item) => {
@@ -2690,7 +2709,7 @@ function Team({ C, lang }) {
   };
 
   const renderHierarchy = (parentId = null) => {
-    let children = items.filter(i => i.parentId === parentId);
+    let children = filteredItems.filter(i => i.parentId === parentId);
     children.sort((a,b) => (a.order||0) - (b.order||0));
     
     if(children.length === 0) return null;
@@ -2717,7 +2736,7 @@ function Team({ C, lang }) {
             {/* The Node */}
             <div style={{marginTop: (parentId && !mob) ? 20 : 0, position:"relative", display:"flex", flexDirection:"column", alignItems:"center"}}>
               {/* Parent connector */}
-              {!mob && items.find(x=>x.parentId===node.id) && (
+              {!mob && filteredItems.find(x=>x.parentId===node.id) && (
                 <div style={{position:"absolute", bottom: -20, left: "50%", width: 2, height: 20, background: "var(--sf)", transform:"translateX(-50%)"}} />
               )}
               
@@ -2736,6 +2755,9 @@ function Team({ C, lang }) {
                 </div>
                 <h4 style={{fontFamily:"'Playfair Display',serif", color:"var(--dt)", margin:"0 0 2px 0", fontSize:mob?".75rem":".85rem", fontWeight:700}}>{node.name}</h4>
                 <div style={{fontSize:mob?".6rem":".65rem", color:"var(--sf)", fontWeight:600, textTransform:"uppercase", letterSpacing:1}}>{node.position}</div>
+                {activeCommittee === "All" && node.committee && (
+                  <div style={{fontSize:".55rem", background:"#F0F4FF", color:"var(--dt)", borderRadius:8, padding:"1px 4px", marginTop:4, display:"inline-block", fontWeight:600}}>{node.committee}</div>
+                )}
               </div>
             </div>
 
@@ -2750,7 +2772,7 @@ function Team({ C, lang }) {
   };
 
   const renderPlainGrid = (isFullScreen = false) => (
-    <div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":(!isFullScreen && items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob)?"repeat(2,1fr)":isFullScreen?"repeat(auto-fit, minmax(180px, 1fr))":w<1024?"repeat(4,1fr)":"repeat(5,1fr)",gap:mob?16:24, padding: "10px"}}>
+    <div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":(!isFullScreen && filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob)?"repeat(2,1fr)":isFullScreen?"repeat(auto-fit, minmax(180px, 1fr))":w<1024?"repeat(4,1fr)":"repeat(5,1fr)",gap:mob?16:24, padding: "10px"}}>
       {sortedPlainItems.map(item => (
         <div key={item.id} className="gi" style={{background:"#fdfdfd",borderRadius:20,overflow:"hidden",boxShadow:"0 12px 30px rgba(0,0,0,.06)",transition:"all .3s", cursor:"pointer", border:"1px solid rgba(0,0,0,0.05)"}}
           onMouseEnter={e=>e.currentTarget.style.transform="translateY(-8px)"} onMouseLeave={e=>e.currentTarget.style.transform="none"} onClick={() => openModal(item)}>
@@ -2764,6 +2786,9 @@ function Team({ C, lang }) {
           <div style={{padding:mob?16:20,textAlign:"center"}}>
             <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:mob?"1rem":"1.1rem",color:"var(--dt)",margin:"0 0 4px 0",fontWeight:700}}>{item.name}</h3>
             <div style={{fontSize:mob?".65rem":".75rem",color:"var(--sf)",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{item.position}</div>
+            {item.committee && (
+              <div style={{fontSize:".65rem", color:"var(--mu)", marginTop:4, fontWeight:600}}>{item.committee}</div>
+            )}
           </div>
         </div>
       ))}
@@ -2778,11 +2803,37 @@ function Team({ C, lang }) {
           <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:mob?"1.8rem":"2.4rem",color:"var(--dt)",marginTop:8,fontWeight:700}}>Our Team</h2>
         </div>
 
-        <div style={{display: (items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "flex" : "block", gap: 24, alignItems: "flex-start"}}>
-          {items.filter(i => i.parentId === null).length > 0 && (
-            <div style={{flex: 1, position:"relative", width: (items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "50%" : "100%", marginBottom: (items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? 0 : 40}}>
+        {/* Committee Workspace Tabs */}
+        <div style={{display:"flex", justifyContent:"center", gap:8, flexWrap:"wrap", marginBottom:24}}>
+          {allCommittees.map(comm => {
+            const count = getCommitteeCount(comm);
+            if (comm !== "All" && count === 0) return null;
+            const isActive = activeCommittee === comm;
+            return (
+              <button key={comm} onClick={() => setActiveCommittee(comm)} style={{
+                padding: "8px 18px", borderRadius: 24, border: isActive ? "none" : "1px solid var(--bd)",
+                background: isActive ? "var(--sf)" : "white",
+                color: isActive ? "white" : "var(--dt)",
+                fontWeight: isActive ? 700 : 600, fontSize: ".85rem",
+                cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6,
+                boxShadow: isActive ? "0 4px 12px rgba(232,101,10,0.3)" : "0 2px 8px rgba(0,0,0,0.04)"
+              }}>
+                <span>{comm}</span>
+                <span style={{
+                  background: isActive ? "rgba(255,255,255,0.25)" : "#F0F0F0",
+                  color: isActive ? "white" : "var(--mu)",
+                  padding: "2px 7px", borderRadius: 10, fontSize: ".75rem", fontWeight: 700
+                }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{display: (filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "flex" : "block", gap: 24, alignItems: "flex-start"}}>
+          {filteredItems.filter(i => i.parentId === null).length > 0 && (
+            <div style={{flex: 1, position:"relative", width: (filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "50%" : "100%", marginBottom: (filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? 0 : 40}}>
               <div style={{overflow:"auto", maxHeight:"450px", padding:"24px", background:"white", borderRadius:24, border:"1px solid var(--bd)", boxShadow:"inset 0 4px 24px rgba(0,0,0,0.03)"}}>
-                <div style={{minWidth: mob?300:((items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? 400 : 800), margin:"0 auto", paddingTop: 10, paddingBottom: 10}}>
+                <div style={{minWidth: mob?300:((filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? 400 : 800), margin:"0 auto", paddingTop: 10, paddingBottom: 10}}>
                    {renderHierarchy(null)}
                 </div>
               </div>
@@ -2791,7 +2842,7 @@ function Team({ C, lang }) {
           )}
 
           {sortedPlainItems.length > 0 && (
-            <div style={{flex: 1, position:"relative", width: (items.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "50%" : "100%"}}>
+            <div style={{flex: 1, position:"relative", width: (filteredItems.filter(i => i.parentId === null).length > 0 && sortedPlainItems.length > 0 && !mob) ? "50%" : "100%"}}>
               <div style={{overflowY:"auto", overflowX:"hidden", maxHeight:"450px", padding:"24px", background:"white", borderRadius:24, border:"1px solid var(--bd)", boxShadow:"inset 0 4px 24px rgba(0,0,0,0.03)"}}>
                 {renderPlainGrid(false)}
               </div>
@@ -8038,6 +8089,17 @@ function AdminTeam({ mob, C, setC, auth }) {
   const [menuNode, setMenuNode] = useState(null); // For Add actions
   const [uploadingImage, setUploadingImage] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+  const [activeCommittee, setActiveCommittee] = useState("All");
+
+  const defaultCommittees = [
+    "Central Working Committee (CWC)",
+    "Education Committee",
+    "Marriage Consultation Committee",
+    "Executive Committee"
+  ];
+  const storedCommittees = C.committees || defaultCommittees;
+  const itemCommittees = Array.from(new Set(items.map(i => i.committee).filter(Boolean)));
+  const allCommitteesList = Array.from(new Set([...storedCommittees, ...itemCommittees]));
 
   useEffect(() => {
     if (auth?.idToken) {
@@ -8135,16 +8197,17 @@ function AdminTeam({ mob, C, setC, auth }) {
   };
 
   const getNewId = () => "team_" + Date.now() + Math.floor(Math.random()*1000);
+  const targetCommittee = activeCommittee !== "All" ? activeCommittee : "Central Working Committee (CWC)";
 
   // Hierarchy actions
   const addRoot = () => {
-    const root = { id: getNewId(), parentId: null, name: "New Member", position: "Role", desc: "", image: "", order: 0 };
+    const root = { id: getNewId(), parentId: null, name: "New Member", position: "Role", desc: "", image: "", order: 0, committee: targetCommittee };
     updItems([...items, root]);
   };
 
   const addBoss = (node) => {
     const newBossId = getNewId();
-    const newBoss = { id: newBossId, parentId: node.parentId, name: "New Boss", position: "Role", desc: "", image: "", order: node.order };
+    const newBoss = { id: newBossId, parentId: node.parentId, name: "New Boss", position: "Role", desc: "", image: "", order: node.order, committee: node.committee || targetCommittee };
     
     // All siblings (including node itself) become children of newBoss
     const updatedItems = items.map(i => {
@@ -8159,14 +8222,14 @@ function AdminTeam({ mob, C, setC, auth }) {
   const addSubordinate = (node) => {
     const children = items.filter(i => i.parentId === node.id);
     const order = children.length > 0 ? Math.max(...children.map(c=>c.order||0)) + 1 : 0;
-    const child = { id: getNewId(), parentId: node.id, name: "New Member", position: "Role", desc: "", image: "", order };
+    const child = { id: getNewId(), parentId: node.id, name: "New Member", position: "Role", desc: "", image: "", order, committee: node.committee || targetCommittee };
     updItems([...items, child]);
     setMenuNode(null);
   };
 
   const addSibling = (node, dir) => {
     // dir: -1 (left), 1 (right)
-    const newSibling = { id: getNewId(), parentId: node.parentId, name: "New Member", position: "Role", desc: "", image: "", order: node.order + dir * 0.5 };
+    const newSibling = { id: getNewId(), parentId: node.parentId, name: "New Member", position: "Role", desc: "", image: "", order: node.order + dir * 0.5, committee: node.committee || targetCommittee };
     updItems([...items, newSibling]);
     setMenuNode(null);
   };
@@ -8215,7 +8278,7 @@ function AdminTeam({ mob, C, setC, auth }) {
 
   // Plain layout actions
   const addPlain = () => {
-    const newItem = { id: getNewId(), parentId: "plain", name: "New Member", position: "Role", desc: "", image: "", order: items.length };
+    const newItem = { id: getNewId(), parentId: "plain", name: "New Member", position: "Role", desc: "", image: "", order: items.length, committee: targetCommittee };
     updItems([...items, newItem]);
   };
 
@@ -8235,9 +8298,13 @@ function AdminTeam({ mob, C, setC, auth }) {
     updItems(arr);
   };
 
+  const filteredAdminItems = activeCommittee === "All"
+    ? items
+    : items.filter(i => (i.committee || "Central Working Committee (CWC)") === activeCommittee);
+
   // Hierarchy Renderer component (recursive)
   const renderTree = (parentId = null) => {
-    let children = items.filter(i => i.parentId === parentId);
+    let children = filteredAdminItems.filter(i => i.parentId === parentId);
     children.sort((a,b) => (a.order||0) - (b.order||0));
     
     if(children.length === 0) return null;
@@ -8249,10 +8316,10 @@ function AdminTeam({ mob, C, setC, auth }) {
             {/* Connecting lines for children */}
             {parentId && (
               <>
-                <div style={{position:"absolute", top: 0, left: "50%", width: 2, height: 20, background: "#ccc", transform:"translateX(-50%)"}} />
+                <div style={{position:"absolute", top: 0, left: "50%", width: 2, height: 20, background: "var(--sf)", transform:"translateX(-50%)"}} />
                 {children.length > 1 && (
                   <div style={{
-                    position:"absolute", top: 0, height: 2, background: "#ccc",
+                    position:"absolute", top: 0, height: 2, background: "var(--sf)",
                     left: i === 0 ? "50%" : 0,
                     right: i === children.length - 1 ? "50%" : 0,
                     width: i === 0 || i === children.length - 1 ? "50%" : "100%"
@@ -8262,24 +8329,30 @@ function AdminTeam({ mob, C, setC, auth }) {
             )}
             
             {/* The Node */}
-            <div style={{marginTop: parentId ? 20 : 0, position:"relative"}}>
+            <div style={{marginTop: parentId ? 20 : 0, position:"relative", display:"flex", flexDirection:"column", alignItems:"center"}}>
               {/* Parent connector */}
-              {items.find(x=>x.parentId===node.id) && (
-                <div style={{position:"absolute", bottom: -20, left: "50%", width: 2, height: 20, background: "#ccc", transform:"translateX(-50%)"}} />
+              {filteredAdminItems.find(x=>x.parentId===node.id) && (
+                <div style={{position:"absolute", bottom: -20, left: "50%", width: 2, height: 20, background: "var(--sf)", transform:"translateX(-50%)"}} />
               )}
               
-              <div style={{
-                background:"white", padding: 10, borderRadius: 8, border: "2px solid var(--bd)", 
-                width: 160, textAlign:"center", boxShadow:"0 4px 12px rgba(0,0,0,0.05)",
-                cursor:"pointer", position:"relative"
+              {/* Card */}
+              <div className="gi" style={{
+                background:"white", padding: 12, borderRadius: 12, borderTop: "3px solid var(--sf)", 
+                width: 140, textAlign:"center", boxShadow:"0 8px 24px rgba(0,0,0,0.06)",
+                transition:"transform .3s", position:"relative", zIndex:2, cursor:"pointer"
               }} onClick={() => setActiveNode(node)}>
-                {node.image ? (
-                  <img src={node.image} alt="" style={{width:50, height:50, borderRadius:"50%", objectFit:"cover", marginBottom:8, border:"2px solid #eee"}}/>
-                ) : (
-                  <div style={{width:50, height:50, borderRadius:"50%", background:"#f5f5f5", display:"inline-flex", alignItems:"center", justifyContent:"center", marginBottom:8, fontSize:"1.2rem"}}>👤</div>
-                )}
+                <div style={{width:50, height:50, margin:"0 auto 8px", borderRadius:"50%", overflow:"hidden", border:"2px solid #f0f0f0", background:"#eee"}}>
+                  {node.image ? (
+                    <img src={node.image} alt={node.name} style={{width:"100%", height:"100%", objectFit:"cover"}}/>
+                  ) : (
+                    <div style={{width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.5rem"}}>👤</div>
+                  )}
+                </div>
                 <div style={{fontWeight:700, fontSize:".85rem", color:"var(--dt)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{node.name || "Name"}</div>
                 <div style={{fontSize:".7rem", color:"var(--sf)"}}>{node.position || "Position"}</div>
+                {node.committee && (
+                  <div style={{fontSize:".6rem", background:"#F0F4FF", color:"var(--dt)", borderRadius:6, padding:"1px 4px", marginTop:3, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{node.committee}</div>
+                )}
                 
                 {/* Plus button to open menu */}
                 <button onClick={(e)=>{e.stopPropagation(); setMenuNode(node);}} style={{
@@ -8316,10 +8389,10 @@ function AdminTeam({ mob, C, setC, auth }) {
 
   return (
     <div style={{padding:mob?16:32, maxWidth:1200, margin:"0 auto"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,flexWrap:"wrap",gap:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:16}}>
         <div>
           <h2 style={{fontSize:"1.8rem",color:"var(--dt)",fontFamily:"'Playfair Display',serif",fontWeight:700,margin:0}}>Our Team Manager</h2>
-          <p style={{color:"var(--mu)",fontSize:".9rem",marginTop:4}}>Manage your team structure and profiles.</p>
+          <p style={{color:"var(--mu)",fontSize:".9rem",marginTop:4}}>Manage your team structure and committee workspaces.</p>
         </div>
         <div style={{display:"flex",gap:10,background:"#fff",padding:4,borderRadius:12,boxShadow:"0 4px 12px rgba(0,0,0,.05)"}}>
           <button onClick={()=>updLayout("plain")} style={{padding:"8px 16px",borderRadius:8,border:"none",background:layout==="plain"?"var(--sf)":"transparent",color:layout==="plain"?"white":"var(--mu)",fontWeight:600,cursor:"pointer",transition:"all .2s"}}>Plain Layout</button>
@@ -8327,13 +8400,52 @@ function AdminTeam({ mob, C, setC, auth }) {
         </div>
       </div>
 
+      {/* Committee / Workspace Bar */}
+      <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:20, alignItems:"center", background:"#F8F9FA", padding:12, borderRadius:16, border:"1px solid var(--bd)"}}>
+        <span style={{fontSize:".8rem", fontWeight:700, color:"var(--mu)", marginRight:4, textTransform:"uppercase"}}>Committee Workspace:</span>
+        {["All", ...allCommitteesList].map(comm => {
+          const isActive = activeCommittee === comm;
+          const count = comm === "All" ? items.length : items.filter(i => (i.committee || "Central Working Committee (CWC)") === comm).length;
+          return (
+            <button key={comm} onClick={() => setActiveCommittee(comm)} style={{
+              padding: "6px 14px", borderRadius: 20,
+              background: isActive ? "var(--dt)" : "white",
+              color: isActive ? "white" : "var(--dt)",
+              fontWeight: isActive ? 700 : 600, fontSize: ".8rem",
+              cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6,
+              border: isActive ? "none" : "1px solid var(--bd)"
+            }}>
+              <span>{comm}</span>
+              <span style={{
+                background: isActive ? "rgba(255,255,255,0.25)" : "#EFEFEF",
+                color: isActive ? "white" : "var(--mu)",
+                padding: "1px 6px", borderRadius: 10, fontSize: ".7rem", fontWeight: 700
+              }}>{count}</span>
+            </button>
+          );
+        })}
+        <button onClick={() => {
+          const customName = prompt("Enter new Committee / Team Workspace name:");
+          if (customName && customName.trim()) {
+            const cName = customName.trim();
+            const newCList = Array.from(new Set([...allCommitteesList, cName]));
+            const newC = { ...C, committees: newCList };
+            setC(newC);
+            saveToFb(newC);
+            setActiveCommittee(cName);
+          }
+        }} style={{padding:"6px 14px", borderRadius:20, background:"var(--sf)", color:"white", border:"none", fontWeight:700, fontSize:".8rem", cursor:"pointer", marginLeft:"auto"}}>
+          + New Workspace
+        </button>
+      </div>
+
       {layout === "hierarchy" ? (
         <div style={{background:"white",borderRadius:24,padding:32,boxShadow:"0 12px 40px rgba(0,0,0,0.04)", overflowX:"auto", minHeight: 400}}>
-          {items.filter(i => i.parentId === null).length === 0 ? (
+          {filteredAdminItems.filter(i => i.parentId === null).length === 0 ? (
             <div style={{textAlign:"center", padding: 60}}>
               <div style={{fontSize:"3rem", marginBottom:16}}>🌳</div>
-              <h3 style={{color:"var(--dt)", marginBottom:16}}>Your Org Chart is Empty</h3>
-              <p style={{color:"var(--sf)", marginBottom:24}}>Start building your hierarchy by adding a top leader. Members created in Plain Layout can be recreated here using Auto-Fill.</p>
+              <h3 style={{color:"var(--dt)", marginBottom:16}}>Org Chart is Empty for {activeCommittee}</h3>
+              <p style={{color:"var(--sf)", marginBottom:24}}>Start building this committee's hierarchy by adding a leader.</p>
               <button className="btn-primary" onClick={addRoot} style={{padding:"12px 24px"}}>Add Top Leader</button>
             </div>
           ) : (
@@ -8345,11 +8457,11 @@ function AdminTeam({ mob, C, setC, auth }) {
       ) : (
         <div style={{background:"white",borderRadius:24,padding:mob?16:32,boxShadow:"0 12px 40px rgba(0,0,0,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-            <h3 style={{color:"var(--dt)",margin:0}}>Team Members</h3>
+            <h3 style={{color:"var(--dt)",margin:0}}>Team Members ({activeCommittee})</h3>
             <button className="btn-primary" onClick={addPlain} style={{padding:"8px 16px",borderRadius:8}}>+ Add Member</button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            {items.filter(i => i.parentId === "plain" || typeof i.parentId === "undefined").sort((a,b)=>(a.order||0)-(b.order||0)).map((item, i) => (
+            {filteredAdminItems.filter(i => i.parentId === "plain" || typeof i.parentId === "undefined").sort((a,b)=>(a.order||0)-(b.order||0)).map((item, i) => (
               <div key={item.id} style={{display:"flex",gap:16,padding:16,border:"1px solid var(--bd)",borderRadius:16,background:"#fafafa",alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{width:60,height:60,borderRadius:"50%",background:"#eee",overflow:"hidden",flexShrink:0}}>
                   {item.image ? <img src={item.image} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.5rem"}}>👤</div>}
@@ -8358,11 +8470,11 @@ function AdminTeam({ mob, C, setC, auth }) {
                   <div style={{fontWeight:700,color:"var(--dt)",fontSize:"1.1rem"}}>{item.name || "No Name"}</div>
                   <div style={{color:"var(--sf)",fontSize:".85rem",fontWeight:600}}>{item.position || "No Position"}</div>
                   <div style={{color:"var(--tm)",fontSize:".8rem",marginTop:4}}>{item.desc || "No Description"}</div>
+                  <div style={{fontSize:".7rem", background:"#EBF3FF", color:"var(--dt)", borderRadius:6, padding:"2px 8px", marginTop:6, display:"inline-block", fontWeight:700}}>{item.committee || "Central Working Committee (CWC)"}</div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>setActiveNode(item)} style={{padding:"6px 12px",borderRadius:6,border:"1px solid var(--sf)",background:"white",color:"var(--sf)",cursor:"pointer",fontWeight:600}}>Edit</button>
                   <button onClick={()=>movePlain(i,-1)} disabled={i===0} style={{padding:"6px 12px",borderRadius:6,border:"1px solid var(--bd)",background:"white",cursor:i===0?"not-allowed":"pointer"}}>↑</button>
-                  <button onClick={()=>movePlain(i,1)} disabled={i===items.length-1} style={{padding:"6px 12px",borderRadius:6,border:"1px solid var(--bd)",background:"white",cursor:i===items.length-1?"not-allowed":"pointer"}}>↓</button>
                   <button onClick={()=>removePlain(i)} style={{padding:"6px 12px",borderRadius:6,border:"none",background:"#FFF0F0",color:"#D32F2F",cursor:"pointer"}}>Delete</button>
                 </div>
               </div>
