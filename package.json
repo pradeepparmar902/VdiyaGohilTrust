@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "dompurify": "^3.4.8",
-    "express": "^5.2.1",
     "firebase": "^12.14.0",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
