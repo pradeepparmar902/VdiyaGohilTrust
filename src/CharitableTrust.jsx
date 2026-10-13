@@ -283,14 +283,20 @@ import html2canvas from "html2canvas";
 
 // ── FIREBASE CONFIG ───────────────────────────────────────────────────────────
 const getFB = () => {
+  const winFb = typeof window !== "undefined" ? window.FIREBASE_CONFIG : null;
   const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
   const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
   const envBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
 
+  // Protect MMP-CWC: override old vdiyagohilcharitable if set in Hostinger environment variables
+  const effectiveProjectId = (envProjectId && envProjectId !== "vdiyagohilcharitable") ? envProjectId : (winFb?.projectId || "mmp-cwc-new");
+  const effectiveApiKey = (envApiKey && !envApiKey.includes("D8S")) ? envApiKey : (winFb?.apiKey || "AIzaSyAGw3g8VS23FfLiOrXdk1QafdxMIlIC9VE");
+  const effectiveBucket = (envBucket && !envBucket.includes("vdiyagohil")) ? envBucket : (winFb?.bucket || "mmp-cwc-new.firebasestorage.app");
+
   return {
-    apiKey: (envApiKey && envApiKey.trim()) || window.FIREBASE_CONFIG?.apiKey || "AIzaSyD8S_dRHVNlmUnRV-AfOXocqR0EoPUh8k4",
-    projectId: (envProjectId && envProjectId.trim()) || window.FIREBASE_CONFIG?.projectId || "vdiyagohilcharitable",
-    bucket: (envBucket && envBucket.trim()) || window.FIREBASE_CONFIG?.bucket || "vdiyagohilcharitable.firebasestorage.app"
+    apiKey: effectiveApiKey?.trim() || "AIzaSyAGw3g8VS23FfLiOrXdk1QafdxMIlIC9VE",
+    projectId: effectiveProjectId?.trim() || "mmp-cwc-new",
+    bucket: effectiveBucket?.trim() || "mmp-cwc-new.firebasestorage.app"
   };
 };
 const FS_URL  = () => `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/content/main`;
@@ -8563,6 +8569,7 @@ const ANAV = [
   {id:"donations",icon:"💰",label:"Donations"},
   {id:"events",icon:"📅",label:"Events"},
   {id:"registrations",icon:"📋",label:"Registrations"},
+  {id:"memberdashboard",icon:"👥",label:"Member Dashboard"},
   {id:"volunteers",icon:"🤝",label:"Volunteers"},
   {id:"gallery",icon:"🖼️",label:"Gallery"},
   {id:"team",icon:"👥",label:"Our Team"},
@@ -11220,7 +11227,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
 
   let hasAccess = [];
   if (auth?.email) {
-    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "volunteers", "gallery", "team", "medialibrary", "achievements", "storagerouting", "settings", "chatbotaccess", "whatsappadmin", "access", "masterdata", "backup", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "chatbotaccess", "whatsappadmin", "profile"];
+    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "memberdashboard", "volunteers", "gallery", "team", "medialibrary", "achievements", "storagerouting", "settings", "chatbotaccess", "whatsappadmin", "access", "masterdata", "backup", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "memberdashboard", "chatbotaccess", "whatsappadmin", "profile"];
   }
 
   const visibleNav = ANAV.filter(item => hasAccess.includes(item.id));
@@ -11228,6 +11235,8 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
   const [tab, setTab] = useState(visibleNav.length > 0 ? visibleNav[0].id : "");
   const [open, setOpen] = useState(true);
   const [adminProfile, setAdminProfile] = useState(null);
+  const [adminPreviewUser, setAdminPreviewUser] = useState(null);
+  const [showUserPickerModal, setShowUserPickerModal] = useState(false);
   
   useEffect(() => {
     if (auth?.idToken && auth?.localId) {
@@ -11277,7 +11286,13 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
         </div>
         <div style={{flex:1,padding:"10px 6px",overflowY:"auto"}}>
           {visibleNav.map(item=>(
-            <div key={item.id} onClick={()=>{setTab(item.id);if(mob)setOpen(false);}}
+            <div key={item.id} onClick={()=>{
+              if (item.id === "memberdashboard") {
+                setShowUserPickerModal(true);
+              }
+              setTab(item.id);
+              if(mob)setOpen(false);
+            }}
               style={{display:"flex",alignItems:"center",gap:10,padding:"10px 10px",borderRadius:10,cursor:"pointer",marginBottom:3,background:tab===item.id?"rgba(232,101,10,.25)":"transparent",borderLeft:tab===item.id?"3px solid var(--sf)":"3px solid transparent",transition:"all .2s",justifyContent:open?"flex-start":"center"}}
               onMouseEnter={e=>{if(tab!==item.id)e.currentTarget.style.background="rgba(255,255,255,.07)"}}
               onMouseLeave={e=>{if(tab!==item.id)e.currentTarget.style.background="transparent"}}>
@@ -11322,14 +11337,23 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           <button onClick={()=>setOpen(true)} style={{position:"fixed",top:16,left:16,zIndex:100,background:"white",border:"1px solid var(--bd)",borderRadius:8,width:40,height:40,cursor:"pointer",fontSize:"1.2rem",boxShadow:"0 2px 8px rgba(0,0,0,0.1)",display:"flex",alignItems:"center",justifyContent:"center"}}>☰</button>
         )}
         <div style={{padding:mob?"60px 16px 16px":"24px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,paddingBottom:6,borderBottom:"1px solid var(--bd)",fontSize:".8rem",color:"var(--mu)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,paddingBottom:6,borderBottom:"1px solid var(--bd)",fontSize:".8rem",color:"var(--mu)",flexWrap:"wrap",gap:8}}>
             <div>Logged in as: <strong style={{color:"var(--dt)"}}>{auth?.email}</strong></div>
-            <button 
-              onClick={() => setIsHelpOpen(!isHelpOpen)} 
-              style={{padding:"4px 12px",borderRadius:16,background:isHelpOpen?"var(--sf)":"var(--dt)",color:"white",border:"none",fontWeight:600,fontSize:".78rem",cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 2px 6px rgba(0,0,0,0.1)",transition:"all 0.2s"}}
-            >
-              📘 Admin Field Guide {isHelpOpen ? "✕" : ""}
-            </button>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <button 
+                onClick={() => setShowUserPickerModal(true)} 
+                style={{padding:"4px 12px",borderRadius:16,background:"linear-gradient(135deg, #10B981, #059669)",color:"white",border:"none",fontWeight:700,fontSize:".78rem",cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 2px 6px rgba(16,185,129,0.25)",transition:"all 0.2s"}}
+                title="Lookup and inspect any applicant or member dashboard without requiring OTP"
+              >
+                👥 Check Member Dashboard
+              </button>
+              <button 
+                onClick={() => setIsHelpOpen(!isHelpOpen)} 
+                style={{padding:"4px 12px",borderRadius:16,background:isHelpOpen?"var(--sf)":"var(--dt)",color:"white",border:"none",fontWeight:600,fontSize:".78rem",cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 2px 6px rgba(0,0,0,0.1)",transition:"all 0.2s"}}
+              >
+                📘 Admin Field Guide {isHelpOpen ? "✕" : ""}
+              </button>
+            </div>
           </div>
           
           {visibleNav.length === 0 && (
@@ -11344,10 +11368,55 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="overview"  && hasAccess.includes("overview") && <Overview mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="donations" && hasAccess.includes("donations") && <Donations mob={mob} auth={auth} C={C}/>}
           {tab==="events"    && hasAccess.includes("events") && <AdminEvents mob={mob} C={C} setC={setC} auth={auth}/>}
-          {tab==="registrations" && hasAccess.includes("registrations") && <AdminRegistrations mob={mob} C={C} setC={setC} auth={auth}/>}
+          {tab==="registrations" && hasAccess.includes("registrations") && (
+            <AdminRegistrations 
+              mob={mob} 
+              C={C} 
+              setC={setC} 
+              auth={auth} 
+              onPreviewDashboard={u => setAdminPreviewUser(u)} 
+              onOpenUserPicker={() => setShowUserPickerModal(true)}
+            />
+          )}
+          {tab==="memberdashboard" && (
+            <div style={{background:"white",borderRadius:16,padding:mob?"20px":"36px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)",maxWidth:850,margin:"24px auto",textAlign:"center"}}>
+              <div style={{width:68,height:68,borderRadius:"50%",background:"#FEF3C7",color:"#D97706",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2rem",margin:"0 auto 16px",boxShadow:"0 4px 14px rgba(217,119,6,0.18)"}}>
+                👥
+              </div>
+              <h2 style={{fontFamily:"'Playfair Display',serif",color:"var(--dt)",fontSize:"1.75rem",margin:"0 0 10px 0"}}>
+                Member Dashboard Inspector
+              </h2>
+              <p style={{fontSize:".92rem",color:"var(--mu)",maxWidth:600,margin:"0 auto 24px",lineHeight:1.6}}>
+                Inspect and preview any registered applicant or member's portal (including Invite Letters, Event Passes, 80G Receipts, and Certificates) directly without Mobile OTP verification.
+              </p>
+              <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
+                <button 
+                  onClick={() => setShowUserPickerModal(true)} 
+                  style={{padding:"12px 26px",borderRadius:10,background:"linear-gradient(135deg, #10B981, #059669)",color:"white",border:"none",fontWeight:800,fontSize:".95rem",cursor:"pointer",display:"flex",alignItems:"center",gap:8,boxShadow:"0 4px 14px rgba(16,185,129,0.35)"}}
+                >
+                  <span>🔍</span> Search & Pick Member
+                </button>
+                <button 
+                  onClick={() => setTab("registrations")} 
+                  style={{padding:"12px 20px",borderRadius:10,background:"#F1F5F9",color:"#334155",border:"1px solid #CBD5E1",fontWeight:700,fontSize:".92rem",cursor:"pointer"}}
+                >
+                  📋 Go to Registrations Table
+                </button>
+              </div>
+            </div>
+          )}
           {tab==="volunteers"&& hasAccess.includes("volunteers") && <Volunteers mob={mob} auth={auth} C={C}/>}
           {tab==="meritlist" && hasAccess.includes("meritlist") && <AdminMeritList mob={mob} C={C} auth={auth}/>}
-          {(tab==="inviteletters" || tab==="certificates") && (hasAccess.includes("inviteletters") || hasAccess.includes("certificates")) && <AdminInviteLetters mob={mob} C={C} setC={setC} auth={auth}/>}
+          {(tab==="inviteletters" || tab==="certificates") && (hasAccess.includes("inviteletters") || hasAccess.includes("certificates")) && (
+            <AdminInviteLetters 
+              mob={mob} 
+              C={C} 
+              setC={setC} 
+              auth={auth} 
+              onPreviewDashboard={u => setAdminPreviewUser(u)} 
+              onOpenUserPicker={() => setShowUserPickerModal(true)}
+            />
+          )}
           {tab==="team"      && hasAccess.includes("team") && <AdminTeam mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="medialibrary" && hasAccess.includes("medialibrary") && <AdminMediaLibrary mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="gallery"   && hasAccess.includes("gallery") && <AdminGallery mob={mob} C={C} setC={setC} auth={auth}/>}
@@ -11361,8 +11430,35 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="backup"    && hasAccess.includes("backup") && <BackupRestore C={C} setC={setC} auth={auth} />}
           {tab==="profile"   && hasAccess.includes("profile") && <AdminProfile auth={auth} mob={mob} adminProfile={adminProfile} setAdminProfile={setAdminProfile}/>}
         
-          <AdminManualSidePanel activeTab={tab} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} master={master} C={C} setC={setC} auth={auth} /></div>
+          <AdminManualSidePanel activeTab={tab} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} master={master} C={C} setC={setC} auth={auth} />
+        </div>
       </div>
+
+      {/* Admin OTP-Bypass Member Dashboard Preview Modal */}
+      {adminPreviewUser && (
+        <UserDashboard
+          C={C}
+          globalProfile={adminPreviewUser}
+          globalAuthToken={auth?.idToken}
+          onClose={() => setAdminPreviewUser(null)}
+          onLogout={() => setAdminPreviewUser(null)}
+          isAdminPreview={true}
+          onSwitchUser={() => setShowUserPickerModal(true)}
+        />
+      )}
+
+      {/* Global Member Dashboard Picker Modal */}
+      {showUserPickerModal && (
+        <AdminUserPickerModal
+          C={C}
+          auth={auth}
+          onSelectUser={(u) => {
+            setShowUserPickerModal(false);
+            setAdminPreviewUser(u);
+          }}
+          onClose={() => setShowUserPickerModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -19186,8 +19282,46 @@ function UserEditRegistrationModal({ reg, onClose, onSave, authToken, C }) {
   );
 }
 
-function UserDashboard({ C, globalProfile, globalAuthToken, onClose }) {
-const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
+export const cleanUserPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
+
+export const getUserProfileFromReg = (r) => {
+  if (!r) return null;
+  const mobile = cleanUserPhone(
+    r["Mobile Number"] || r.mobile || r.phone || r["Mobile"] || r["Phone"] || 
+    r["WhatsApp Number"] || r["whatsapp"] || r["Whatsapp"] ||
+    r["મોબાઇલ"] || r["મોબાઈલ"] || r.submitterMob || ""
+  ) || (Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10) ? cleanUserPhone(Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10)) : "");
+
+  const name = String(
+    r["Full Name"] || r["Student Name"] || r["Participant Name"] || 
+    r["Submitted By"] || r["Name"] || r.name || r["નામ"] || 
+    r.submitterName || "Member"
+  ).trim();
+
+  const email = String(
+    r["Email Address"] || r.email || r["Email"] || r["ઈમેઇલ"] || r.submitterEmail || ""
+  ).trim();
+
+  const address = String(
+    r["Address"] || r.address || r["Residential Address"] || r["સરનામું"] || ""
+  ).trim();
+
+  return {
+    ...r,
+    name,
+    mobile,
+    email,
+    address,
+    "Full Name": name,
+    "Mobile Number": mobile,
+    "Email Address": email
+  };
+};
+
+function UserDashboard({ C, globalProfile: propGlobalProfile, globalAuthToken: propGlobalAuthToken, userProfile, auth, onClose, onLogout, isAdminPreview = false, onSwitchUser = null, propAllRegs = null }) {
+  const globalProfile = propGlobalProfile || userProfile;
+  const globalAuthToken = propGlobalAuthToken || auth?.idToken || (typeof auth === 'string' ? auth : null);
+  const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
 
   const [regs, setRegs] = useState([]);          // ALL registrations fetched
   const [myDonations, setMyDonations] = useState([]);
@@ -19239,7 +19373,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
   const [subTab, setSubTab] = useState("For Me");
   const [previewFile, setPreviewFile] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(isAdminPreview ? true : false);
   const w = useW(); const mob = w < 768;
 
   const tabs = [
@@ -19275,7 +19409,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
   };
 
   const matchesSubTab = (r, targetSubTab) => {
-    const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || "");
+    const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || globalProfile?.submitterMob || "");
     const nameToMatch   = String(globalProfile?.name || globalProfile?.['Full Name'] || "").trim().toLowerCase();
     const emailToMatch  = String(globalProfile?.email || "").trim().toLowerCase();
 
@@ -19297,14 +19431,12 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
     // "For Me": registrant matches logged-in user profile
     const iAmRegistrant =
       (mobileToMatch && rMobile === mobileToMatch) ||
-      (emailToMatch  && rEmail  === emailToMatch)  ||
-      (nameToMatch   && rName   === nameToMatch);
+      (!mobileToMatch && ((emailToMatch && rEmail === emailToMatch) || (nameToMatch && rName === nameToMatch)));
 
     // "For Others": I submitted for someone else (submitter = me, but registrant ≠ me)
     const iAmSubmitter =
-      (mobileToMatch && sMob   === mobileToMatch) ||
-      (emailToMatch  && sEmail === emailToMatch)  ||
-      (nameToMatch   && sName  === nameToMatch);
+      (mobileToMatch && sMob === mobileToMatch) ||
+      (!mobileToMatch && ((emailToMatch && sEmail === emailToMatch) || (nameToMatch && sName === nameToMatch)));
 
     if (targetSubTab === "For Me")     return iAmRegistrant;
     if (targetSubTab === "For Others") return iAmSubmitter && !iAmRegistrant;
@@ -19314,8 +19446,8 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
   const fetchMyRegs = async () => {
     setLoading(true);
     try {
-      const allRegs = await fbFetchRegistrations(globalAuthToken);
-      const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || "");
+      const allRegs = (propAllRegs && propAllRegs.length > 0 && !debugInfo) ? propAllRegs : await fbFetchRegistrations(globalAuthToken);
+      const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || globalProfile?.submitterMob || "");
       const nameToMatch   = String(globalProfile?.name || globalProfile?.['Full Name'] || "").trim().toLowerCase();
       const emailToMatch  = String(globalProfile?.email || "").trim().toLowerCase();
 
@@ -19339,9 +19471,8 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
         const sEmail  = String(r.submitterEmail || "").trim().toLowerCase();
 
         const matchesMobile = mobileToMatch && (rMobile === mobileToMatch || sMob === mobileToMatch);
-        const matchesName   = nameToMatch   && (rName   === nameToMatch   || sName === nameToMatch);
-        const matchesEmail  = emailToMatch  && (rEmail  === emailToMatch  || sEmail === emailToMatch);
-        return matchesMobile || matchesName || matchesEmail;
+        const matchesFallback = (!mobileToMatch || (!rMobile && !sMob)) && ((emailToMatch && (rEmail === emailToMatch || sEmail === emailToMatch)) || (nameToMatch && (rName === nameToMatch || sName === nameToMatch)));
+        return Boolean(matchesMobile || matchesFallback);
       });
 
       setDebugInfo({
@@ -19365,8 +19496,8 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
     try {
       setLoading(true);
       const allDons = await fbFetchDonations(globalAuthToken);
-      const mobileToMatch = cleanPhone(globalProfile.mobile || globalProfile['Mobile Number'] || "");
-      const nameToMatch = String(globalProfile.name || globalProfile['Full Name'] || "").trim().toLowerCase();
+      const mobileToMatch = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || globalProfile?.submitterMob || "");
+      const nameToMatch = String(globalProfile?.name || globalProfile?.['Full Name'] || "").trim().toLowerCase();
       
       const mine = [];
       allDons.forEach(r => {
@@ -19374,7 +19505,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
         const rName = String(r.name || r.donor || "").trim().toLowerCase();
         const sMob = cleanPhone(r.submitterMob || "");
         
-        if ((mobileToMatch && rMobile === mobileToMatch) || (nameToMatch && rName === nameToMatch) || (mobileToMatch && sMob === mobileToMatch)) {
+        if ((mobileToMatch && (rMobile === mobileToMatch || sMob === mobileToMatch)) || (!mobileToMatch && nameToMatch && rName === nameToMatch)) {
           mine.push(r);
         }
       });
@@ -19400,18 +19531,99 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
     return {bg:"#F5F5F5", col:"#666"};
   };
 
+  const userDisplayMobile = cleanPhone(globalProfile?.mobile || globalProfile?.['Mobile Number'] || globalProfile?.phone || globalProfile?.submitterMob || "");
+  const extractedRegName = regs.length > 0 ? (regs[0]["Full Name"] || regs[0]["Student Name"] || regs[0]["Submitted By"] || regs[0]["Participant Name"] || regs[0].name) : "";
+  const userDisplayName = (globalProfile?.name && globalProfile.name !== "Member")
+    ? globalProfile.name
+    : (extractedRegName || globalProfile?.name || globalProfile?.['Full Name'] || "Member");
+
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(13,75,94,.8)",display:"flex",alignItems:"center",justifyContent:"center",padding:isFullScreen?0:(mob?"32px 16px":32),zIndex:9999,transition:"all 0.3s"}}
+    <div style={{position:"fixed",inset:0,background:"rgba(13,75,94,.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:isFullScreen?0:(mob?"32px 16px":32),zIndex:100005,transition:"all 0.3s"}}
       onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
       
-      <div style={{background:"#F8F9FA",borderRadius:isFullScreen?0:(mob?16:24),width:isFullScreen?"100%":"95%",maxWidth:isFullScreen?"100%":1000,height:isFullScreen?"100%":(mob?"75vh":"85vh"),display:"flex",flexDirection:"column",boxShadow:"0 32px 80px rgba(0,0,0,.3)",position:"relative",overflow:"hidden",transition:"all 0.3s"}}
+      <div style={{background:"#F8F9FA",borderRadius:isFullScreen?0:(mob?16:24),width:isFullScreen?"100%":"95%",maxWidth:isFullScreen?"100%":1000,height:isFullScreen?"100%":(mob?"75vh":"85vh"),display:"flex",flexDirection:"column",boxShadow:"0 32px 80px rgba(0,0,0,.35)",position:"relative",overflow:"hidden",transition:"all 0.3s"}}
         onClick={e=>e.stopPropagation()}>
         
+        {/* Admin Impersonation / Preview Mode Banner */}
+        {isAdminPreview && (
+          <div style={{
+            background: "linear-gradient(90deg, #991B1B, #DC2626)",
+            color: "white",
+            padding: mob ? "8px 12px" : "9px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: ".82rem",
+            fontWeight: 600,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+            zIndex: 10,
+            flexWrap: "wrap",
+            gap: 8,
+            flexShrink: 0
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:"1.1rem"}}>🛡️</span>
+              <span>
+                <strong>Admin Preview Mode:</strong> Viewing on behalf of <u>{userDisplayName}</u> ({userDisplayMobile ? `+91 ${userDisplayMobile}` : "No Mobile"})
+              </span>
+              <span style={{background:"rgba(255,255,255,0.2)",padding:"2px 8px",borderRadius:12,fontSize:".7rem",fontWeight:700}}>
+                OTP-Free Admin Access
+              </span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {onSwitchUser && (
+                <button
+                  type="button"
+                  onClick={onSwitchUser}
+                  style={{
+                    background: "white",
+                    color: "#991B1B",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    fontSize: ".75rem",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.2)"
+                  }}
+                  title="Switch to inspect another member's dashboard"
+                >
+                  <span>🔄</span> Switch Member
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  background: "rgba(255,255,255,0.25)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.4)",
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  fontSize: ".75rem",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+                title="Exit preview and return to Admin panel"
+              >
+                ✕ Exit Preview (Back to Admin)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div style={{padding:mob?"16px 16px":"20px 32px",background:"linear-gradient(135deg, #1e3a8a, #312e81)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
           <div style={{flex:1, minWidth:0, paddingRight:12}}>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:mob?"1.2rem":"1.6rem",fontWeight:700,marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>My Portal</h2>
-            <div style={{fontSize:mob?".7rem":".8rem",opacity:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{globalProfile.name || globalProfile['Full Name']} • {globalProfile.mobile || globalProfile['Mobile Number']}</div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:mob?"1.2rem":"1.6rem",fontWeight:700,marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+              {isAdminPreview ? "Member Dashboard (Admin Preview)" : "My Portal"}
+            </h2>
+            <div style={{fontSize:mob?".7rem":".8rem",opacity:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+              {userDisplayName} • {userDisplayMobile ? `+91 ${userDisplayMobile}` : (globalProfile?.email || "No phone")}
+            </div>
           </div>
           <div style={{display:"flex",gap:6,flexShrink:0}}>
             <button onClick={()=>{ fetchMyRegs(); fetchMyDonations(); }} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:mob?32:36,height:mob?32:36,cursor:"pointer",fontSize:mob?".9rem":"1.1rem",color:"white",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s"}} title="Refresh Data"
@@ -19459,7 +19671,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
 
           {/* Content Area */}
           <div style={{flex:1,padding:mob?"20px 16px":"32px",overflowY:"auto",background:"#F8F9FA"}}>
-            {activeTab === "Profile" && <DashboardProfile globalProfile={globalProfile} globalAuthToken={globalAuthToken} mob={mob} />}
+            {activeTab === "Profile" && <DashboardProfile globalProfile={globalProfile} globalAuthToken={globalAuthToken} mob={mob} isAdminPreview={isAdminPreview} />}
             {activeTab === "Registrations" && (
               <>
                 <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",color:"var(--dt)",marginBottom:16,fontWeight:700}}>My Event Registrations</h3>
@@ -19781,7 +19993,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
                                           const evtName = a.ev.title || "Event";
                                           const evtDate = a.ev.date ? `${a.ev.date} ${a.ev.month}` : "2025";
                                           const fieldsData = { "Event Name": evtName, "Date": evtDate, ...a.reg };
-                                          if (globalAuthToken) {
+                                          if (globalAuthToken && !isAdminPreview) {
                                             const cleanData = { ...a.reg, certViewDate: new Date().toISOString() };
                                             delete cleanData.id; delete cleanData._submittedAt;
                                             await fbUpdateRegistration(a.reg.id, cleanData, globalAuthToken);
@@ -19808,7 +20020,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
                                           const evtName = a.ev.title || "Event";
                                           const evtDate = a.ev.date ? `${a.ev.date} ${a.ev.month}` : "2025";
                                           const fieldsData = { "Event Name": evtName, "Date": evtDate, ...a.reg };
-                                          if (globalAuthToken && !a.reg.certDownloadDate) {
+                                          if (globalAuthToken && !a.reg.certDownloadDate && !isAdminPreview) {
                                             const cleanData = { ...a.reg, certDownloadDate: new Date().toISOString() };
                                             delete cleanData.id; delete cleanData._submittedAt;
                                             await fbUpdateRegistration(a.reg.id, cleanData, globalAuthToken);
@@ -19966,7 +20178,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
                                         const evtName = a.ev.title || "Event";
                                         const evtDate = a.ev.date ? `${a.ev.date} ${a.ev.month}` : "2025";
                                         const fieldsData = { "Event Name": evtName, "Date": evtDate, ...a.reg };
-                                        if (globalAuthToken) {
+                                        if (globalAuthToken && !isAdminPreview) {
                                           const cleanData = { ...a.reg, inviteLetterViewed: true, inviteViewDate: new Date().toISOString() };
                                           delete cleanData.id; delete cleanData._submittedAt;
                                           await fbUpdateRegistration(a.reg.id, cleanData, globalAuthToken);
@@ -19993,7 +20205,7 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
                                         const evtName = a.ev.title || "Event";
                                         const evtDate = a.ev.date ? `${a.ev.date} ${a.ev.month}` : "2025";
                                         const fieldsData = { "Event Name": evtName, "Date": evtDate, ...a.reg };
-                                        if (globalAuthToken && !a.reg.inviteLetterDownloaded) {
+                                        if (globalAuthToken && !a.reg.inviteLetterDownloaded && !isAdminPreview) {
                                           const cleanData = { ...a.reg, inviteLetterDownloaded: true, inviteDownloadDate: new Date().toISOString() };
                                           delete cleanData.id; delete cleanData._submittedAt;
                                           await fbUpdateRegistration(a.reg.id, cleanData, globalAuthToken);
@@ -20202,6 +20414,522 @@ const cleanPhone = (num) => String(num || "").replace(/\D/g, "").slice(-10);
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── ADMIN USER / MEMBER DASHBOARD PICKER MODAL ──────────────────────────────
+function AdminUserPickerModal({ C, auth, onClose, onSelectUser, allRegs = null }) {
+  const [regs, setRegs] = useState(Array.isArray(allRegs) && allRegs.length > 0 ? allRegs : []);
+  const [loading, setLoading] = useState(!allRegs || allRegs.length === 0);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all"); // 'all' | 'cert' | 'invite' | 'approved' | 'pending'
+  const [directPhone, setDirectPhone] = useState("");
+  const w = useW();
+  const mob = w < 768;
+
+  useEffect(() => {
+    if (!allRegs || allRegs.length === 0) {
+      setLoading(true);
+      fbFetchRegistrations(auth?.idToken).then(d => {
+        setRegs(d || []);
+      }).catch(console.error).finally(() => setLoading(false));
+    }
+  }, [auth, allRegs]);
+
+  // Aggregate by unique phone / registrant identity
+  const memberList = useMemo(() => {
+    const map = new Map();
+    (regs || []).forEach(r => {
+      const mobClean = cleanUserPhone(
+        r["Mobile Number"] || r.mobile || r.phone || r["Mobile"] || r["Phone"] || 
+        r["WhatsApp Number"] || r["whatsapp"] || r["Whatsapp"] ||
+        r["મોબાઇલ"] || r["મોબાઈલ"] || r.submitterMob || ""
+      ) || (Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10) ? cleanUserPhone(Object.values(r).map(v => String(v).replace(/\D/g,'')).find(v => v.length >= 10)) : "");
+
+      const name = String(
+        r["Full Name"] || r["Student Name"] || r["Participant Name"] || 
+        r["Submitted By"] || r["Name"] || r.name || r["નામ"] || 
+        r.submitterName || "Member"
+      ).trim();
+
+      const key = mobClean || (r['Transaction ID'] || r.id || name);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          name,
+          mobile: mobClean,
+          email: String(r["Email Address"] || r.email || r["Email"] || r.submitterEmail || "").trim(),
+          address: String(r["Address"] || r.address || "").trim(),
+          regs: [r],
+          hasCert: Boolean(r.certificateReleased && !r.certificateHold),
+          hasInvite: Boolean((r.inviteLetterReleased === true || r.inviteLetterReleased === "true" || r.inviteReleased === true || r.inviteReleased === "true") && !r.inviteLetterHold),
+          hasApproved: (r.Status || r.status || "").toLowerCase().includes("approv"),
+          hasPending: (r.Status || r.status || "Pending").toLowerCase().includes("pend")
+        });
+      } else {
+        const item = map.get(key);
+        item.regs.push(r);
+        if (Boolean(r.certificateReleased && !r.certificateHold)) item.hasCert = true;
+        if (Boolean((r.inviteLetterReleased === true || r.inviteLetterReleased === "true" || r.inviteReleased === true || r.inviteReleased === "true") && !r.inviteLetterHold)) item.hasInvite = true;
+        if ((r.Status || r.status || "").toLowerCase().includes("approv")) item.hasApproved = true;
+        if ((r.Status || r.status || "Pending").toLowerCase().includes("pend")) item.hasPending = true;
+        if ((item.name === "Member" || !item.name) && name && name !== "Member") item.name = name;
+        if (!item.email && r.email) item.email = r.email;
+      }
+    });
+    return Array.from(map.values());
+  }, [regs]);
+
+  const stats = useMemo(() => {
+    let certCount = 0;
+    let inviteCount = 0;
+    let approvedCount = 0;
+    let pendingCount = 0;
+    memberList.forEach(m => {
+      if (m.hasCert) certCount++;
+      if (m.hasInvite) inviteCount++;
+      if (m.hasApproved) approvedCount++;
+      if (m.hasPending) pendingCount++;
+    });
+    return { certCount, inviteCount, approvedCount, pendingCount, total: memberList.length };
+  }, [memberList]);
+
+  // Filtered members list
+  const filteredMembers = useMemo(() => {
+    let list = memberList;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const qDigits = q.replace(/\D/g, "");
+      list = list.filter(m => {
+        const matchMob = qDigits && m.mobile.includes(qDigits);
+        const matchName = m.name.toLowerCase().includes(q);
+        const matchEmail = m.email.toLowerCase().includes(q);
+        const matchRegs = m.regs.some(r => {
+          const evName = (r.eventName || r.eventTitle || r["Event Name"] || "").toLowerCase();
+          const txn = String(r['Transaction ID'] || r.id || "").toLowerCase();
+          return evName.includes(q) || txn.includes(q);
+        });
+        return matchMob || matchName || matchEmail || matchRegs;
+      });
+    }
+
+    if (filterType === "cert") list = list.filter(m => m.hasCert);
+    else if (filterType === "invite") list = list.filter(m => m.hasInvite);
+    else if (filterType === "approved") list = list.filter(m => m.hasApproved);
+    else if (filterType === "pending") list = list.filter(m => m.hasPending);
+
+    return list;
+  }, [memberList, search, filterType]);
+
+  const handleDirectLaunch = (e) => {
+    if (e) e.preventDefault();
+    const ph = cleanUserPhone(directPhone);
+    if (!ph || ph.length < 10) {
+      alert("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    const match = memberList.find(m => m.mobile === ph);
+    const prof = match ? getUserProfileFromReg(match.regs[0]) : {
+      name: "Member",
+      mobile: ph,
+      "Full Name": "Member",
+      "Mobile Number": ph
+    };
+    onSelectUser(prof);
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.85)",
+        zIndex: 100010,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: mob ? 8 : 20,
+        boxSizing: "border-box"
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          background: "white",
+          borderRadius: mob ? 12 : 20,
+          width: "100%",
+          maxWidth: 920,
+          height: mob ? "96vh" : "88vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 25px 60px rgba(0,0,0,0.4)"
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{
+          padding: mob ? "14px 16px" : "18px 24px",
+          background: "linear-gradient(135deg, #1E3A8A, #1E293B)",
+          color: "white",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexShrink: 0
+        }}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:"1.3rem"}}>🛡️</span>
+              <h3 style={{margin:0,fontSize:mob?"1.05rem":"1.25rem",fontWeight:800}}>Member Dashboard Inspector</h3>
+              <span style={{background:"rgba(255,255,255,0.2)",padding:"2px 8px",borderRadius:12,fontSize:".68rem",fontWeight:700}}>Admin OTP-Bypass</span>
+            </div>
+            <div style={{fontSize:".76rem",opacity:0.85,marginTop:3}}>
+              Check letters, certificates, event passes, and donation receipts on behalf of any applicant without needing their OTP
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              color: "white",
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              fontSize: "1.1rem",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Direct Mobile Quick Launch Strip */}
+        <div style={{
+          padding: mob ? "10px 14px" : "12px 20px",
+          background: "#EFF6FF",
+          borderBottom: "1px solid #BFDBFE",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          flexShrink: 0
+        }}>
+          <span style={{fontSize:".8rem",fontWeight:700,color:"#1E40AF",whiteSpace:"nowrap"}}>
+            ⚡ Direct Mobile Lookup:
+          </span>
+          <form onSubmit={handleDirectLaunch} style={{display:"flex",gap:6,flex:1,minWidth:250}}>
+            <div style={{position:"relative",flex:1}}>
+              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:".82rem",color:"#64748B",fontWeight:600}}>
+                +91
+              </span>
+              <input
+                type="tel"
+                value={directPhone}
+                onChange={e => setDirectPhone(e.target.value)}
+                placeholder="Enter 10-digit mobile number (e.g. 9825012345)..."
+                maxLength={13}
+                style={{
+                  width: "100%",
+                  padding: "7px 10px 7px 42px",
+                  borderRadius: 6,
+                  border: "1.5px solid #93C5FD",
+                  fontSize: ".82rem",
+                  outline: "none",
+                  fontWeight: 600,
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              style={{
+                background: "#2563EB",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                padding: "7px 14px",
+                fontSize: ".8rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                boxShadow: "0 2px 4px rgba(37,99,235,0.2)"
+              }}
+            >
+              <span>🚀</span> Open Dashboard
+            </button>
+          </form>
+        </div>
+
+        {/* Search & Filter Bar */}
+        <div style={{
+          padding: mob ? "10px 14px" : "12px 20px",
+          background: "#F8FAFC",
+          borderBottom: "1px solid #E2E8F0",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          flexShrink: 0
+        }}>
+          <div style={{position:"relative"}}>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:".95rem",color:"#94A3B8"}}>
+              🔍
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search members by name, mobile, email, event title, or transaction ID..."
+              style={{
+                width: "100%",
+                padding: "8px 12px 8px 36px",
+                borderRadius: 8,
+                border: "1px solid #CBD5E1",
+                fontSize: ".85rem",
+                outline: "none",
+                background: "white",
+                boxSizing: "border-box"
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  color: "#94A3B8",
+                  cursor: "pointer",
+                  fontSize: ".85rem",
+                  fontWeight: 700
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Quick Filter Chips */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            {[
+              { id: "all", label: `All Members (${stats.total})` },
+              { id: "cert", label: `🎓 Certificate Released (${stats.certCount})` },
+              { id: "invite", label: `💌 Invite Released (${stats.inviteCount})` },
+              { id: "approved", label: `✅ Approved (${stats.approvedCount})` },
+              { id: "pending", label: `⏳ Pending (${stats.pendingCount})` }
+            ].map(chip => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFilterType(chip.id)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 16,
+                  border: filterType === chip.id ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+                  background: filterType === chip.id ? "#EFF6FF" : "white",
+                  color: filterType === chip.id ? "#1D4ED8" : "#475569",
+                  fontWeight: filterType === chip.id ? 800 : 600,
+                  fontSize: ".75rem",
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Member Cards List */}
+        <div style={{flex:1,overflowY:"auto",padding:mob?12:20,background:"#F1F5F9"}}>
+          {loading ? (
+            <div style={{textAlign:"center",padding:60,color:"#64748B"}}>
+              <div style={{fontSize:"2rem",marginBottom:8}}>⏳</div>
+              <div>Loading registered members...</div>
+            </div>
+          ) : filteredMembers.length === 0 ? (
+            <div style={{background:"white",borderRadius:12,padding:40,textAlign:"center",border:"1px solid #E2E8F0"}}>
+              <div style={{fontSize:"2.5rem",marginBottom:10}}>🔍</div>
+              <div style={{fontWeight:700,color:"#1E293B",fontSize:"1rem",marginBottom:4}}>No Members Found</div>
+              <div style={{fontSize:".8rem",color:"#64748B",marginBottom:16}}>
+                {search ? `No members matched "${search}" with current filter.` : "No members found."}
+              </div>
+              {directPhone && (
+                <button
+                  type="button"
+                  onClick={handleDirectLaunch}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    background: "#2563EB",
+                    color: "white",
+                    border: "none",
+                    fontWeight: 700,
+                    fontSize: ".82rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  🚀 Open Dashboard for +91 {cleanUserPhone(directPhone)} anyway
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: mob ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
+              gap: 12
+            }}>
+              {filteredMembers.map((m, idx) => {
+                const sampleReg = m.regs[0] || {};
+                const uProfile = getUserProfileFromReg(sampleReg);
+                if (m.mobile) uProfile.mobile = m.mobile;
+                if (m.name && m.name !== "Member") uProfile.name = m.name;
+
+                return (
+                  <div
+                    key={m.key || idx}
+                    style={{
+                      background: "white",
+                      borderRadius: 12,
+                      border: "1px solid #CBD5E1",
+                      padding: 14,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+                      transition: "transform 0.15s, box-shadow 0.15s"
+                    }}
+                  >
+                    {/* Top Row: Avatar, Name, Mobile */}
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        background: "linear-gradient(135deg, #3B82F6, #1E40AF)",
+                        color: "white",
+                        fontWeight: 800,
+                        fontSize: "1rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0
+                      }}>
+                        {m.name && m.name !== "Member" ? m.name.charAt(0).toUpperCase() : "👤"}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:".9rem",color:"#0F172A",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {m.name || "Member"}
+                        </div>
+                        <div style={{fontSize:".76rem",color:"#64748B",fontWeight:600}}>
+                          {m.mobile ? `+91 ${m.mobile}` : (m.email || "No Phone")}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Applications & Events Tag */}
+                    <div style={{fontSize:".74rem",color:"#475569"}}>
+                      <span style={{fontWeight:700,color:"#0F172A"}}>Applications ({m.regs.length}):</span>{" "}
+                      {m.regs.map(r => r.eventName || r.eventTitle || r["Event Name"] || "Event").slice(0, 2).join(", ")}
+                      {m.regs.length > 2 ? ` +${m.regs.length - 2} more` : ""}
+                    </div>
+
+                    {/* Feature Badges */}
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+                      {m.hasCert && (
+                        <span style={{background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:10,fontSize:".68rem",fontWeight:800,border:"1px solid #86EFAC"}}>
+                          🎓 Cert Released
+                        </span>
+                      )}
+                      {m.hasInvite && (
+                        <span style={{background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:10,fontSize:".68rem",fontWeight:800,border:"1px solid #BFDBFE"}}>
+                          💌 Invite Pass
+                        </span>
+                      )}
+                      {m.hasApproved && (
+                        <span style={{background:"#FEF3C7",color:"#92400E",padding:"2px 8px",borderRadius:10,fontSize:".68rem",fontWeight:800,border:"1px solid #FDE68A"}}>
+                          ✅ Approved
+                        </span>
+                      )}
+                      {m.hasPending && (
+                        <span style={{background:"#F1F5F9",color:"#475569",padding:"2px 8px",borderRadius:10,fontSize:".68rem",fontWeight:700}}>
+                          ⏳ Pending
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Action Button */}
+                    <button
+                      type="button"
+                      onClick={() => onSelectUser(uProfile)}
+                      style={{
+                        marginTop: "auto",
+                        background: "linear-gradient(135deg, #1E3A8A, #2563EB)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 12px",
+                        fontSize: ".78rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        boxShadow: "0 2px 4px rgba(37,99,235,0.2)"
+                      }}
+                    >
+                      <span>👁️</span> Inspect Dashboard →
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "12px 20px",
+          background: "white",
+          borderTop: "1px solid #E2E8F0",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexShrink: 0
+        }}>
+          <div style={{fontSize:".75rem",color:"#64748B"}}>
+            Showing <strong>{filteredMembers.length}</strong> of <strong>{memberList.length}</strong> unique members
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "6px 16px",
+              borderRadius: 6,
+              border: "1px solid #CBD5E1",
+              background: "white",
+              color: "#475569",
+              fontSize: ".8rem",
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -25099,17 +25827,27 @@ function AdminAccess({ C, setC, master, auth }) {
 }
 
 
-function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, auth }) {
+function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, auth, onPreviewDashboard }) {
   const w = useW();
   const mob = w < 768;
   const [eventFilter, setEventFilter] = useState(viewing.eventName || viewing.eventTitle || viewing.eventId || "");
   const [statusFilter, setStatusFilter] = useState(viewing['Status'] || "Pending");
   const [showDocUploadModal, setShowDocUploadModal] = useState(false);
   const [showAdminUserPortal, setShowAdminUserPortal] = useState(false);
+  const [showDashboardPreview, setShowDashboardPreview] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadDocTarget, setUploadDocTarget] = useState("Marksheet");
   const [customDocLabel, setCustomDocLabel] = useState("");
   const [selectedUploadFile, setSelectedUploadFile] = useState(null);
+
+  const handleOpenMemberDashboard = () => {
+    const prof = getUserProfileFromReg(editedReg || viewing);
+    if (onPreviewDashboard) {
+      onPreviewDashboard(prof);
+    } else {
+      setShowDashboardPreview(true);
+    }
+  };
 
   const handleFilterChange = (type, val) => {
     if (type === 'event') setEventFilter(val);
@@ -25539,6 +26277,27 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                       title="Open full Applicant Registration Dashboard & Form to edit all fields and upload documents on behalf of applicant"
                     >
                       <span>👤</span> Applicant Portal
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={handleOpenMemberDashboard}
+                      style={{
+                        background: "#F0FDF4", 
+                        border: "1.5px solid #22C55E", 
+                        color: "#15803D", 
+                        cursor: "pointer", 
+                        fontSize: ".76rem", 
+                        fontWeight: 800,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        boxShadow: "0 1px 3px rgba(34,197,94,0.15)"
+                      }}
+                      title="Inspect this student's live member dashboard (Letters, Certificates, Passes, Receipts) without OTP"
+                    >
+                      <span>👁️</span> Member Dashboard
                     </button>
                     <button 
                       onClick={() => setIsEditing(!isEditing)} 
@@ -26158,6 +26917,17 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
             </div>
           </div>
         )}
+
+      {showDashboardPreview && (
+        <UserDashboard
+          C={C}
+          globalProfile={getUserProfileFromReg(editedReg || viewing)}
+          globalAuthToken={auth?.idToken}
+          onClose={() => setShowDashboardPreview(false)}
+          onLogout={() => setShowDashboardPreview(false)}
+          isAdminPreview={true}
+        />
+      )}
     </div>
   );
 }
@@ -32593,7 +33363,25 @@ function WhatsAppApplicantMessengerModal({ reg, onClose, C, auth, onLogSent, all
   );
 }
 
-function AdminRegistrations({ mob, C, setC, auth }) {
+function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUserPicker }) {
+  const [localPreviewUser, setLocalPreviewUser] = useState(null);
+  const [localShowUserPicker, setLocalShowUserPicker] = useState(false);
+
+  const handleOpenPreview = (u) => {
+    if (onPreviewDashboard) {
+      onPreviewDashboard(u);
+    } else {
+      setLocalPreviewUser(u);
+    }
+  };
+
+  const handleOpenPicker = () => {
+    if (onOpenUserPicker) {
+      onOpenUserPicker();
+    } else {
+      setLocalShowUserPicker(true);
+    }
+  };
 
   const [bulkGroup, setBulkGroup] = useState("");
   const [applyingBulkGroup, setApplyingBulkGroup] = useState(false);
@@ -33570,6 +34358,28 @@ function AdminRegistrations({ mob, C, setC, auth }) {
             >
               <span>📥</span> Export CSV ({filteredRegs.length})
             </button>
+            <button
+              type="button"
+              onClick={handleOpenPicker}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                fontSize: ".8rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                background: "linear-gradient(135deg, #10B981, #059669)",
+                color: "white",
+                border: "none",
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(16,185,129,0.3)",
+                whiteSpace: "nowrap"
+              }}
+              title="Lookup and preview any member or applicant dashboard without OTP"
+            >
+              <span>👥</span> Member Dashboard
+            </button>
             {selectedIds.length > 0 && (
               <button
                 type="button"
@@ -33944,6 +34754,27 @@ function AdminRegistrations({ mob, C, setC, auth }) {
                         <button onClick={()=>setViewing(r)} style={{padding:"6px 10px",borderRadius:6,fontSize:".75rem",background:"var(--dt)",color:"white",border:"none",cursor:"pointer",fontWeight:600,boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>
                           View
                         </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenPreview(getUserProfileFromReg(r))} 
+                          style={{
+                            padding: "6px 9px",
+                            borderRadius: 6,
+                            fontSize: ".75rem",
+                            background: "#EFF6FF",
+                            color: "#1D4ED8",
+                            border: "1px solid #BFDBFE",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 3,
+                            boxShadow: "0 1px 3px rgba(29,78,216,0.12)"
+                          }} 
+                          title="Inspect this student's live member dashboard without OTP"
+                        >
+                          <span>👤</span> Dashboard
+                        </button>
                         {(() => {
                           const waLogs = (r.logHistory || []).filter(lg => lg.type === "whatsapp" || (lg.action && String(lg.action).toLowerCase().includes("whatsapp")));
                           const count = Math.max(r.whatsAppCount || 0, waLogs.length);
@@ -34143,7 +34974,7 @@ function AdminRegistrations({ mob, C, setC, auth }) {
       ))}
 
       {viewing && (
-        <VerificationModal viewing={viewing} setViewing={setViewing} allRegs={regs} saveVerification={saveVerification} C={C} auth={auth} />
+        <VerificationModal viewing={viewing} setViewing={setViewing} allRegs={regs} saveVerification={saveVerification} C={C} auth={auth} onPreviewDashboard={handleOpenPreview} />
       )}
 
       {showBulkWhatsAppModal && (
@@ -34477,6 +35308,30 @@ function AdminRegistrations({ mob, C, setC, auth }) {
           </div>
         </div>
       )}
+
+      {localPreviewUser && (
+        <UserDashboard
+          C={C}
+          globalProfile={localPreviewUser}
+          globalAuthToken={auth?.idToken}
+          onClose={() => setLocalPreviewUser(null)}
+          onLogout={() => setLocalPreviewUser(null)}
+          isAdminPreview={true}
+          onSwitchUser={handleOpenPicker}
+        />
+      )}
+      {localShowUserPicker && (
+        <AdminUserPickerModal
+          C={C}
+          auth={auth}
+          allRegs={regs}
+          onSelectUser={(u) => {
+            setLocalShowUserPicker(false);
+            handleOpenPreview(u);
+          }}
+          onClose={() => setLocalShowUserPicker(false)}
+        />
+      )}
     </div>
   );
 }
@@ -34537,7 +35392,7 @@ function PolicyPage({ type, C }) {
 
 
 // ── NEW PROFILE COMPONENTS ────────────────────────────────────────────────────────
-function DashboardProfile({ globalProfile, globalAuthToken, mob }) {
+function DashboardProfile({ globalProfile, globalAuthToken, mob, isAdminPreview = false }) {
   const [data, setData] = useState({ name: "", email: "", mobile: "", address: "", gender: "", photo: "" });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -34570,6 +35425,10 @@ function DashboardProfile({ globalProfile, globalAuthToken, mob }) {
   };
 
   const handleSave = async () => {
+    if (isAdminPreview) {
+      alert("Profile saving is disabled in Admin Preview mode to protect member credentials.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -34607,6 +35466,11 @@ function DashboardProfile({ globalProfile, globalAuthToken, mob }) {
   return (
     <div>
       <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",color:"var(--dt)",marginBottom:24,fontWeight:700}}>My Profile</h3>
+      {isAdminPreview && (
+        <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:8,padding:"8px 14px",marginBottom:16,color:"#991B1B",fontSize:".8rem",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+          <span>🛡️</span> Admin Preview Mode: Viewing member's saved profile (read-only mode).
+        </div>
+      )}
       <div style={{background:"white",padding:mob?20:32,borderRadius:16,border:"1px solid var(--bd)"}}>
         
         <div style={{display:"flex",gap:24,marginBottom:32,alignItems:"center",flexDirection:mob?"column":"row"}}>
@@ -36921,7 +37785,26 @@ const getContactGroups = (contact) => {
   return parts.length > 0 ? parts : ["General Committee"];
 };
 
-function AdminInviteLetters({ mob, C, setC, auth }) {
+function AdminInviteLetters({ mob, C, setC, auth, onPreviewDashboard, onOpenUserPicker }) {
+  const [localPreviewUser, setLocalPreviewUser] = useState(null);
+  const [localShowUserPicker, setLocalShowUserPicker] = useState(false);
+
+  const handleOpenPreview = (u) => {
+    if (onPreviewDashboard) {
+      onPreviewDashboard(u);
+    } else {
+      setLocalPreviewUser(u);
+    }
+  };
+
+  const handleOpenPicker = () => {
+    if (onOpenUserPicker) {
+      onOpenUserPicker();
+    } else {
+      setLocalShowUserPicker(true);
+    }
+  };
+
   const [contactsList, setContactsList] = useState([]);
   const [showColModal, setShowColModal] = useState(false);
   const [visibleExtraCols, setVisibleExtraCols] = useState([]);
@@ -39744,6 +40627,26 @@ This cannot be undone.`)) return;
              <button onClick={() => setShowGlobalGuestsModal(true)} style={{padding:"10px 16px",borderRadius:8,fontSize:".85rem",fontWeight:600,display:"flex",alignItems:"center",gap:8,background:"white",border:"1px solid var(--dt)",color:"var(--dt)",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
                <span style={{fontSize:"1.2rem"}}>👥</span> Manage Special Guests Directory ({globalGuests.length})
              </button>
+             <button 
+               onClick={handleOpenPicker}
+               style={{
+                 padding:"10px 16px",
+                 borderRadius:8,
+                 fontSize:".85rem",
+                 fontWeight:700,
+                 display:"flex",
+                 alignItems:"center",
+                 gap:8,
+                 background:"#FEF3C7",
+                 border:"1.5px solid #F59E0B",
+                 color:"#92400E",
+                 cursor:"pointer",
+                 boxShadow:"0 2px 8px rgba(245,158,11,0.2)"
+               }}
+               title="Search and inspect any member dashboard without OTP"
+             >
+               <span>👥</span> Check Member Dashboard
+             </button>
            </div>
          </div>
          
@@ -40159,6 +41062,30 @@ This cannot be undone.`)) return;
 
          {/* Global Guests Modal */}
          {showGlobalGuestsModal && renderGlobalGuestsModal()}
+
+         {localPreviewUser && (
+           <UserDashboard
+             C={C}
+             globalProfile={localPreviewUser}
+             globalAuthToken={auth?.idToken}
+             onClose={() => setLocalPreviewUser(null)}
+             onLogout={() => setLocalPreviewUser(null)}
+             isAdminPreview={true}
+             onSwitchUser={handleOpenPicker}
+           />
+         )}
+         {localShowUserPicker && (
+           <AdminUserPickerModal
+             C={C}
+             auth={auth}
+             allRegs={regs}
+             onSelectUser={(u) => {
+               setLocalShowUserPicker(false);
+               handleOpenPreview(u);
+             }}
+             onClose={() => setLocalShowUserPicker(false)}
+           />
+         )}
       </div>
     );
   }
@@ -40202,6 +41129,27 @@ This cannot be undone.`)) return;
               title="Open master contact & guest directory"
             >
               <span>👥</span> Directory ({globalGuests.length})
+            </button>
+            <button 
+              onClick={handleOpenPicker}
+              style={{
+                padding:"8px 14px",
+                borderRadius:8,
+                fontSize:".85rem",
+                fontWeight:700,
+                display:"flex",
+                alignItems:"center",
+                gap:6,
+                background:"#FEF3C7",
+                border:"1.5px solid #F59E0B",
+                color:"#92400E",
+                cursor:"pointer",
+                boxShadow:"0 2px 8px rgba(245,158,11,0.2)",
+                whiteSpace:"nowrap"
+              }}
+              title="Search and inspect any member dashboard without OTP"
+            >
+              <span>👥</span> Check Member Dashboard
             </button>
             <button onClick={() => setShowWorkspaceTplModal(true)} style={{padding:"8px 16px",borderRadius:8,fontSize:".85rem",fontWeight:700,display:"flex",alignItems:"center",gap:6,background:"#F0FDF4",border:"1px solid #86EFAC",color:"#15803D",cursor:"pointer",boxShadow:"0 2px 8px rgba(21,128,61,0.15)",whiteSpace:"nowrap"}}>
               📝 Workspace WhatsApp Templates ({((activeEvent?.whatsAppTemplates && activeEvent.whatsAppTemplates.length > 0) ? activeEvent.whatsAppTemplates.length : 3)})
@@ -41518,6 +42466,16 @@ This cannot be undone.`)) return;
                               title={`Preview ${currentDocTpl?.name || 'document'}`}
                             >
                               <span>👁️</span> Preview
+                            </button>
+                            <button 
+                              onClick={(e)=>{
+                                e.stopPropagation(); 
+                                handleOpenPreview(getUserProfileFromReg(r));
+                              }} 
+                              style={{padding:"4px 8px",borderRadius:6,fontSize:".74rem",background:"#FEF3C7",border:"1.5px solid #F59E0B",color:"#92400E",cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",gap:3}}
+                              title="Preview Member Dashboard (Passes, Receipts, Certificates) without OTP"
+                            >
+                              <span>👤</span> Dashboard
                             </button>
                             {(() => {
                               const activeSubWsDocId = currentDocTpl?.id || "invite";
@@ -43031,6 +43989,30 @@ This cannot be undone.`)) return;
         isEnvelopeMode={bulkSelectMode === "envelopes"}
         activeDocId={currentDocTpl?.id || "invite"}
       />
+
+      {localPreviewUser && (
+        <UserDashboard
+          C={C}
+          globalProfile={localPreviewUser}
+          globalAuthToken={auth?.idToken}
+          onClose={() => setLocalPreviewUser(null)}
+          onLogout={() => setLocalPreviewUser(null)}
+          isAdminPreview={true}
+          onSwitchUser={handleOpenPicker}
+        />
+      )}
+      {localShowUserPicker && (
+        <AdminUserPickerModal
+          C={C}
+          auth={auth}
+          allRegs={regs}
+          onSelectUser={(u) => {
+            setLocalShowUserPicker(false);
+            handleOpenPreview(u);
+          }}
+          onClose={() => setLocalShowUserPicker(false)}
+        />
+      )}
     </div>
   );
 }
