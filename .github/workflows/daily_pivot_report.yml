@@ -1,0 +1,38 @@
+name: Daily Pivot Summary Report Automation
+
+on:
+  schedule:
+    # Runs everyday at 09:00 AM IST (03:30 AM UTC)
+    - cron: '30 3 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions UI anytime
+
+jobs:
+  generate-and-send-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd scripts
+          npm init -y
+          npm install jspdf nodemailer
+
+      - name: Run Daily Pivot Report Generator
+        env:
+          FIREBASE_API_KEY: "AIzaSyAGw3g8VS23FfLiOrXdk1QafdxMIlIC9VE"
+          FIREBASE_PROJECT_ID: "mmp-cwc-new"
+          FIREBASE_AUTH_EMAIL: ${{ secrets.FIREBASE_AUTH_EMAIL_MMP_CWC_COM || secrets.FIREBASE_AUTH_EMAIL }}
+          FIREBASE_AUTH_PASSWORD: ${{ secrets.FIREBASE_AUTH_PASSWORD_MMP_CWC_COM || secrets.FIREBASE_AUTH_PASSWORD }}
+          SMTP_USER: ${{ secrets.SMTP_USER || 'pradeepparmar902@gmail.com' }}
+          SMTP_PASS: ${{ secrets.GMAIL_PASSWORD_PRADEEPARMAR902 || secrets.SMTP_PASS }}
+          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS || 'pradeepparmar902@gmail.com, makharishk@gmail.com, 89night@gmail.com' }}
+        run: |
+          node scripts/generate_daily_pivot_report.js

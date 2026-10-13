@@ -1,0 +1,43 @@
+name: Deploy to Hostinger via FTP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout the code from GitHub
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 2. Setup Node.js to build the React app
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    # 3. Install dependencies and build the project
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build project
+      run: npm run build
+      # IMPORTANT: If your .env variables (like VITE_API_BASE_URL) need to be secret,
+      # you can pass them into the build step here using GitHub Secrets.
+      
+    # 4. Deploy the 'dist' folder to Hostinger via FTP
+    - name: FTP Deploy
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        # We only want to upload the compiled frontend, which is in the 'dist' folder
+        local-dir: ./dist/
+        # Adjust server-dir if you want it uploaded to a subfolder inside public_html
+        server-dir: ./public_html/

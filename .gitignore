@@ -26,3 +26,23 @@ dist-ssr
 *.sql
 .env
 .env.*
+
+# Local Database Backups & Sensitive Data Dumps
+*backup*
+*backup*.json
+*correction*.json
+db_registrations.json
+old backup/
+
+# Scratch & Temporary Scripts
+*.py
+*.cjs
+*.mjs
+*.diff
+screenshot.js
+server.js
+downloaded.js
+patch*
+cors.json
+fix_nav.ps1
+scripts/

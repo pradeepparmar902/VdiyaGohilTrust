@@ -4,10 +4,52 @@ robocopy "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website
 
 restore 
 
-robocopy "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\Backupfolder all website\community\community-backup-backup-20260625-203853" "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community" /E
+robocopy "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\Backupfolder all website\community\community-backup-20260902-120108 "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community" /E
+
+Purpose	Command
+Save Source Code	
+git add .
+git commit -m "Update"
+git push origin main
+
+Deploy Testing	
+npm run build
+npx gh-pages -d dist -r
+https://github.com/pradeepparmar902/MY_Community_Website.git
+
+Deploy Production
+npm run build
+npx gh-pages -d dist -r 
+https://github.com/pradeepparmar902/MMP-CWC-Website.git
+
+
+############************************####################
 
  Copy to the MMP-CWC folder:
 robocopy "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community\trust-frontend" "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community\MMP-CWC" /E /XD node_modules .git dist /XF .env package-lock.json
 
+to send instruction to push to GitHub
+
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+cmd /c "npm install"
+
+git init
+git remote add origin https://github.com/pradeepparmar902/MMP-CWC-Website.git
+git add .
+git commit -m "Updated to Hostinger API and automated deployment"
+git push -u origin master --force
+
+"Please push the updated code in the MMP-CWC folder to my MMP-CWC-Website GitHub repository  on the main & master branch."
+
+############************************####################
+
 Copy to the VdiyaGohil folder:
 robocopy "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community\trust-frontend" "C:\Users\Pradeep.Parmar\OneDrive - insidemedia.net\personal\My Website\community\VdiyaGohil" /E /XD node_modules .git dist /XF .env package-lock.json
+
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+
+to send instruction to push to GitHub
+
+"Please push the updated code in the VdiyaGohil folder to my VdiyaGohilTrust GitHub repository  on the main & master branch."
+
+

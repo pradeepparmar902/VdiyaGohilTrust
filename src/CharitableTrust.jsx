@@ -325,8 +325,32 @@ try {
 
 // ── FIREBASE HELPERS ──────────────────────────────────────────────────────────
 // Firestore stores everything as one JSON string field for simplicity
+const normalizeGoogleDriveImageUrls = (val) => {
+  if (!val) return val;
+  if (typeof val === "string") {
+    const m = val.match(/^https:\/\/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1600`;
+    return val;
+  }
+  if (Array.isArray(val)) {
+    for (let i = 0; i < val.length; i++) {
+      val[i] = normalizeGoogleDriveImageUrls(val[i]);
+    }
+    return val;
+  }
+  if (typeof val === "object") {
+    for (const k of Object.keys(val)) {
+      val[k] = normalizeGoogleDriveImageUrls(val[k]);
+    }
+    return val;
+  }
+  return val;
+};
+
 const hydrateConfigAssets = async (config) => {
-  if (!config || !Array.isArray(config.events)) return config;
+  if (!config) return config;
+  normalizeGoogleDriveImageUrls(config);
+  if (!Array.isArray(config.events)) return config;
   for (const ev of config.events) {
     if (ev.certBgUrl && ev.certBgUrl.startsWith('asset://')) {
       const assetId = ev.certBgUrl.replace('asset://', '');
@@ -351,6 +375,711 @@ const hydrateConfigAssets = async (config) => {
   return config;
 };
 
+// ── HYBRID STORAGE ROUTER (HOSTINGER ⇄ GOOGLE DRIVE) ──────────────────────────
+export const extractGoogleDriveFolderId = (val) => {
+  if (!val || typeof val !== "string") return "";
+  const trimmed = val.trim();
+  const m = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  const m2 = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2) return m2[1];
+  return trimmed.split("?")[0].trim();
+};
+
+export const DEFAULT_STORAGE_ROUTING = {
+  gdriveScriptUrl: "",
+  gdriveFolderId: "17UEo9AwUfDEiMN8P8fiOPC9f2EkQ4FT5",
+  hostingerUploadUrl: "",
+  sections: {
+    registrations: {
+      label: "Event & Education Registrations",
+      desc: "Form entries & uploaded marksheets, student photos, ID proofs",
+      icon: "📋",
+      dataProvider: "hostinger",
+      mediaProvider: "gdrive",
+      folderName: "Marksheets_Registrations",
+      supportsDataToggle: true
+    },
+    gallery: {
+      label: "Photo Gallery & Event Albums",
+      desc: "All event photos, albums, and gallery media",
+      icon: "🖼️",
+      dataProvider: "hostinger",
+      mediaProvider: "gdrive",
+      folderName: "Photo_Gallery",
+      supportsDataToggle: false
+    },
+    events: {
+      label: "Events, Certificates & Invite Passes",
+      desc: "Event posters, certificate backgrounds, and invitation templates",
+      icon: "📅",
+      dataProvider: "hostinger",
+      mediaProvider: "gdrive",
+      folderName: "Events_Certificates",
+      supportsDataToggle: false
+    },
+    medialibrary: {
+      label: "Central Media Library",
+      desc: "Letterheads, stamps, signatures, and reusable assets",
+      icon: "📁",
+      dataProvider: "hostinger",
+      mediaProvider: "hostinger",
+      folderName: "Media_Library",
+      supportsDataToggle: false
+    },
+    donations: {
+      label: "Donations & 80G Receipts",
+      desc: "Donation entries, payment screenshots, and generated PDF receipts",
+      icon: "💰",
+      dataProvider: "hostinger",
+      mediaProvider: "gdrive",
+      folderName: "Donations_Receipts",
+      supportsDataToggle: true
+    },
+    achievements: {
+      label: "Achievements & Press Releases",
+      desc: "Community awards, news clippings, and achievement photos",
+      icon: "🏆",
+      dataProvider: "hostinger",
+      mediaProvider: "gdrive",
+      folderName: "Achievements_Press",
+      supportsDataToggle: false
+    },
+    team: {
+      label: "Our Team & Committee",
+      desc: "Trustee and committee member profile photos",
+      icon: "👥",
+      dataProvider: "hostinger",
+      mediaProvider: "hostinger",
+      folderName: "Our_Team",
+      supportsDataToggle: false
+    },
+    volunteers: {
+      label: "Volunteers & Community Directory",
+      desc: "Volunteer registrations, global contacts, and member photos",
+      icon: "🤝",
+      dataProvider: "hostinger",
+      mediaProvider: "hostinger",
+      folderName: "Volunteers_Directory",
+      supportsDataToggle: true
+    },
+    branding: {
+      label: "Site Logos & Homepage Banners",
+      desc: "Main trust logo, top banner, and homepage hero images",
+      icon: "🏛️",
+      dataProvider: "hostinger",
+      mediaProvider: "hostinger",
+      folderName: "Site_Branding",
+      supportsDataToggle: false
+    }
+  }
+};
+
+export const getStorageConfig = (overrideC = null) => {
+  let raw = overrideC?.storageConfig || (typeof window !== "undefined" ? window.__MMP_STORAGE_CONFIG__ : null);
+  if (!raw && typeof localStorage !== "undefined") {
+    try {
+      const saved = localStorage.getItem("trustStorageConfig");
+      if (saved) raw = JSON.parse(saved);
+      else {
+        const tc = localStorage.getItem("trustConfig");
+        if (tc) raw = JSON.parse(tc)?.storageConfig;
+      }
+    } catch (e) {}
+  }
+  const mergedSections = {};
+  for (const [k, defVal] of Object.entries(DEFAULT_STORAGE_ROUTING.sections)) {
+    mergedSections[k] = {
+      ...defVal,
+      ...(raw?.sections?.[k] || {})
+    };
+  }
+  return {
+    gdriveScriptUrl: (raw?.gdriveScriptUrl || "").trim(),
+    gdriveFolderId: extractGoogleDriveFolderId(raw?.gdriveFolderId || DEFAULT_STORAGE_ROUTING.gdriveFolderId),
+    hostingerUploadUrl: (raw?.hostingerUploadUrl || "").trim(),
+    sections: mergedSections
+  };
+};
+
+export const syncStorageConfigCache = (storageConfig) => {
+  if (!storageConfig) return;
+  if (typeof window !== "undefined") window.__MMP_STORAGE_CONFIG__ = storageConfig;
+  if (typeof localStorage !== "undefined") {
+    try { localStorage.setItem("trustStorageConfig", JSON.stringify(storageConfig)); } catch (e) {}
+  }
+};
+
+export const detectUrlStorageProvider = (url) => {
+  if (!url || typeof url !== "string") return "none";
+  const u = url.trim();
+  if (!u) return "none";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("drive.google.com") || u.includes("googleusercontent.com") || u.includes("docs.google.com")) return "gdrive";
+  if (u.includes("firebasestorage.googleapis.com")) return "firebase";
+  if (u.startsWith("data:")) return "base64";
+  if (u.includes("/uploads/") || u.includes("/api.php") || u.includes("/api_dev.php") || u.startsWith("asset://") || u.startsWith("media://") || u.startsWith("./") || u.startsWith("/")) return "hostinger";
+  return "other";
+};
+
+export const extractGoogleDriveFileId = (url) => {
+  if (!url || typeof url !== "string") return null;
+  const m1 = url.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1) return m1[1];
+  const m2 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m2) return m2[1];
+  const m3 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m3) return m3[1];
+  return null;
+};
+
+export const extractYouTubeVideoId = (url) => {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (shortMatch) return shortMatch[1];
+  const watchMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (watchMatch) return watchMatch[1];
+  const embedMatch = trimmed.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+  if (embedMatch) return embedMatch[1];
+  const shortsMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (shortsMatch) return shortsMatch[1];
+  const liveMatch = trimmed.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/);
+  if (liveMatch) return liveMatch[1];
+  const vMatch = trimmed.match(/youtube\.com\/v\/([a-zA-Z0-9_-]{11})/);
+  if (vMatch) return vMatch[1];
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  return "";
+};
+
+export const getYouTubeThumbnailUrl = (urlOrId, quality = "hqdefault") => {
+  const vid = extractYouTubeVideoId(urlOrId);
+  if (!vid) return "";
+  return `https://img.youtube.com/vi/${vid}/${quality}.jpg`;
+};
+
+export const getYouTubeEmbedUrl = (urlOrId) => {
+  const vid = extractYouTubeVideoId(urlOrId);
+  if (!vid) return "";
+  return `https://www.youtube.com/embed/${vid}?autoplay=1&rel=0`;
+};
+
+export const fetchYouTubeVideoMeta = async (urlOrId) => {
+  const vid = extractYouTubeVideoId(urlOrId);
+  if (!vid) return null;
+  const watchUrl = `https://www.youtube.com/watch?v=${vid}`;
+  const defaultThumb = `https://img.youtube.com/vi/${vid}/hqdefault.jpg`;
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        videoId: vid,
+        title: data.title || "",
+        author: data.author_name || "",
+        thumbnailUrl: data.thumbnail_url || defaultThumb
+      };
+    }
+  } catch (e) {
+    // Fallback to standard YouTube thumbnail URL if oEmbed fails
+  }
+  return {
+    videoId: vid,
+    title: "",
+    author: "",
+    thumbnailUrl: defaultThumb
+  };
+};
+
+export const getHostingerBaseOrigin = () => {
+  const cfg = getStorageConfig();
+  if (cfg.hostingerUploadUrl) {
+    return cfg.hostingerUploadUrl.replace(/\/upload\.php.*$/i, "").replace(/\/+$/, "");
+  }
+  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+  if (apiBase.startsWith("http")) {
+    try {
+      const u = new URL(apiBase);
+      return u.origin;
+    } catch (e) {}
+  }
+  return typeof window !== "undefined" ? window.location.origin : "";
+};
+
+export const isDevApiEnvironment = () => {
+  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+  return apiBase.includes("api_dev.php");
+};
+
+const fileOrDataUrlToBase64Obj = async (fileOrDataUrl, fallbackName = "file") => {
+  if (typeof fileOrDataUrl === "string") {
+    if (fileOrDataUrl.startsWith("data:")) {
+      const [meta, b64] = fileOrDataUrl.split(",");
+      const mimeMatch = meta.match(/data:([^;]+)/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const ext = mimeType.includes("pdf") ? "pdf" : mimeType.includes("png") ? "png" : "jpg";
+      return {
+        base64Data: b64 || "",
+        mimeType,
+        fileName: fallbackName.includes(".") ? fallbackName : `${fallbackName}.${ext}`,
+        dataUrl: fileOrDataUrl
+      };
+    }
+    throw new Error("Expected File, Blob, or data: URL");
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(fileOrDataUrl);
+  });
+  const [meta, b64] = String(dataUrl).split(",");
+  const mimeMatch = meta.match(/data:([^;]+)/);
+  const mimeType = fileOrDataUrl.type || (mimeMatch ? mimeMatch[1] : "application/octet-stream");
+  const fileName = fileOrDataUrl.name || fallbackName;
+  return { base64Data: b64 || "", mimeType, fileName, dataUrl };
+};
+
+const base64ToBlob = (base64Data, mimeType = "application/octet-stream") => {
+  const byteCharacters = atob(base64Data);
+  const byteArrays = [];
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    byteArrays.push(new Uint8Array(byteNumbers));
+  }
+  return new Blob(byteArrays, { type: mimeType });
+};
+
+export const callGoogleDriveScript = async (scriptUrl, payload) => {
+  const cleanUrl = String(scriptUrl || "").trim();
+  if (!cleanUrl) throw new Error("Missing Google Drive Script URL");
+
+  // 1. Try local Vite proxy first (bypasses browser CORS & detects exact Google permission/deployment errors)
+  try {
+    const proxyRes = await fetch("/__gdrive_proxy__", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: cleanUrl, payload })
+    });
+    if (proxyRes.ok) {
+      const ct = proxyRes.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        return await proxyRes.json();
+      }
+    }
+  } catch (e) {
+    // Fallback to PHP proxy
+  }
+
+  // 2. Try Hostinger PHP API proxy
+  try {
+    const phpProxyUrl = `${API_BASE_URL.replace(/\/$/, "")}?action=gdrive_proxy`;
+    const phpRes = await fetch(phpProxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: cleanUrl, payload })
+    });
+    if (phpRes.ok) {
+      const ct = phpRes.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        return await phpRes.json();
+      }
+    }
+  } catch (e) {
+    // Fallback to direct browser fetch
+  }
+
+  // 3. Direct browser fetch (simple request without custom headers + redirect: follow)
+  const res = await fetch(cleanUrl, {
+    method: "POST",
+    redirect: "follow",
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    throw new Error(`Google Drive Script HTTP error (${res.status})`);
+  }
+  return await res.json();
+};
+
+export const uploadFileToGoogleDrive = async (fileOrDataUrl, sectionKey = "registrations", customName = "") => {
+  const cfg = getStorageConfig();
+  if (!cfg.gdriveScriptUrl) {
+    throw new Error("Google Drive Script URL is not configured yet in the '☁️ Storage Routing' tab.");
+  }
+  const secCfg = cfg.sections?.[sectionKey] || DEFAULT_STORAGE_ROUTING.sections.registrations;
+  const { base64Data, mimeType, fileName } = await fileOrDataUrlToBase64Obj(
+    fileOrDataUrl,
+    customName || `file_${Date.now()}`
+  );
+
+  const data = await callGoogleDriveScript(cfg.gdriveScriptUrl, {
+    action: "uploadFile",
+    fileName: customName || fileName,
+    mimeType,
+    base64Data,
+    folderName: secCfg.folderName || sectionKey,
+    rootFolderId: cfg.gdriveFolderId || ""
+  });
+
+  if (!data || !data.success || !data.fileId) {
+    throw new Error(data?.error || "Google Drive script did not return a valid fileId");
+  }
+
+  const isPdf = mimeType.toLowerCase().includes("pdf") || String(customName || fileName).toLowerCase().endsWith(".pdf");
+  const cleanFileName = encodeURIComponent(customName || fileName || (isPdf ? "document.pdf" : "image.jpg"));
+  if (isPdf) {
+    return `https://drive.google.com/file/d/${data.fileId}/preview#${cleanFileName}`;
+  }
+  return `https://drive.google.com/thumbnail?id=${data.fileId}&sz=w1600`;
+};
+
+export const uploadFileToHostinger = async (fileOrDataUrl, sectionKey = "registrations", customName = "", idToken = "") => {
+  const cfg = getStorageConfig();
+  const secCfg = cfg.sections?.[sectionKey] || DEFAULT_STORAGE_ROUTING.sections.registrations;
+  const folder = (secCfg.folderName || sectionKey).toLowerCase();
+  const envPrefix = isDevApiEnvironment() ? "dev/" : "";
+
+  let blobToUpload = fileOrDataUrl;
+  let mimeType = "application/octet-stream";
+  let fileName = customName || `file_${Date.now()}.jpg`;
+
+  if (typeof fileOrDataUrl === "string" && fileOrDataUrl.startsWith("data:")) {
+    const parsed = await fileOrDataUrlToBase64Obj(fileOrDataUrl, fileName);
+    mimeType = parsed.mimeType;
+    fileName = customName || parsed.fileName;
+    blobToUpload = base64ToBlob(parsed.base64Data, mimeType);
+  } else if (fileOrDataUrl instanceof Blob) {
+    mimeType = fileOrDataUrl.type || mimeType;
+    if (fileOrDataUrl.name && !customName) fileName = fileOrDataUrl.name;
+  }
+
+  const ext = (fileName.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const safeBase = fileName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "file";
+  const relPath = `${envPrefix}${folder}/${safeBase}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}.${ext}`;
+
+  const origin = getHostingerBaseOrigin();
+  const uploadEndpoint = cfg.hostingerUploadUrl || `${origin}/upload.php`;
+
+  try {
+    const headers = { "Content-Type": mimeType };
+    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    const res = await fetch(`${uploadEndpoint}?name=${encodeURIComponent(relPath)}`, {
+      method: "POST",
+      headers,
+      body: blobToUpload
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.name) {
+        return `${origin}/uploads/${relPath}`;
+      }
+    }
+  } catch (err) {
+    console.warn("Hostinger upload.php fallback:", err);
+  }
+
+  // Fallback: store in Hostinger MySQL template_assets or Firebase Storage if configured
+  const { dataUrl } = await fileOrDataUrlToBase64Obj(fileOrDataUrl, fileName);
+  const assetId = `hst_${folder}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  await fbSaveAssetDoc(assetId, dataUrl, idToken);
+  return dataUrl;
+};
+
+export const uploadMediaBySection = async (fileOrDataUrl, idToken = "", sectionKey = "registrations", customName = "", forceProvider = null) => {
+  const cfg = getStorageConfig();
+  const secCfg = cfg.sections?.[sectionKey] || DEFAULT_STORAGE_ROUTING.sections.registrations;
+  const targetProvider = forceProvider || secCfg.mediaProvider || "hostinger";
+
+  if (targetProvider === "gdrive") {
+    if (cfg.gdriveScriptUrl) {
+      return await uploadFileToGoogleDrive(fileOrDataUrl, sectionKey, customName);
+    } else if (forceProvider === "gdrive") {
+      throw new Error("Please configure and save your Google Drive Script URL at the top of the Storage Routing tab first.");
+    } else {
+      console.warn(`Section '${sectionKey}' is set to Google Drive, but gdriveScriptUrl is empty. Falling back to Hostinger.`);
+    }
+  }
+  return await uploadFileToHostinger(fileOrDataUrl, sectionKey, customName, idToken);
+};
+
+export const fetchRemoteUrlAsDataUrl = async (url) => {
+  if (!url || typeof url !== "string") throw new Error("Empty URL");
+  if (url.startsWith("data:")) return url;
+
+  if (url.startsWith("asset://")) {
+    const assetId = url.replace("asset://", "");
+    const resolved = await fbGetAssetDoc(assetId);
+    if (resolved && resolved.startsWith("data:")) return resolved;
+  }
+
+  // If it's a Google Drive URL and gdriveScriptUrl is configured, use getFileBase64 action to avoid CORS
+  const gdriveId = extractGoogleDriveFileId(url);
+  const cfg = getStorageConfig();
+  if (gdriveId && cfg.gdriveScriptUrl) {
+    try {
+      const d = await callGoogleDriveScript(cfg.gdriveScriptUrl, {
+        action: "getFileBase64",
+        fileId: gdriveId
+      });
+      if (d && d.success && d.base64Data) {
+        const mime = d.mimeType || (url.toLowerCase().includes(".pdf") ? "application/pdf" : "image/jpeg");
+        return `data:${mime};base64,${d.base64Data}`;
+      }
+    } catch (e) {
+      console.warn("Google Drive script getFileBase64 fallback to direct fetch:", e);
+    }
+  }
+
+  // Direct fetch
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch file (${res.status})`);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+export const deleteRemoteFileUrl = async (url, idToken = "") => {
+  if (!url || typeof url !== "string") return false;
+  const provider = detectUrlStorageProvider(url);
+  const cfg = getStorageConfig();
+
+  if (provider === "gdrive") {
+    const gdriveId = extractGoogleDriveFileId(url);
+    if (gdriveId && cfg.gdriveScriptUrl) {
+      try {
+        await callGoogleDriveScript(cfg.gdriveScriptUrl, {
+          action: "deleteFile",
+          fileId: gdriveId
+        });
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+  } else if (provider === "hostinger") {
+    if (url.includes("/uploads/")) {
+      const relPath = url.split("/uploads/")[1]?.split("?")[0] || "";
+      if (relPath) {
+        const origin = getHostingerBaseOrigin();
+        const apiEndpoint = import.meta.env.VITE_API_BASE_URL || `${origin}/api_dev.php`;
+        const uploadEndpoint = cfg.hostingerUploadUrl || `${origin}/upload.php`;
+        const headers = { "Content-Type": "application/json" };
+        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+        try {
+          const r1 = await fetch(`${apiEndpoint}?action=delete&name=${encodeURIComponent(relPath)}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ name: relPath })
+          });
+          if (r1.ok) {
+            const d1 = await r1.json().catch(() => null);
+            if (d1 && d1.success) return true;
+          }
+        } catch (e) {
+          // fallback to upload.php
+        }
+        try {
+          await fetch(`${uploadEndpoint}?action=delete&name=${encodeURIComponent(relPath)}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ name: relPath })
+          });
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+    } else if (url.startsWith("asset://")) {
+      const assetId = url.replace("asset://", "");
+      if (assetId) {
+        try {
+          const headers = {};
+          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+          await fetch(`${import.meta.env.VITE_API_BASE_URL || "/api.php"}/template_assets/${assetId}`, {
+            method: "DELETE",
+            headers
+          });
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+export const cleanSectionStorageFolder = async (sectionKey, activeUrls = []) => {
+  const cfg = getStorageConfig();
+  const secCfg = cfg.sections?.[sectionKey] || DEFAULT_STORAGE_ROUTING.sections.registrations;
+  const folderName = secCfg.folderName || sectionKey;
+  const result = {
+    gdriveTrashed: 0,
+    hostingerDeleted: 0,
+    hostingerDeletedFiles: [],
+    gdriveWarning: "",
+    hostingerWarning: ""
+  };
+
+  // 1. Clean Google Drive subfolder (moves any orphan files not in keepFileIds to Trash)
+  if (cfg.gdriveScriptUrl) {
+    try {
+      const keepFileIds = activeUrls
+        .filter(u => detectUrlStorageProvider(u) === "gdrive")
+        .map(u => extractGoogleDriveFileId(u))
+        .filter(Boolean);
+      const gdRes = await callGoogleDriveScript(cfg.gdriveScriptUrl, {
+        action: "cleanFolder",
+        folderName,
+        rootFolderId: cfg.gdriveFolderId || "",
+        keepFileIds
+      });
+      if (gdRes && typeof gdRes.trashedCount === "number") {
+        result.gdriveTrashed = gdRes.trashedCount;
+      }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (msg.includes("Unknown action")) {
+        result.gdriveWarning = "Your Google Apps Script Web App needs to be re-deployed with the updated code (Copy Apps Script Code → Paste in script.google.com → Deploy → Manage deployments → Edit ✏️ → Version: 'New version' → Deploy).";
+      } else {
+        result.gdriveWarning = msg;
+      }
+      console.warn("Google Drive folder clean warning:", e);
+    }
+  }
+
+  // 2. Clean Hostinger subfolder (deletes any orphan files not in keepFiles)
+  try {
+    const envPrefix = isDevApiEnvironment() ? "dev/" : "";
+    const hostingerFolder = `${envPrefix}${folderName.toLowerCase()}`;
+    const keepFiles = activeUrls
+      .filter(u => typeof u === "string" && u.includes("/uploads/"))
+      .map(u => {
+        const afterUploads = u.split("/uploads/")[1]?.split("?")[0] || "";
+        return afterUploads.split("/").pop();
+      })
+      .filter(Boolean);
+
+    const origin = getHostingerBaseOrigin();
+    const apiEndpoint = import.meta.env.VITE_API_BASE_URL || `${origin}/api_dev.php`;
+    const uploadEndpoint = cfg.hostingerUploadUrl || `${origin}/upload.php`;
+
+    let handled = false;
+    // Try api_dev.php / api.php first
+    try {
+      const hRes1 = await fetch(`${apiEndpoint}?action=clean_folder&folder=${encodeURIComponent(hostingerFolder)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: hostingerFolder, keepFiles })
+      });
+      if (hRes1.ok) {
+        const hData1 = await hRes1.json().catch(() => null);
+        if (hData1 && typeof hData1.deletedCount === "number") {
+          result.hostingerDeleted = hData1.deletedCount;
+          result.hostingerDeletedFiles = hData1.deletedFiles || [];
+          handled = true;
+        }
+      }
+    } catch (e) {
+      // fallback to upload.php
+    }
+
+    // Fallback to upload.php
+    if (!handled) {
+      const hRes2 = await fetch(`${uploadEndpoint}?action=clean_folder&folder=${encodeURIComponent(hostingerFolder)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: hostingerFolder, keepFiles })
+      });
+      if (hRes2.ok) {
+        const hData2 = await hRes2.json().catch(() => null);
+        if (hData2 && typeof hData2.deletedCount === "number") {
+          result.hostingerDeleted = hData2.deletedCount;
+          result.hostingerDeletedFiles = hData2.deletedFiles || [];
+          handled = true;
+        }
+      }
+    }
+
+    if (!handled) {
+      result.hostingerWarning = "Hostinger public_html/api_dev.php (or public_html/upload.php) does not have the new clean_folder code yet. Please re-upload the updated api_dev.php file to Hostinger public_html/.";
+    }
+  } catch (e) {
+    console.warn("Hostinger folder clean warning:", e);
+  }
+
+  return result;
+};
+
+export const migrateSingleFileUrl = async (url, targetProvider, sectionKey, idToken = "") => {
+  if (!url || typeof url !== "string") return url;
+  const currentProvider = detectUrlStorageProvider(url);
+  if (currentProvider === targetProvider) return url;
+  if (currentProvider === "none") return url;
+
+  const dataUrl = await fetchRemoteUrlAsDataUrl(url);
+  const isPdf = url.toLowerCase().includes(".pdf") || dataUrl.startsWith("data:application/pdf");
+  const fileName = `${sectionKey}_${Date.now()}.${isPdf ? "pdf" : "jpg"}`;
+  const newUrl = await uploadMediaBySection(dataUrl, idToken, sectionKey, fileName, targetProvider);
+
+  // Delete the old file from the previous storage provider (Google Drive or Hostinger)
+  if (newUrl && newUrl !== url) {
+    await deleteRemoteFileUrl(url, idToken);
+  }
+
+  return newUrl;
+};
+
+// Route Database Collection Requests (registrations, donations, volunteers, contacts) between Hostinger & Google Drive
+export const getCollectionSectionKey = (collection) => {
+  const c = String(collection || "").toLowerCase();
+  if (c === "registrations") return "registrations";
+  if (c === "donations") return "donations";
+  if (c === "volunteers" || c === "contacts") return "volunteers";
+  return "registrations";
+};
+
+export const storageDbFetch = async (collectionAndPath, options = {}, forceProvider = null) => {
+  const cleanPart = String(collectionAndPath || "").split("?")[0];
+  const [collection, docId] = cleanPart.split("/");
+  const secKey = getCollectionSectionKey(collection);
+  const cfg = getStorageConfig();
+  const provider = forceProvider || cfg.sections?.[secKey]?.dataProvider || "hostinger";
+
+  if (provider === "gdrive" && cfg.gdriveScriptUrl) {
+    let parsedBody = null;
+    if (options.body) {
+      try { parsedBody = typeof options.body === "string" ? JSON.parse(options.body) : options.body; } catch (e) {}
+    }
+    const json = await callGoogleDriveScript(cfg.gdriveScriptUrl, {
+      action: "dbRequest",
+      collection,
+      docId: docId || "",
+      method: options.method || "GET",
+      body: parsedBody,
+      rootFolderId: cfg.gdriveFolderId || ""
+    });
+    return {
+      ok: !json?.error,
+      status: json?.error ? 400 : 200,
+      json: async () => json,
+      text: async () => JSON.stringify(json)
+    };
+  }
+
+  const url = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/${collectionAndPath}`;
+  return await fetch(url, options);
+};
+
 const fbLoad = async () => {
   try {
     const res = await fetch(`${FS_URL()}?t=${Date.now()}`, { cache: "no-store" });
@@ -359,6 +1088,9 @@ const fbLoad = async () => {
     const raw = doc?.fields?.data?.stringValue;
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    if (parsed?.storageConfig) {
+      syncStorageConfigCache(parsed.storageConfig);
+    }
     return await hydrateConfigAssets(parsed);
   } catch { return null; }
 };
@@ -444,7 +1176,13 @@ export const fbGetAssetDoc = async (assetId) => {
 
 const optimizeConfigForSave = async (content, idToken) => {
   if (!content) return content;
+  if (content.storageConfig) {
+    syncStorageConfigCache(content.storageConfig);
+  }
+  const cfg = getStorageConfig(content);
+  const eventsMediaProvider = cfg.sections?.events?.mediaProvider || "hostinger";
   const clone = JSON.parse(JSON.stringify(content));
+  normalizeGoogleDriveImageUrls(clone);
   if (Array.isArray(clone.events)) {
     for (let i = 0; i < clone.events.length; i++) {
       const ev = clone.events[i];
@@ -453,17 +1191,37 @@ const optimizeConfigForSave = async (content, idToken) => {
       // Compress and offload certBgUrl
       if (ev.certBgUrl && ev.certBgUrl.startsWith('data:image')) {
         const compressed = await compressBase64Image(ev.certBgUrl, 900, 0.60);
-        const assetId = `${evKey}_cert_bg`;
-        await fbSaveAssetDoc(assetId, compressed, idToken);
-        ev.certBgUrl = `asset://${assetId}`;
+        if (eventsMediaProvider === "gdrive" && cfg.gdriveScriptUrl) {
+          try {
+            ev.certBgUrl = await uploadFileToGoogleDrive(compressed, "events", `${evKey}_cert_bg.jpg`);
+          } catch (e) {
+            const assetId = `${evKey}_cert_bg`;
+            await fbSaveAssetDoc(assetId, compressed, idToken);
+            ev.certBgUrl = `asset://${assetId}`;
+          }
+        } else {
+          const assetId = `${evKey}_cert_bg`;
+          await fbSaveAssetDoc(assetId, compressed, idToken);
+          ev.certBgUrl = `asset://${assetId}`;
+        }
       }
 
       // Compress and offload inviteBgUrl
       if (ev.inviteBgUrl && ev.inviteBgUrl.startsWith('data:image')) {
         const compressed = await compressBase64Image(ev.inviteBgUrl, 900, 0.60);
-        const assetId = `${evKey}_invite_bg`;
-        await fbSaveAssetDoc(assetId, compressed, idToken);
-        ev.inviteBgUrl = `asset://${assetId}`;
+        if (eventsMediaProvider === "gdrive" && cfg.gdriveScriptUrl) {
+          try {
+            ev.inviteBgUrl = await uploadFileToGoogleDrive(compressed, "events", `${evKey}_invite_bg.jpg`);
+          } catch (e) {
+            const assetId = `${evKey}_invite_bg`;
+            await fbSaveAssetDoc(assetId, compressed, idToken);
+            ev.inviteBgUrl = `asset://${assetId}`;
+          }
+        } else {
+          const assetId = `${evKey}_invite_bg`;
+          await fbSaveAssetDoc(assetId, compressed, idToken);
+          ev.inviteBgUrl = `asset://${assetId}`;
+        }
       }
 
       // Compress and offload custom pdfTemplates bgUrl
@@ -473,9 +1231,19 @@ const optimizeConfigForSave = async (content, idToken) => {
           const tplKey = (tpl.id || `tpl_${j}`).replace(/[^a-zA-Z0-9_-]/g, '_');
           if (tpl.bgUrl && tpl.bgUrl.startsWith('data:image')) {
             const compressed = await compressBase64Image(tpl.bgUrl, 900, 0.60);
-            const assetId = `${evKey}_${tplKey}_bg`;
-            await fbSaveAssetDoc(assetId, compressed, idToken);
-            tpl.bgUrl = `asset://${assetId}`;
+            if (eventsMediaProvider === "gdrive" && cfg.gdriveScriptUrl) {
+              try {
+                tpl.bgUrl = await uploadFileToGoogleDrive(compressed, "events", `${evKey}_${tplKey}_bg.jpg`);
+              } catch (e) {
+                const assetId = `${evKey}_${tplKey}_bg`;
+                await fbSaveAssetDoc(assetId, compressed, idToken);
+                tpl.bgUrl = `asset://${assetId}`;
+              }
+            } else {
+              const assetId = `${evKey}_${tplKey}_bg`;
+              await fbSaveAssetDoc(assetId, compressed, idToken);
+              tpl.bgUrl = `asset://${assetId}`;
+            }
           }
         }
       }
@@ -552,8 +1320,7 @@ const generateNextTxnId = async (idToken, preferredPrefix = null, targetEventId 
   }
 };
 
-const fbFetchContacts = async (idToken) => {
-  const projectId = getFB().projectId;
+const fbFetchContacts = async (idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
 
@@ -562,10 +1329,10 @@ const fbFetchContacts = async (idToken) => {
   let hasMore = true;
 
   while (hasMore) {
-    let url = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/contacts?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
-    let res = await fetch(url, { headers });
+    let relUrl = `contacts?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    let res = await storageDbFetch(relUrl, { headers }, forceProvider);
     if (res.status === 401 && idToken) {
-      res = await fetch(url);
+      res = await storageDbFetch(relUrl, {}, forceProvider);
     }
     if (!res.ok) {
       if (allDocs.length > 0) {
@@ -593,12 +1360,11 @@ const fbFetchContacts = async (idToken) => {
   });
 };
 
-const fbSubmitContact = async (contactData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/contacts`;
+const fbSubmitContact = async (contactData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
 
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch("contacts", {
     method: "POST",
     headers: headers,
     body: JSON.stringify({
@@ -607,7 +1373,7 @@ const fbSubmitContact = async (contactData, idToken) => {
         submittedAt: { timestampValue: new Date().toISOString() }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) {
     const e = await res.json();
     throw new Error(e?.error?.message || "Submission failed");
@@ -615,11 +1381,10 @@ const fbSubmitContact = async (contactData, idToken) => {
   return true;
 };
 
-const fbUpdateContact = async (docId, newData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/contacts/${docId}?updateMask.fieldPaths=data`;
+const fbUpdateContact = async (docId, newData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch(`contacts/${docId}?updateMask.fieldPaths=data`, {
     method: "PATCH",
     headers: headers,
     body: JSON.stringify({
@@ -627,22 +1392,20 @@ const fbUpdateContact = async (docId, newData, idToken) => {
         data: { stringValue: JSON.stringify(newData) }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Update failed");
   return true;
 };
 
-const fbDeleteContact = async (docId, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/contacts/${docId}`;
+const fbDeleteContact = async (docId, idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, { method: "DELETE", headers });
+  const res = await storageDbFetch(`contacts/${docId}`, { method: "DELETE", headers }, forceProvider);
   if (!res.ok) throw new Error("Delete failed");
   return true;
 };
 
-const fbSubmitRegistration = async (registrationData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/registrations`;
+const fbSubmitRegistration = async (registrationData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
   
@@ -660,7 +1423,7 @@ const fbSubmitRegistration = async (registrationData, idToken) => {
     ...registrationData 
   };
 
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch("registrations", {
     method: "POST",
     headers: headers,
     body: JSON.stringify({
@@ -669,7 +1432,7 @@ const fbSubmitRegistration = async (registrationData, idToken) => {
         submittedAt: { timestampValue: new Date().toISOString() }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) {
     const e = await res.json();
     throw new Error(e?.error?.message || "Submission failed");
@@ -677,11 +1440,10 @@ const fbSubmitRegistration = async (registrationData, idToken) => {
   return true;
 };
 
-const fbUpdateRegistration = async (docId, newData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/registrations/${docId}?updateMask.fieldPaths=data`;
+const fbUpdateRegistration = async (docId, newData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch(`registrations/${docId}?updateMask.fieldPaths=data`, {
     method: "PATCH",
     headers: headers,
     body: JSON.stringify({
@@ -689,13 +1451,12 @@ const fbUpdateRegistration = async (docId, newData, idToken) => {
         data: { stringValue: JSON.stringify(newData) }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Update failed");
   return true;
 };
 
-const fbRestoreDocument = async (collection, docId, data, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/${collection}/${docId}`;
+const fbRestoreDocument = async (collection, docId, data, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
   
@@ -703,37 +1464,34 @@ const fbRestoreDocument = async (collection, docId, data, idToken) => {
   const bodyData = {
     fields: {
       data: { stringValue: JSON.stringify(data) },
-      // Optional: Restore original timestamp if it exists, otherwise use current
       submittedAt: { timestampValue: data._submittedAt || new Date().toISOString() }
     }
   };
 
-  const res = await fetch(REG_URL, {
-    method: "PATCH", // PATCH creates the document if it doesn't exist
+  const res = await storageDbFetch(`${collection}/${docId}`, {
+    method: "PATCH",
     headers: headers,
     body: JSON.stringify(bodyData)
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error(`Restore failed for ${collection}/${docId}`);
   return true;
 };
 
-const fbDeleteRegistration = async (docId, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/registrations/${docId}`;
+const fbDeleteRegistration = async (docId, idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch(`registrations/${docId}`, {
     method: "DELETE",
     headers: headers
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Delete failed");
   return true;
 };
 
-const fbUpdateDonation = async (docId, newData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/donations/${docId}?updateMask.fieldPaths=data`;
+const fbUpdateDonation = async (docId, newData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch(`donations/${docId}?updateMask.fieldPaths=data`, {
     method: "PATCH",
     headers: headers,
     body: JSON.stringify({
@@ -741,13 +1499,12 @@ const fbUpdateDonation = async (docId, newData, idToken) => {
         data: { stringValue: JSON.stringify(newData) }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Update failed");
   return true;
 };
 
-const fbFetchRegistrations = async (idToken) => {
-  const projectId = getFB().projectId;
+const fbFetchRegistrations = async (idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
 
@@ -756,10 +1513,10 @@ const fbFetchRegistrations = async (idToken) => {
   let hasMore = true;
 
   while (hasMore) {
-    let url = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/registrations?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
-    let res = await fetch(url, { headers });
+    let relUrl = `registrations?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    let res = await storageDbFetch(relUrl, { headers }, forceProvider);
     if (res.status === 401 && idToken) {
-      res = await fetch(url);
+      res = await storageDbFetch(relUrl, {}, forceProvider);
     }
     if (!res.ok) {
       if (allDocs.length > 0) {
@@ -807,16 +1564,15 @@ const fbFetchRegistrations = async (idToken) => {
   return list;
 };
 
-const fbDeleteDonation = async (docId, idToken) => {
+const fbDeleteDonation = async (docId, idToken, forceProvider = null) => {
   if (!docId) throw new Error("Missing document ID");
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/donations/${docId}`;
   const headers = {};
   const token = idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch(`donations/${docId}`, {
     method: "DELETE",
     headers
-  });
+  }, forceProvider);
   if (!res.ok && res.status !== 404) {
     const err = await res.text();
     throw new Error(`Failed to delete donation (${res.status}): ${err}`);
@@ -829,12 +1585,11 @@ const fbDeleteDonation = async (docId, idToken) => {
   return true;
 };
 
-const fbSubmitDonation = async (donationData, idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/donations`;
+const fbSubmitDonation = async (donationData, idToken, forceProvider = null) => {
   const headers = { "Content-Type": "application/json" };
   const token = idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(REG_URL, {
+  const res = await storageDbFetch("donations", {
     method: "POST",
     headers: headers,
     body: JSON.stringify({
@@ -843,7 +1598,7 @@ const fbSubmitDonation = async (donationData, idToken) => {
         submittedAt: { timestampValue: new Date().toISOString() }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Donation save failed (${res.status}): ${errText}`);
@@ -856,9 +1611,8 @@ const fbSubmitDonation = async (donationData, idToken) => {
   return true;
 };
 
-const fbSubmitVolunteer = async (vData) => {
-  const URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/volunteers`;
-  const res = await fetch(URL, {
+const fbSubmitVolunteer = async (vData, forceProvider = null) => {
+  const res = await storageDbFetch("volunteers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -867,16 +1621,15 @@ const fbSubmitVolunteer = async (vData) => {
         submittedAt: { timestampValue: new Date().toISOString() }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Volunteer submission failed");
   return true;
 };
 
-const fbFetchVolunteers = async (idToken) => {
-  const URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/volunteers?pageSize=300`;
+const fbFetchVolunteers = async (idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  const res = await fetch(URL, { headers });
+  const res = await storageDbFetch("volunteers?pageSize=300", { headers }, forceProvider);
   if (!res.ok) throw new Error("Failed to fetch volunteers");
   const data = await res.json();
   if (!data.documents) return [];
@@ -888,10 +1641,9 @@ const fbFetchVolunteers = async (idToken) => {
   }).filter(Boolean);
 };
 
-const fbUpdateVolunteer = async (docId, vData, idToken) => {
+const fbUpdateVolunteer = async (docId, vData, idToken, forceProvider = null) => {
   if (!docId) throw new Error("Missing document ID");
-  const URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/volunteers/${docId}`;
-  const res = await fetch(URL, {
+  const res = await storageDbFetch(`volunteers/${docId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -903,18 +1655,17 @@ const fbUpdateVolunteer = async (docId, vData, idToken) => {
         submittedAt: { timestampValue: vData._submittedAt || new Date().toISOString() }
       }
     })
-  });
+  }, forceProvider);
   if (!res.ok) throw new Error("Volunteer update failed");
   return true;
 };
 
-const fbFetchDonations = async (idToken) => {
-  const REG_URL = `${import.meta.env.VITE_API_BASE_URL || '/api.php'}/donations?pageSize=300`;
+const fbFetchDonations = async (idToken, forceProvider = null) => {
   const headers = {};
   if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-  let res = await fetch(REG_URL, { headers });
+  let res = await storageDbFetch("donations?pageSize=300", { headers }, forceProvider);
   if (res.status === 401 && idToken) {
-    res = await fetch(REG_URL);
+    res = await storageDbFetch("donations?pageSize=300", {}, forceProvider);
   }
   if (!res.ok) throw new Error("Failed to fetch donations");
   const data = await res.json();
@@ -1001,33 +1752,12 @@ const fbFetchAllUsers = async (idToken) => {
   });
 };
 
-const fbUploadLogo = async (file, idToken) => {
-  const ext  = file.name.split(".").pop();
-  const name = encodeURIComponent(`logos/logo_${Date.now()}.${ext}`);
-  const res  = await fetch(`${STG_URL()}?uploadType=media&name=${name}`, {
-    method: "POST",
-    headers: { "Content-Type": file.type, "Authorization": `Bearer ${idToken}` },
-    body: file,
-  });
-  if (!res.ok) throw new Error("Upload failed");
-  const data = await res.json();
-  return `${STG_URL()}/${name}?alt=media&token=${data.downloadTokens}`;
+const fbUploadLogo = async (file, idToken, sectionKey = "branding") => {
+  return await uploadMediaBySection(file, idToken, sectionKey, file?.name || `logo_${Date.now()}.png`);
 };
 
-const fbUploadPhoto = async (file, idToken) => {
-  const ext  = file.name.split(".").pop();
-  const name = encodeURIComponent(`gallery/photo_${Date.now()}.${ext}`);
-  const res  = await fetch(`${STG_URL()}?uploadType=media&name=${name}`, {
-    method: "POST",
-    headers: { "Content-Type": file.type, "Authorization": `Bearer ${idToken}` },
-    body: file,
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Upload failed (${res.status}): ${errText}`);
-  }
-  const data = await res.json();
-  return `${STG_URL()}/${name}?alt=media&token=${data.downloadTokens}`;
+const fbUploadPhoto = async (file, idToken, sectionKey = "gallery") => {
+  return await uploadMediaBySection(file, idToken, sectionKey, file?.name || `photo_${Date.now()}.jpg`);
 };
 
 const cleanFormInstructions = (rawStr) => {
@@ -1049,33 +1779,10 @@ const cleanFormInstructions = (rawStr) => {
   return str.replace(/&nbsp;/g, " ");
 };
 
-const fbUploadPublicFile = async (file, idToken) => {
-  const ext = file.name.split(".").pop().toLowerCase();
-  const name = encodeURIComponent(`public_uploads/file_${Date.now()}_${Math.random().toString(36).substr(2,5)}.${ext}`);
-  
-  let cType = file.type;
-  if (!cType) {
-    if (ext === 'pdf') cType = 'application/pdf';
-    else if (ext === 'png') cType = 'image/png';
-    else if (ext === 'jpg' || ext === 'jpeg') cType = 'image/jpeg';
-    else cType = 'application/octet-stream';
-  }
-
-  const headers = { "Content-Type": cType };
-  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-
-  const res = await fetch(`${STG_URL()}?uploadType=media&name=${name}`, {
-    method: "POST",
-    headers: headers,
-    body: file,
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Upload failed (${res.status}): ${errText}`);
-  }
-  const data = await res.json();
-  return `${STG_URL()}/${name}?alt=media&token=${data.downloadTokens}`;
+const fbUploadPublicFile = async (file, idToken, sectionKey = "registrations") => {
+  return await uploadMediaBySection(file, idToken, sectionKey, file?.name || `file_${Date.now()}.pdf`);
 };
+
 
 
 
@@ -4523,97 +5230,310 @@ function Team({ C, lang }) {
 
 
 function Gallery({ C }) {
-  const [active, setActive] = useState("All"); 
+  const [mediaFilter, setMediaFilter] = useState("all"); // "all" | "photos" | "videos"
+  const [active, setActive] = useState("All");
   const [selectedImage, setSelectedImage] = useState(null);
   const w = useW();
   const items = C.galleryItems || [];
-  const cats = ["All", ...new Set(items.map(g=>g.category).filter(Boolean))];
-  const filtered = active==="All" ? items : items.filter(g=>g.category===active);
+
+  const isVideoItem = (g) => g?.type === "youtube" || g?.type === "video" || !!extractYouTubeVideoId(g?.url);
+
+  const photoCount = items.filter(g => !isVideoItem(g)).length;
+  const videoCount = items.filter(g => isVideoItem(g)).length;
+
+  const byMediaType = items.filter(g => {
+    if (mediaFilter === "photos") return !isVideoItem(g);
+    if (mediaFilter === "videos") return isVideoItem(g);
+    return true;
+  });
+
+  const cats = ["All", ...new Set(byMediaType.map(g => g.category).filter(Boolean))];
+  const filtered = active === "All" ? byMediaType : byMediaType.filter(g => g.category === active);
 
   const navigate = (dir) => {
-    if(!selectedImage) return;
-    const idx = filtered.findIndex(g=>g.id===selectedImage.id);
-    if(idx === -1) return;
+    if (!selectedImage || filtered.length === 0) return;
+    const idx = filtered.findIndex(g => g.id === selectedImage.id);
+    if (idx === -1) return;
     const nextIdx = (idx + dir + filtered.length) % filtered.length;
     setSelectedImage(filtered[nextIdx]);
   };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if(!selectedImage) return;
-      if(e.key === "ArrowLeft") navigate(-1);
-      if(e.key === "ArrowRight") navigate(1);
-      if(e.key === "Escape") setSelectedImage(null);
+      if (!selectedImage) return;
+      if (e.key === "ArrowLeft") navigate(-1);
+      if (e.key === "ArrowRight") navigate(1);
+      if (e.key === "Escape") setSelectedImage(null);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedImage, filtered]);
 
   useEffect(() => {
-    if(!selectedImage) return;
-    const idx = filtered.findIndex(g=>g.id===selectedImage.id);
-    if(idx === -1) return;
+    if (!selectedImage || filtered.length === 0) return;
+    const idx = filtered.findIndex(g => g.id === selectedImage.id);
+    if (idx === -1) return;
     const nextIdx = (idx + 1) % filtered.length;
     const prevIdx = (idx - 1 + filtered.length) % filtered.length;
-    const img1 = new Image(); img1.src = filtered[nextIdx].url;
-    const img2 = new Image(); img2.src = filtered[prevIdx].url;
+    const preloadOne = (item) => {
+      if (!item) return;
+      const ytId = extractYouTubeVideoId(item.url);
+      const src = ytId ? (item.thumbnail || getYouTubeThumbnailUrl(ytId)) : normalizeGoogleDriveImageUrls(item.url);
+      if (src && item.type !== "video") {
+        const img = new Image();
+        img.src = src;
+      }
+    };
+    preloadOne(filtered[nextIdx]);
+    preloadOne(filtered[prevIdx]);
   }, [selectedImage, filtered]);
 
   return (
     <>
     <section id="gallery" style={{padding:w<640?"16px 16px":"20px 32px",background:"var(--cr)"}}>
-      <div style={{maxWidth:1200,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:36}}>
+      <div style={{maxWidth:1320,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
           <span style={{color:"var(--sf)",fontWeight:600,fontSize:".8rem",letterSpacing:2,textTransform:"uppercase"}}>Our Work</span>
-          <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:w<640?"1.6rem":"2rem",color:"var(--dt)",marginTop:8,fontWeight:700}} className="sh">Gallery</h2>
+          <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:w<640?"1.6rem":"2rem",color:"var(--dt)",marginTop:8,fontWeight:700}} className="sh">Photo & Video Gallery</h2>
         </div>
-        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"wrap",marginBottom:28}}>
-          {cats.map(c=><button key={c} onClick={()=>setActive(c)} style={{padding:"7px 14px",borderRadius:20,fontSize:".78rem",fontWeight:600,cursor:"pointer",background:active===c?"var(--dt)":"white",color:active===c?"white":"var(--tm2)",border:`1px solid ${active===c?"var(--dt)":"var(--bd)"}`,touchAction:"manipulation"}}>{c}</button>)}
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:w<640?"1fr 1fr":"repeat(3,1fr)",gap:12}}>
-          {filtered.length === 0 && <div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"var(--mu)"}}>No photos uploaded yet.</div>}
-          {filtered.map(g=>(
-            <div key={g.id} onClick={()=>setSelectedImage(g)} className="gi ch" style={{aspectRatio:"4/3",background:"#eee",backgroundImage:g.type==='video'?'none':`url(${g.url})`,backgroundSize:"cover",backgroundPosition:"center",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",position:"relative",borderRadius:12,overflow:"hidden",cursor:"pointer",touchAction:"manipulation"}}>
-              {g.type === 'video' && <video src={g.url} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}} muted playsInline preload="metadata" />}
-              {g.type === 'video' && <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.3)",zIndex:1}}><span style={{fontSize:"3rem",color:"white"}}>▶</span></div>}
-              <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.7),transparent)",padding:"24px 12px 10px",color:"white",pointerEvents:"none",zIndex:2}}>
-                <div style={{fontSize:".85rem",fontWeight:600}}>{g.title}</div>
-                <div style={{fontSize:".7rem",opacity:.9}}>{g.category}</div>
-              </div>
-            </div>
+
+        {/* Media Type Tabs: All / Photo Gallery / Video Gallery */}
+        <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginBottom:16}}>
+          {[
+            { id: "all", label: `All Media (${items.length})` },
+            { id: "photos", label: `📷 Photo Gallery (${photoCount})` },
+            { id: "videos", label: `▶️ Video Gallery (${videoCount})` }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => { setMediaFilter(tab.id); setActive("All"); }}
+              style={{
+                padding: "8px 18px",
+                borderRadius: 24,
+                fontSize: ".82rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                background: mediaFilter === tab.id ? "var(--sf)" : "white",
+                color: mediaFilter === tab.id ? "white" : "var(--dt)",
+                border: `1.5px solid ${mediaFilter === tab.id ? "var(--sf)" : "var(--bd)"}`,
+                boxShadow: mediaFilter === tab.id ? "0 4px 12px rgba(232,101,10,.25)" : "none",
+                transition: "all .2s",
+                touchAction: "manipulation"
+              }}
+            >
+              {tab.label}
+            </button>
           ))}
+        </div>
+
+        {/* Category Filter Pills */}
+        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"wrap",marginBottom:24}}>
+          {cats.map(c => (
+            <button
+              key={c}
+              onClick={() => setActive(c)}
+              style={{
+                padding:"7px 14px",
+                borderRadius:20,
+                fontSize:".78rem",
+                fontWeight:600,
+                cursor:"pointer",
+                background:active===c?"var(--dt)":"white",
+                color:active===c?"white":"var(--tm2)",
+                border:`1px solid ${active===c?"var(--dt)":"var(--bd)"}`,
+                touchAction:"manipulation"
+              }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {/* ── 5 TO 6 CARDS PER ROW PUBLIC GRID ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: w < 480
+            ? "repeat(2, 1fr)"
+            : "repeat(auto-fill, minmax(185px, 1fr))",
+          gap: 12
+        }}>
+          {filtered.length === 0 && (
+            <div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"var(--mu)"}}>
+              {mediaFilter === "videos" ? "No videos added to the Video Gallery yet." : "No gallery items uploaded yet."}
+            </div>
+          )}
+          {filtered.map(g => {
+            const ytId = extractYouTubeVideoId(g.url);
+            const isYouTube = g.type === "youtube" || !!ytId;
+            const safeUrl = isYouTube ? g.url : normalizeGoogleDriveImageUrls(g.url);
+            const thumbUrl = isYouTube
+              ? (g.thumbnail || getYouTubeThumbnailUrl(ytId || g.url))
+              : safeUrl;
+
+            return (
+              <div
+                key={g.id}
+                onClick={() => setSelectedImage({ ...g, url: safeUrl, _ytId: ytId, _isYouTube: isYouTube, _thumbUrl: thumbUrl })}
+                className="gi ch"
+                style={{
+                  aspectRatio: "4/3",
+                  background: "#111",
+                  backgroundImage: g.type === "video" && !isYouTube ? "none" : `url("${thumbUrl}")`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  position: "relative",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  touchAction: "manipulation",
+                  boxShadow: "0 4px 14px rgba(0,0,0,0.08)"
+                }}
+              >
+                {g.type === "video" && !isYouTube && (
+                  <video src={safeUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0}} muted playsInline preload="metadata" />
+                )}
+
+                {/* Top Category & Media Badge */}
+                <div style={{position:"absolute",top:8,left:8,right:8,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:2,pointerEvents:"none"}}>
+                  {g.category ? (
+                    <span style={{background:"rgba(13,75,94,0.88)",color:"white",padding:"2px 8px",borderRadius:20,fontSize:".62rem",fontWeight:700,backdropFilter:"blur(4px)"}}>
+                      {g.category}
+                    </span>
+                  ) : <span />}
+                  {isYouTube && (
+                    <span style={{background:"#FF0000",color:"white",padding:"2px 7px",borderRadius:6,fontSize:".62rem",fontWeight:800,letterSpacing:.3,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>
+                      ▶ YouTube
+                    </span>
+                  )}
+                </div>
+
+                {/* Play Button Overlay for YouTube or Uploaded Video */}
+                {(isYouTube || g.type === "video") && (
+                  <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.28)",zIndex:1}}>
+                    <div style={{
+                      width: w < 640 ? 38 : 46,
+                      height: w < 640 ? 28 : 34,
+                      borderRadius: 10,
+                      background: isYouTube ? "rgba(255, 0, 0, 0.92)" : "rgba(0, 0, 0, 0.72)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0 4px 14px rgba(0,0,0,0.45)",
+                      border: "2px solid rgba(255,255,255,0.85)"
+                    }}>
+                      <span style={{fontSize: w < 640 ? "1rem" : "1.2rem", color: "white", marginLeft: 2}}>▶</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bottom Title & Information Overlay */}
+                <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.45) 65%,transparent 100%)",padding:"22px 10px 8px",color:"white",pointerEvents:"none",zIndex:2}}>
+                  <div style={{fontSize:".76rem",fontWeight:700,lineHeight:1.25,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{g.title}</div>
+                  {g.description && (
+                    <div style={{fontSize:".66rem",opacity:.92,marginTop:2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",lineHeight:1.3}}>
+                      {g.description}
+                    </div>
+                  )}
+                  {g.date && (
+                    <div style={{fontSize:".6rem",opacity:.8,marginTop:2}}>📅 {g.date}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
 
     {selectedImage && (
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:1000,backdropFilter:"blur(4px)"}}
-        onClick={()=>setSelectedImage(null)}>
-        
-        <button onClick={(e)=>{e.stopPropagation(); navigate(-1);}}
-          style={{position:"absolute",left:w<640?10:20,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",color:"white",fontSize:"1.5rem",cursor:"pointer",padding:w<640?"8px 12px":"12px 18px",borderRadius:8,zIndex:1001,backdropFilter:"blur(4px)",touchAction:"manipulation"}}>
+      <div
+        style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center",padding:w<640?12:24,zIndex:1000,backdropFilter:"blur(5px)"}}
+        onClick={() => setSelectedImage(null)}
+      >
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(-1); }}
+          style={{position:"absolute",left:w<640?8:20,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.25)",color:"white",fontSize:"1.5rem",cursor:"pointer",padding:w<640?"8px 12px":"12px 18px",borderRadius:8,zIndex:1001,backdropFilter:"blur(4px)",touchAction:"manipulation"}}
+        >
           &#10094;
         </button>
 
-        <button onClick={(e)=>{e.stopPropagation(); navigate(1);}}
-          style={{position:"absolute",right:w<640?10:20,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",color:"white",fontSize:"1.5rem",cursor:"pointer",padding:w<640?"8px 12px":"12px 18px",borderRadius:8,zIndex:1001,backdropFilter:"blur(4px)",touchAction:"manipulation"}}>
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(1); }}
+          style={{position:"absolute",right:w<640?8:20,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.25)",color:"white",fontSize:"1.5rem",cursor:"pointer",padding:w<640?"8px 12px":"12px 18px",borderRadius:8,zIndex:1001,backdropFilter:"blur(4px)",touchAction:"manipulation"}}
+        >
           &#10095;
         </button>
 
-        <div style={{position:"relative",maxWidth:"100%",maxHeight:"100%",display:"flex",flexDirection:"column",alignItems:"center"}}
-          onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>setSelectedImage(null)}
-            style={{position:"absolute",top:-40,right:0,background:"none",border:"none",color:"white",fontSize:"2rem",cursor:"pointer",lineHeight:1,touchAction:"manipulation"}}>
+        <div
+          style={{position:"relative",width:"100%",maxWidth:selectedImage._isYouTube || extractYouTubeVideoId(selectedImage.url) ? 900 : "90vw",maxHeight:"90vh",display:"flex",flexDirection:"column",alignItems:"center"}}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setSelectedImage(null)}
+            style={{position:"absolute",top:-38,right:0,background:"none",border:"none",color:"white",fontSize:"2rem",cursor:"pointer",lineHeight:1,touchAction:"manipulation"}}
+          >
             &times;
           </button>
-          {selectedImage.type === 'video' ? (
-            <video key={selectedImage.url} src={selectedImage.url} controls autoPlay style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",borderRadius:8,boxShadow:"0 16px 40px rgba(0,0,0,.5)"}} />
+
+          {(selectedImage.type === "youtube" || extractYouTubeVideoId(selectedImage.url)) ? (
+            <div style={{width:"100%",aspectRatio:"16/9",background:"#000",borderRadius:12,overflow:"hidden",boxShadow:"0 16px 40px rgba(0,0,0,.6)"}}>
+              <iframe
+                key={selectedImage.url}
+                src={getYouTubeEmbedUrl(selectedImage.url)}
+                title={selectedImage.title || "YouTube Video"}
+                style={{width:"100%",height:"100%",border:"none"}}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          ) : selectedImage.type === "video" ? (
+            <video
+              key={selectedImage.url}
+              src={normalizeGoogleDriveImageUrls(selectedImage.url)}
+              controls
+              autoPlay
+              style={{maxWidth:"100%",maxHeight:"75vh",objectFit:"contain",borderRadius:8,boxShadow:"0 16px 40px rgba(0,0,0,.5)"}}
+            />
           ) : (
-            <img key={selectedImage.url} src={selectedImage.url} alt={selectedImage.title} style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",borderRadius:8,boxShadow:"0 16px 40px rgba(0,0,0,.5)"}} />
+            <img
+              key={selectedImage.url}
+              src={normalizeGoogleDriveImageUrls(selectedImage.url)}
+              alt={selectedImage.title}
+              style={{maxWidth:"100%",maxHeight:"75vh",objectFit:"contain",borderRadius:8,boxShadow:"0 16px 40px rgba(0,0,0,.5)"}}
+            />
           )}
-          <div style={{marginTop:16,color:"white",textAlign:"center"}}>
-            <div style={{fontSize:"1.2rem",fontWeight:600}}>{selectedImage.title}</div>
-            <div style={{fontSize:".9rem",opacity:.8,marginTop:4}}>{selectedImage.category}</div>
+
+          <div style={{marginTop:16,color:"white",textAlign:"center",maxWidth:720,padding:"0 12px"}}>
+            <div style={{fontSize:"1.2rem",fontWeight:700}}>{selectedImage.title}</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",alignItems:"center",flexWrap:"wrap",marginTop:6}}>
+              {selectedImage.category && (
+                <span style={{background:"rgba(255,255,255,0.16)",padding:"3px 12px",borderRadius:20,fontSize:".8rem",fontWeight:600}}>
+                  🏷️ {selectedImage.category}
+                </span>
+              )}
+              {selectedImage.date && (
+                <span style={{fontSize:".8rem",opacity:.85}}>📅 {selectedImage.date}</span>
+              )}
+              {(selectedImage.type === "youtube" || extractYouTubeVideoId(selectedImage.url)) && (
+                <a
+                  href={`https://www.youtube.com/watch?v=${extractYouTubeVideoId(selectedImage.url)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{color:"#FF6B6B",fontSize:".8rem",fontWeight:700,textDecoration:"none"}}
+                >
+                  ▶ Watch on YouTube ↗
+                </a>
+              )}
+            </div>
+            {selectedImage.description && (
+              <div style={{fontSize:".92rem",opacity:.9,marginTop:8,lineHeight:1.5}}>
+                {selectedImage.description}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -6143,7 +7063,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
     if (!auth?.idToken) { showToast("error","Please login to upload images."); return; }
     setUploading(true);
     try {
-      const url = await fbUploadPhoto(file, auth.idToken);
+      const url = await fbUploadPhoto(file, auth.idToken, "branding");
       upd("hero.topBanner", url);
       showToast("saved","Top banner uploaded successfully!");
     } catch(e) {
@@ -6157,7 +7077,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
     if (!auth?.idToken) { showToast("error","Please login to upload images."); return; }
     setUploading(true);
     try {
-      const url = await fbUploadPhoto(file, auth.idToken);
+      const url = await fbUploadPhoto(file, auth.idToken, "branding");
       upd("hero.image", url);
       showToast("saved","Hero image uploaded successfully!");
     } catch(e) {
@@ -7648,6 +8568,7 @@ const ANAV = [
   {id:"team",icon:"👥",label:"Our Team"},
   {id:"medialibrary",icon:"📁",label:"Media Library"},
   {id:"achievements",icon:"🏆",label:"Achievements"},
+  {id:"storagerouting",icon:"☁️",label:"Storage Routing"},
   {id:"settings",icon:"⚙️",label:"Settings"},
   {id:"chatbotaccess",icon:"🤖",label:"Chatbot Admins"},
   {id:"whatsappadmin",icon:"📱",label:"WhatsApp Admin"},
@@ -8389,11 +9310,21 @@ function AdminMediaLibrary({ mob, C, setC, auth }) {
         const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]+/g, ' ');
         const itemCategory = (activeCat && activeCat !== "all") ? activeCat : (w / h > 1.2 || h / w > 1.2 ? "letterhead" : "team_profile");
 
+        let finalAssetUrl = compressed;
+        const stgCfg = getStorageConfig(C);
+        if (stgCfg.sections?.medialibrary?.mediaProvider === "gdrive" && stgCfg.gdriveScriptUrl) {
+          try {
+            finalAssetUrl = await uploadFileToGoogleDrive(compressed, "medialibrary", `${cleanName || assetId}.jpg`);
+          } catch (gdErr) {
+            console.warn("MediaLibrary Google Drive upload fallback to inline compressed:", gdErr);
+          }
+        }
+
         const assetDoc = {
           id: assetId,
           name: cleanName,
           category: itemCategory,
-          url: compressed,
+          url: finalAssetUrl,
           dimensions: { width: w, height: h },
           fileSize: `${Math.round(compressed.length * 0.75 / 1024)} KB`,
           createdAt: new Date().toISOString(),
@@ -8401,10 +9332,10 @@ function AdminMediaLibrary({ mob, C, setC, auth }) {
         };
 
         newItems.unshift(assetDoc);
-        if (typeof assetCache !== 'undefined') assetCache[assetId] = compressed;
+        if (typeof assetCache !== 'undefined') assetCache[assetId] = finalAssetUrl;
         if (typeof window !== 'undefined') {
           window.__MMP_MEDIA_CACHE__ = window.__MMP_MEDIA_CACHE__ || {};
-          window.__MMP_MEDIA_CACHE__[assetId] = compressed;
+          window.__MMP_MEDIA_CACHE__[assetId] = finalAssetUrl;
         }
       }
 
@@ -8441,12 +9372,21 @@ function AdminMediaLibrary({ mob, C, setC, auth }) {
       });
 
       const compressed = await compressBase64Image(b64, 1600, 0.78);
+      let finalAssetUrl = compressed;
+      const stgCfg = getStorageConfig(C);
+      if (stgCfg.sections?.medialibrary?.mediaProvider === "gdrive" && stgCfg.gdriveScriptUrl) {
+        try {
+          finalAssetUrl = await uploadFileToGoogleDrive(compressed, "medialibrary", `${replacingAssetId}.jpg`);
+        } catch (gdErr) {
+          console.warn("MediaLibrary replace Google Drive fallback:", gdErr);
+        }
+      }
 
       const newItems = mediaItems.map(m => {
         if (m.id === replacingAssetId) {
           return {
             ...m,
-            url: compressed,
+            url: finalAssetUrl,
             dimensions: { width: w, height: h },
             fileSize: `${Math.round(compressed.length * 0.75 / 1024)} KB`,
             updatedAt: new Date().toISOString()
@@ -8455,10 +9395,10 @@ function AdminMediaLibrary({ mob, C, setC, auth }) {
         return m;
       });
 
-      if (typeof assetCache !== 'undefined') assetCache[replacingAssetId] = compressed;
+      if (typeof assetCache !== 'undefined') assetCache[replacingAssetId] = finalAssetUrl;
       if (typeof window !== 'undefined') {
         window.__MMP_MEDIA_CACHE__ = window.__MMP_MEDIA_CACHE__ || {};
-        window.__MMP_MEDIA_CACHE__[replacingAssetId] = compressed;
+        window.__MMP_MEDIA_CACHE__[replacingAssetId] = finalAssetUrl;
       }
 
       const updatedC = { ...C, mediaLibrary: newItems };
@@ -8778,6 +9718,1497 @@ function AdminMediaLibrary({ mob, C, setC, auth }) {
   );
 }
 
+const GOOGLE_DRIVE_APPS_SCRIPT_CODE = `/**
+ * GOOGLE DRIVE & JSON DATABASE CONNECTOR FOR COMMUNITY PORTAL
+ * Setup (Takes 1 minute):
+ * 1. Go to https://script.google.com/ and click "New Project"
+ * 2. Paste this entire code (replace existing code) and click Save (Ctrl+S)
+ * 3. Click "Deploy" -> "New deployment"
+ * 4. Select type: "Web app"
+ * 5. Set "Execute as": "Me"
+ * 6. Set "Who has access": "Anyone"
+ * 7. Click "Deploy", authorize access, and copy the Web App URL into the Storage Routing tab!
+ */
+
+var DEFAULT_ROOT_FOLDER_ID = "17UEo9AwUfDEiMN8P8fiOPC9f2EkQ4FT5";
+
+var DEFAULT_SUBFOLDERS = [
+  "Marksheets_Registrations",
+  "Photo_Gallery",
+  "Events_Certificates",
+  "Media_Library",
+  "Donations_Receipts",
+  "Achievements_Press",
+  "Our_Team",
+  "Volunteers_Directory",
+  "Site_Branding",
+  "Database_Collections"
+];
+
+// Click "▶ Run" with this function selected to authorize Drive access & create all 10 subfolders!
+function setupAndAuthorizeDrive() {
+  var root = getRootFolder(DEFAULT_ROOT_FOLDER_ID);
+  var created = [];
+  for (var i = 0; i < DEFAULT_SUBFOLDERS.length; i++) {
+    var sf = getSubFolder(root, DEFAULT_SUBFOLDERS[i]);
+    created.push(sf.getName());
+  }
+  Logger.log("✅ SUCCESS! Connected to Main Folder: " + root.getName() + " (" + root.getId() + ")");
+  Logger.log("📁 Subfolders ready (" + created.length + "): " + created.join(", "));
+}
+
+function extractFolderId(input) {
+  if (!input) return DEFAULT_ROOT_FOLDER_ID;
+  var s = String(input).trim();
+  if (!s) return DEFAULT_ROOT_FOLDER_ID;
+  if (s.indexOf("/folders/") !== -1) {
+    var afterFolders = s.split("/folders/")[1] || "";
+    return afterFolders.split("?")[0].split("&")[0].split("/")[0].trim() || DEFAULT_ROOT_FOLDER_ID;
+  }
+  var m2 = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2) return m2[1];
+  return s.split("?")[0].trim();
+}
+
+function getRootFolder(rootFolderId) {
+  var targetId = extractFolderId(rootFolderId);
+  if (targetId) {
+    try {
+      return DriveApp.getFolderById(targetId);
+    } catch (e) {}
+  }
+  var folders = DriveApp.getFoldersByName("Community_Portal_Storage");
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder("Community_Portal_Storage");
+}
+
+function getSubFolder(rootFolder, folderName) {
+  var clean = String(folderName || "General").trim();
+  var sub = rootFolder.getFoldersByName(clean);
+  if (sub.hasNext()) return sub.next();
+  return rootFolder.createFolder(clean);
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  return jsonOut({ success: true, message: "Community Portal Google Drive Storage Connector is active!" });
+}
+
+function doPost(e) {
+  try {
+    var payload = JSON.parse(e.postData.contents || "{}");
+    var action = payload.action || "uploadFile";
+    var root = getRootFolder(payload.rootFolderId);
+
+    if (action === "ping") {
+      var subFoldersToCreate = payload.subFolders || DEFAULT_SUBFOLDERS;
+      var ensuredFolders = [];
+      for (var i = 0; i < subFoldersToCreate.length; i++) {
+        var sf = getSubFolder(root, subFoldersToCreate[i]);
+        ensuredFolders.push(sf.getName());
+      }
+      return jsonOut({
+        success: true,
+        folderName: root.getName(),
+        folderId: root.getId(),
+        folderUrl: root.getUrl(),
+        subFolders: ensuredFolders
+      });
+    }
+
+    if (action === "uploadFile") {
+      var folder = getSubFolder(root, payload.folderName || "Uploads");
+      var bytes = Utilities.base64Decode(payload.base64Data);
+      var blob = Utilities.newBlob(bytes, payload.mimeType || "application/octet-stream", payload.fileName || ("file_" + Date.now()));
+      var file = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      var fId = file.getId();
+      return jsonOut({
+        success: true,
+        fileId: fId,
+        fileName: file.getName(),
+        viewUrl: "https://drive.google.com/thumbnail?id=" + fId + "&sz=w1600",
+        previewUrl: "https://drive.google.com/file/d/" + fId + "/preview",
+        downloadUrl: "https://drive.google.com/uc?export=download&id=" + fId
+      });
+    }
+
+    if (action === "getFileBase64") {
+      var targetFile = DriveApp.getFileById(payload.fileId);
+      var fBlob = targetFile.getBlob();
+      return jsonOut({
+        success: true,
+        fileName: targetFile.getName(),
+        mimeType: fBlob.getContentType(),
+        base64Data: Utilities.base64Encode(fBlob.getBytes())
+      });
+    }
+
+    if (action === "deleteFile") {
+      var delFile = DriveApp.getFileById(payload.fileId);
+      delFile.setTrashed(true);
+      return jsonOut({ success: true, trashedFileId: payload.fileId });
+    }
+
+    if (action === "cleanFolder") {
+      var cFolder = getSubFolder(root, payload.folderName || "Uploads");
+      var keepIds = payload.keepFileIds || [];
+      var fIter = cFolder.getFiles();
+      var trashed = [];
+      while (fIter.hasNext()) {
+        var f = fIter.next();
+        if (keepIds.indexOf(f.getId()) === -1) {
+          f.setTrashed(true);
+          trashed.push(f.getName());
+        }
+      }
+      return jsonOut({ success: true, trashedCount: trashed.length, trashedFiles: trashed });
+    }
+
+    if (action === "dbRequest") {
+      var dbFolder = getSubFolder(root, "Database_Collections");
+      var colName = String(payload.collection || "registrations").replace(/[^a-zA-Z0-9_-]/g, "");
+      var dbFileName = colName + "_db.json";
+      var files = dbFolder.getFilesByName(dbFileName);
+      var dbFile = null;
+      var store = {};
+      if (files.hasNext()) {
+        dbFile = files.next();
+        try {
+          store = JSON.parse(dbFile.getBlob().getDataAsString() || "{}");
+        } catch (err) { store = {}; }
+      }
+      var method = (payload.method || "GET").toUpperCase();
+      var docId = payload.docId || "";
+      var body = payload.body || {};
+
+      if (method === "GET") {
+        if (docId) {
+          if (!store[docId]) return jsonOut({ error: "NOT_FOUND" });
+          return jsonOut({
+            name: "projects/gdrive-db/databases/(default)/documents/" + colName + "/" + docId,
+            fields: store[docId].fields || {}
+          });
+        } else {
+          var docs = Object.keys(store).map(function(id) {
+            return {
+              name: "projects/gdrive-db/databases/(default)/documents/" + colName + "/" + id,
+              fields: store[id].fields || {}
+            };
+          });
+          return jsonOut({ documents: docs });
+        }
+      } else if (method === "POST" || method === "PATCH" || method === "PUT") {
+        var targetId = docId || ("gd_" + new Date().getTime() + "_" + Math.floor(Math.random() * 10000));
+        var existingFields = (store[targetId] && store[targetId].fields) ? store[targetId].fields : {};
+        var incomingFields = body.fields || {};
+        for (var k in incomingFields) {
+          existingFields[k] = incomingFields[k];
+        }
+        store[targetId] = { fields: existingFields, updatedAt: new Date().toISOString() };
+        var jsonStr = JSON.stringify(store);
+        if (dbFile) dbFile.setContent(jsonStr);
+        else dbFolder.createFile(dbFileName, jsonStr, MimeType.PLAIN_TEXT);
+        return jsonOut({
+          name: "projects/gdrive-db/databases/(default)/documents/" + colName + "/" + targetId,
+          fields: existingFields
+        });
+      } else if (method === "DELETE") {
+        if (docId && store[docId]) {
+          delete store[docId];
+          if (dbFile) dbFile.setContent(JSON.stringify(store));
+        }
+        return jsonOut({ success: true });
+      }
+    }
+
+    return jsonOut({ success: false, error: "Unknown action: " + action });
+  } catch (err) {
+    return jsonOut({ success: false, error: err.toString() });
+  }
+}`;
+
+function AdminStorageRouting({ mob, C, setC, auth }) {
+  const [cfg, setCfg] = useState(() => getStorageConfig(C));
+  const [saving, setSaving] = useState(false);
+  const [testingGDrive, setTestingGDrive] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [showScriptCode, setShowScriptCode] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [inspectSection, setInspectSection] = useState(null);
+
+  // Live inventory state
+  const [scanning, setScanning] = useState(false);
+  const [inventory, setInventory] = useState({});
+  const [cachedCollections, setCachedCollections] = useState({
+    registrations: [],
+    donations: [],
+    volunteers: [],
+    contacts: []
+  });
+
+  // Migration state
+  const [migratingKey, setMigratingKey] = useState(null);
+  const [migrationProgress, setMigrationProgress] = useState({ current: 0, total: 0, label: "" });
+  const [migrationLogs, setMigrationLogs] = useState([]);
+
+  useEffect(() => {
+    setCfg(getStorageConfig(C));
+  }, [C?.storageConfig]);
+
+  const addLog = (msg) => {
+    setMigrationLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 99)]);
+  };
+
+  const extractUrlsFromRegistration = (reg) => {
+    const urls = [];
+    if (!reg || typeof reg !== "object") return urls;
+    for (const [k, val] of Object.entries(reg)) {
+      if (k.startsWith("_") || ["id", "eventId", "eventName", "Status", "status", "Remarks", "remarks", "Transaction ID", "transactionId"].includes(k)) continue;
+      if (typeof val === "string" && (val.includes("http") || val.startsWith("data:image") || val.startsWith("data:application/pdf"))) {
+        const parts = val.split(",").map(s => s.trim()).filter(s => s.startsWith("http") || s.startsWith("data:"));
+        parts.forEach(u => urls.push({ key: k, url: u }));
+      }
+    }
+    return urls;
+  };
+
+  const scanInventory = async (overrideC = null) => {
+    const activeC = overrideC || C;
+    setScanning(true);
+    try {
+      const [regs, dons, vols, cons] = await Promise.all([
+        fbFetchRegistrations(auth?.idToken).catch(() => []),
+        fbFetchDonations(auth?.idToken).catch(() => []),
+        fbFetchVolunteers(auth?.idToken).catch(() => []),
+        fbFetchContacts(auth?.idToken).catch(() => [])
+      ]);
+      setCachedCollections({ registrations: regs, donations: dons, volunteers: vols, contacts: cons });
+
+      const countProviders = (itemList) => {
+        const counts = { hostinger: 0, gdrive: 0, inlineOrLegacy: 0, total: 0, files: [] };
+        itemList.forEach(entry => {
+          const u = typeof entry === "string" ? entry : entry?.url;
+          const label = typeof entry === "object" && entry?.label ? entry.label : "File";
+          if (!u) return;
+          const p = detectUrlStorageProvider(u);
+          if (p === "none") return;
+          counts.total++;
+          if (p === "gdrive") counts.gdrive++;
+          else if (p === "hostinger") counts.hostinger++;
+          else counts.inlineOrLegacy++;
+          counts.files.push({
+            label,
+            url: u,
+            provider: p === "gdrive" ? "gdrive" : "hostinger"
+          });
+        });
+        return counts;
+      };
+
+      // 1. Registrations files (Marksheets, Student Photos, Proofs)
+      const regUrls = [];
+      regs.forEach(r => {
+        const name = r["Full Name"] || r["Student Name"] || r["Name"] || r["Transaction ID"] || r.id || "Registration";
+        extractUrlsFromRegistration(r).forEach(x => regUrls.push({ label: `${name} (${x.key})`, url: x.url }));
+      });
+
+      // 2. Gallery photos (excluding external YouTube videos)
+      const galUrls = (activeC?.galleryItems || []).filter(g => g?.url && g?.type !== "youtube" && !extractYouTubeVideoId(g?.url)).map((g, i) => ({
+        label: g.title || `Photo #${i + 1}`,
+        url: g.url
+      }));
+
+      // 3. Events & Certificate backgrounds
+      const evUrls = [];
+      (activeC?.events || []).forEach(ev => {
+        const evName = ev.title || "Event";
+        if (ev.certBgUrl) evUrls.push({ label: `${evName} (Certificate BG)`, url: ev.certBgUrl });
+        if (ev.inviteBgUrl) evUrls.push({ label: `${evName} (Invite BG)`, url: ev.inviteBgUrl });
+        if (ev.bannerUrl) evUrls.push({ label: `${evName} (Banner)`, url: ev.bannerUrl });
+        (ev.pdfTemplates || []).forEach(tpl => {
+          if (tpl.bgUrl) evUrls.push({ label: `${evName} (${tpl.name || "Template"})`, url: tpl.bgUrl });
+        });
+      });
+
+      // 4. Media Library
+      const mediaUrls = (activeC?.mediaLibrary || []).filter(m => m?.url).map((m, i) => ({
+        label: m.name || `Media #${i + 1}`,
+        url: m.url
+      }));
+
+      // 5. Donations (receipts / screenshots)
+      const donUrls = [];
+      dons.forEach(d => {
+        const dName = d.name || d.donorName || d.id || "Donation";
+        if (d.receiptUrl) donUrls.push({ label: `${dName} (Receipt)`, url: d.receiptUrl });
+        if (d.screenshotUrl) donUrls.push({ label: `${dName} (Screenshot)`, url: d.screenshotUrl });
+        if (d.paymentProof) donUrls.push({ label: `${dName} (Proof)`, url: d.paymentProof });
+      });
+
+      // 6. Achievements
+      const achUrls = (activeC?.achievements || []).filter(a => a?.image).map((a, i) => ({
+        label: a.title || `Achievement #${i + 1}`,
+        url: a.image
+      }));
+
+      // 7. Our Team
+      const teamUrls = (activeC?.teamItems || []).filter(t => t?.image || t?.["Photo URL"]).map((t, i) => ({
+        label: t.name || t["Full Name"] || `Member #${i + 1}`,
+        url: t.image || t["Photo URL"]
+      }));
+
+      // 8. Volunteers & Directory
+      const volUrls = [];
+      vols.forEach(v => { if (v.photo || v.photoUrl || v.image) volUrls.push({ label: v.name || "Volunteer", url: v.photo || v.photoUrl || v.image }); });
+      cons.forEach(c => { if (c.photo || c.photoUrl || c.image) volUrls.push({ label: c.name || "Contact", url: c.photo || c.photoUrl || c.image }); });
+
+      // 9. Site Branding
+      const brandUrls = [
+        activeC?.trust?.logo?.url ? { label: "Trust Logo", url: activeC.trust.logo.url } : null,
+        activeC?.hero?.topBanner ? { label: "Top Banner", url: activeC.hero.topBanner } : null,
+        activeC?.hero?.image ? { label: "Hero Image", url: activeC.hero.image } : null
+      ].filter(Boolean);
+
+      const nextInv = {
+        registrations: { ...countProviders(regUrls), recordCount: regs.length },
+        gallery:       { ...countProviders(galUrls), recordCount: (activeC?.galleryItems || []).length },
+        events:        { ...countProviders(evUrls), recordCount: (activeC?.events || []).length },
+        medialibrary:  { ...countProviders(mediaUrls), recordCount: (activeC?.mediaLibrary || []).length },
+        donations:     { ...countProviders(donUrls), recordCount: dons.length },
+        achievements:  { ...countProviders(achUrls), recordCount: (activeC?.achievements || []).length },
+        team:          { ...countProviders(teamUrls), recordCount: (activeC?.teamItems || []).length },
+        volunteers:    { ...countProviders(volUrls), recordCount: vols.length + cons.length },
+        branding:      { ...countProviders(brandUrls), recordCount: brandUrls.length }
+      };
+      setInventory(nextInv);
+      return nextInv;
+    } catch (e) {
+      console.error("Inventory scan error:", e);
+      return null;
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    scanInventory();
+  }, [C?.galleryItems, C?.events, C?.mediaLibrary, C?.achievements, C?.teamItems, C?.trust?.logo?.url]);
+
+  const saveStorageConfig = async (newCfg, showMsg = true, baseC = null) => {
+    const activeC = baseC || C;
+    setCfg(newCfg);
+    syncStorageConfigCache(newCfg);
+    const updatedC = { ...activeC, storageConfig: newCfg };
+    if (setC) setC(updatedC);
+    setSaving(true);
+    try {
+      if (auth?.idToken) {
+        await fbSave(updatedC, auth.idToken);
+      }
+      if (showMsg) addLog("✅ Saved Storage Routing configuration to database.");
+    } catch (e) {
+      alert("Failed to save storage settings: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+    return updatedC;
+  };
+
+  const handleToggleProvider = async (sectionKey, field, targetVal, baseC = null, skipAutoMigratePrompt = false) => {
+    if (targetVal === "gdrive" && !cfg.gdriveScriptUrl.trim()) {
+      alert("⚠️ Please paste your Google Drive Web App Script URL in the top connection card before switching a section to Google Drive.");
+      return;
+    }
+
+    // If user clicked the toggle button directly in UI and there are existing files in the old storage, offer to move them automatically!
+    if (!skipAutoMigratePrompt && field === "mediaProvider") {
+      const inv = inventory[sectionKey] || { hostinger: 0, gdrive: 0, inlineOrLegacy: 0 };
+      const existingInOther = targetVal === "hostinger" ? inv.gdrive : (inv.hostinger + inv.inlineOrLegacy);
+      if (existingInOther > 0) {
+        const targetLabel = targetVal === "gdrive" ? "☁️ Google Drive" : "🏢 Hostinger";
+        const sourceLabel = targetVal === "gdrive" ? "🏢 Hostinger" : "☁️ Google Drive";
+        if (window.confirm(`Switch "${cfg.sections[sectionKey]?.label}" to ${targetLabel} AND move the ${existingInOther} existing file(s) from ${sourceLabel} → ${targetLabel} right now?`)) {
+          await handleMigrateSectionMedia(sectionKey, targetVal, true);
+          return;
+        }
+      }
+    }
+
+    const nextCfg = {
+      ...cfg,
+      sections: {
+        ...cfg.sections,
+        [sectionKey]: {
+          ...cfg.sections[sectionKey],
+          [field]: targetVal
+        }
+      }
+    };
+    const updatedC = await saveStorageConfig(nextCfg, false, baseC);
+    addLog(`Switched "${cfg.sections[sectionKey]?.label}" (${field === "mediaProvider" ? "Files/Media" : "Database Records"}) target to ${targetVal === "gdrive" ? "☁️ Google Drive" : "🏢 Hostinger"}.`);
+    return updatedC;
+  };
+
+  const handleTestGoogleDrive = async () => {
+    if (!cfg.gdriveScriptUrl.trim()) {
+      alert("Please paste your Google Apps Script Web App URL first.");
+      return;
+    }
+    setTestingGDrive(true);
+    setTestResult(null);
+    try {
+      const subFolders = [
+        ...Object.values(cfg.sections || {}).map(s => s.folderName).filter(Boolean),
+        "Database_Collections"
+      ];
+      const data = await callGoogleDriveScript(cfg.gdriveScriptUrl.trim(), {
+        action: "ping",
+        rootFolderId: cfg.gdriveFolderId.trim(),
+        subFolders
+      });
+      if (data && data.success) {
+        const subList = Array.isArray(data.subFolders) && data.subFolders.length > 0
+          ? ` (Auto-organized ${data.subFolders.length} subfolders: ${data.subFolders.join(", ")})`
+          : "";
+        setTestResult({
+          ok: true,
+          msg: `Connected to Google Drive Folder: "${data.folderName}"${subList}`,
+          url: data.folderUrl
+        });
+        addLog(`✅ Google Drive connection verified! Main Folder: "${data.folderName}"${subList}`);
+      } else {
+        setTestResult({
+          ok: false,
+          msg: data?.error || "Script responded with an error."
+        });
+      }
+    } catch (e) {
+      setTestResult({
+        ok: false,
+        msg: "Connection failed: " + e.message + ". Make sure the Google Script is deployed as 'Web App' with 'Who has access: Anyone'."
+      });
+    } finally {
+      setTestingGDrive(false);
+    }
+  };
+
+  // ── BIDIRECTIONAL MEDIA / FILE MIGRATION PER SECTION (Hostinger ⇄ Google Drive) ──
+  const handleMigrateSectionMedia = async (sectionKey, targetProvider, skipConfirm = false) => {
+    const secInfo = cfg.sections[sectionKey];
+    const targetName = targetProvider === "gdrive" ? "☁️ Google Drive" : "🏢 Hostinger";
+
+    if (targetProvider === "gdrive" && !cfg.gdriveScriptUrl.trim()) {
+      alert("Please configure and save your Google Drive Web App Script URL at the top of this tab before migrating files to Google Drive.");
+      return;
+    }
+
+    if (!skipConfirm && !window.confirm(`Move all existing files/media in "${secInfo.label}" to ${targetName}?\n\n• Every file will be transferred to ${targetName}\n• All database links will be automatically updated to the new storage URLs\n• Website operation will continue seamlessly with zero downtime.`)) {
+      return;
+    }
+
+    setMigratingKey(`${sectionKey}_media_${targetProvider}`);
+    addLog(`🚀 Starting file migration for "${secInfo.label}" → ${targetName}...`);
+
+    try {
+      let movedCount = 0;
+      let skippedCount = 0;
+      let latestC = C;
+
+      if (sectionKey === "registrations") {
+        const regs = await fbFetchRegistrations(auth?.idToken);
+        const tasks = [];
+        regs.forEach(r => {
+          const urlEntries = extractUrlsFromRegistration(r).filter(x => detectUrlStorageProvider(x.url) !== targetProvider);
+          if (urlEntries.length > 0) tasks.push({ reg: r, urlEntries });
+        });
+
+        setMigrationProgress({ current: 0, total: tasks.length, label: `Migrating registration marksheets/files to ${targetName}...` });
+
+        for (let i = 0; i < tasks.length; i++) {
+          const { reg, urlEntries } = tasks[i];
+          setMigrationProgress({ current: i + 1, total: tasks.length, label: `Registration ${reg["Transaction ID"] || reg.id} (${i + 1}/${tasks.length})` });
+          const updatedReg = { ...reg };
+          let changed = false;
+
+          // Group by field key in case a field has comma-separated URLs
+          const byKey = {};
+          urlEntries.forEach(u => {
+            byKey[u.key] = byKey[u.key] || [];
+          });
+
+          for (const fKey of Object.keys(byKey)) {
+            const rawVal = String(updatedReg[fKey] || "");
+            const parts = rawVal.split(",").map(s => s.trim()).filter(Boolean);
+            const newParts = [];
+            for (const partUrl of parts) {
+              if (detectUrlStorageProvider(partUrl) !== targetProvider && (partUrl.startsWith("http") || partUrl.startsWith("data:"))) {
+                try {
+                  const newUrl = await migrateSingleFileUrl(partUrl, targetProvider, "registrations", auth?.idToken);
+                  newParts.push(newUrl);
+                  movedCount++;
+                  changed = true;
+                } catch (err) {
+                  console.warn("File migrate error:", err);
+                  newParts.push(partUrl);
+                  skippedCount++;
+                }
+              } else {
+                newParts.push(partUrl);
+              }
+            }
+            updatedReg[fKey] = newParts.join(",");
+          }
+
+          if (changed && reg.id) {
+            await fbUpdateRegistration(reg.id, updatedReg, auth?.idToken);
+          }
+        }
+      } else if (sectionKey === "gallery") {
+        const items = [...(C?.galleryItems || [])];
+        const isNotYouTube = (g) => g?.url && g?.type !== "youtube" && !extractYouTubeVideoId(g?.url);
+        const toMove = items.filter(g => isNotYouTube(g) && detectUrlStorageProvider(g.url) !== targetProvider);
+        setMigrationProgress({ current: 0, total: toMove.length, label: `Migrating Gallery photos to ${targetName}...` });
+        let step = 0;
+        for (let i = 0; i < items.length; i++) {
+          if (isNotYouTube(items[i]) && detectUrlStorageProvider(items[i].url) !== targetProvider) {
+            step++;
+            setMigrationProgress({ current: step, total: toMove.length, label: `Gallery Photo "${items[i].title || i + 1}" (${step}/${toMove.length})` });
+            try {
+              const newUrl = await migrateSingleFileUrl(items[i].url, targetProvider, "gallery", auth?.idToken);
+              items[i] = { ...items[i], url: newUrl };
+              movedCount++;
+            } catch (e) {
+              skippedCount++;
+            }
+          }
+        }
+        if (movedCount > 0) {
+          latestC = { ...C, galleryItems: items };
+        }
+      } else if (sectionKey === "events") {
+        const events = JSON.parse(JSON.stringify(C?.events || []));
+        setMigrationProgress({ current: 0, total: events.length, label: `Migrating Event & Certificate templates to ${targetName}...` });
+        for (let i = 0; i < events.length; i++) {
+          const ev = events[i];
+          setMigrationProgress({ current: i + 1, total: events.length, label: `Event "${ev.title || i + 1}" (${i + 1}/${events.length})` });
+          for (const field of ["certBgUrl", "inviteBgUrl", "bannerUrl"]) {
+            if (ev[field] && detectUrlStorageProvider(ev[field]) !== targetProvider) {
+              try {
+                ev[field] = await migrateSingleFileUrl(ev[field], targetProvider, "events", auth?.idToken);
+                movedCount++;
+              } catch (e) { skippedCount++; }
+            }
+          }
+          if (Array.isArray(ev.pdfTemplates)) {
+            for (let j = 0; j < ev.pdfTemplates.length; j++) {
+              const tpl = ev.pdfTemplates[j];
+              if (tpl.bgUrl && detectUrlStorageProvider(tpl.bgUrl) !== targetProvider) {
+                try {
+                  tpl.bgUrl = await migrateSingleFileUrl(tpl.bgUrl, targetProvider, "events", auth?.idToken);
+                  movedCount++;
+                } catch (e) { skippedCount++; }
+              }
+            }
+          }
+        }
+        if (movedCount > 0) {
+          latestC = { ...C, events };
+        }
+      } else if (sectionKey === "medialibrary") {
+        const items = [...(C?.mediaLibrary || [])];
+        setMigrationProgress({ current: 0, total: items.length, label: `Migrating Media Library assets to ${targetName}...` });
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].url && detectUrlStorageProvider(items[i].url) !== targetProvider) {
+            setMigrationProgress({ current: i + 1, total: items.length, label: `Asset "${items[i].name || i + 1}" (${i + 1}/${items.length})` });
+            try {
+              const newUrl = await migrateSingleFileUrl(items[i].url, targetProvider, "medialibrary", auth?.idToken);
+              items[i] = { ...items[i], url: newUrl };
+              if (typeof assetCache !== "undefined") assetCache[items[i].id] = newUrl;
+              movedCount++;
+            } catch (e) { skippedCount++; }
+          }
+        }
+        if (movedCount > 0) {
+          latestC = { ...C, mediaLibrary: items };
+        }
+      } else if (sectionKey === "donations") {
+        const dons = await fbFetchDonations(auth?.idToken);
+        setMigrationProgress({ current: 0, total: dons.length, label: `Migrating Donation receipts & proofs to ${targetName}...` });
+        for (let i = 0; i < dons.length; i++) {
+          const d = { ...dons[i] };
+          let changed = false;
+          for (const f of ["receiptUrl", "screenshotUrl", "paymentProof"]) {
+            if (d[f] && detectUrlStorageProvider(d[f]) !== targetProvider) {
+              setMigrationProgress({ current: i + 1, total: dons.length, label: `Donation ${d.id || d._docId} (${i + 1}/${dons.length})` });
+              try {
+                d[f] = await migrateSingleFileUrl(d[f], targetProvider, "donations", auth?.idToken);
+                movedCount++;
+                changed = true;
+              } catch (e) { skippedCount++; }
+            }
+          }
+          if (changed && (d._docId || d.id)) {
+            await fbUpdateDonation(d._docId || d.id, d, auth?.idToken);
+          }
+        }
+      } else if (sectionKey === "achievements") {
+        const items = [...(C?.achievements || [])];
+        setMigrationProgress({ current: 0, total: items.length, label: `Migrating Achievement photos to ${targetName}...` });
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].image && detectUrlStorageProvider(items[i].image) !== targetProvider) {
+            setMigrationProgress({ current: i + 1, total: items.length, label: `Achievement "${items[i].title || i + 1}" (${i + 1}/${items.length})` });
+            try {
+              const newUrl = await migrateSingleFileUrl(items[i].image, targetProvider, "achievements", auth?.idToken);
+              items[i] = { ...items[i], image: newUrl };
+              movedCount++;
+            } catch (e) { skippedCount++; }
+          }
+        }
+        if (movedCount > 0) {
+          latestC = { ...C, achievements: items };
+        }
+      } else if (sectionKey === "team") {
+        const items = [...(C?.teamItems || [])];
+        setMigrationProgress({ current: 0, total: items.length, label: `Migrating Team member photos to ${targetName}...` });
+        for (let i = 0; i < items.length; i++) {
+          const imgVal = items[i].image || items[i]["Photo URL"];
+          if (imgVal && detectUrlStorageProvider(imgVal) !== targetProvider) {
+            setMigrationProgress({ current: i + 1, total: items.length, label: `Member "${items[i].name || i + 1}" (${i + 1}/${items.length})` });
+            try {
+              const newUrl = await migrateSingleFileUrl(imgVal, targetProvider, "team", auth?.idToken);
+              items[i] = { ...items[i], image: newUrl };
+              if (items[i]["Photo URL"]) items[i]["Photo URL"] = newUrl;
+              movedCount++;
+            } catch (e) { skippedCount++; }
+          }
+        }
+        if (movedCount > 0) {
+          latestC = { ...C, teamItems: items };
+        }
+      } else if (sectionKey === "volunteers") {
+        const vols = await fbFetchVolunteers(auth?.idToken);
+        const cons = await fbFetchContacts(auth?.idToken);
+        const total = vols.length + cons.length;
+        setMigrationProgress({ current: 0, total, label: `Migrating Volunteer & Directory photos to ${targetName}...` });
+        for (let i = 0; i < vols.length; i++) {
+          const v = { ...vols[i] };
+          let changed = false;
+          for (const f of ["photo", "photoUrl", "image"]) {
+            if (v[f] && detectUrlStorageProvider(v[f]) !== targetProvider) {
+              try {
+                v[f] = await migrateSingleFileUrl(v[f], targetProvider, "volunteers", auth?.idToken);
+                movedCount++;
+                changed = true;
+              } catch (e) { skippedCount++; }
+            }
+          }
+          if (changed && v._docId) await fbUpdateVolunteer(v._docId, v, auth?.idToken);
+        }
+        for (let j = 0; j < cons.length; j++) {
+          const c = { ...cons[j] };
+          let changed = false;
+          for (const f of ["photo", "photoUrl", "image"]) {
+            if (c[f] && detectUrlStorageProvider(c[f]) !== targetProvider) {
+              try {
+                c[f] = await migrateSingleFileUrl(c[f], targetProvider, "volunteers", auth?.idToken);
+                movedCount++;
+                changed = true;
+              } catch (e) { skippedCount++; }
+            }
+          }
+          if (changed && c.id) await fbUpdateContact(c.id, c, auth?.idToken);
+        }
+      } else if (sectionKey === "branding") {
+        const nextC = JSON.parse(JSON.stringify(C));
+        setMigrationProgress({ current: 1, total: 3, label: `Migrating Site Logo & Banners to ${targetName}...` });
+        if (nextC?.trust?.logo?.url && detectUrlStorageProvider(nextC.trust.logo.url) !== targetProvider) {
+          try {
+            nextC.trust.logo.url = await migrateSingleFileUrl(nextC.trust.logo.url, targetProvider, "branding", auth?.idToken);
+            movedCount++;
+          } catch (e) { skippedCount++; }
+        }
+        if (nextC?.hero?.topBanner && detectUrlStorageProvider(nextC.hero.topBanner) !== targetProvider) {
+          try {
+            nextC.hero.topBanner = await migrateSingleFileUrl(nextC.hero.topBanner, targetProvider, "branding", auth?.idToken);
+            movedCount++;
+          } catch (e) { skippedCount++; }
+        }
+        if (nextC?.hero?.image && detectUrlStorageProvider(nextC.hero.image) !== targetProvider) {
+          try {
+            nextC.hero.image = await migrateSingleFileUrl(nextC.hero.image, targetProvider, "branding", auth?.idToken);
+            movedCount++;
+          } catch (e) { skippedCount++; }
+        }
+        if (movedCount > 0) {
+          latestC = nextC;
+        }
+      }
+
+      // Also switch the active mediaProvider of that section to targetProvider and save latestC in one atomic step
+      const finalC = await handleToggleProvider(sectionKey, "mediaProvider", targetProvider, latestC, true);
+      const nextInv = await scanInventory(finalC || latestC);
+      const activeUrls = (nextInv?.[sectionKey]?.files || []).map(f => f.url);
+      const cleanRes = await cleanSectionStorageFolder(sectionKey, activeUrls);
+      setInspectSection(sectionKey);
+      const cleanNote = (cleanRes.gdriveTrashed > 0 || cleanRes.hostingerDeleted > 0)
+        ? ` (Cleaned ${cleanRes.gdriveTrashed} Google Drive orphan(s), ${cleanRes.hostingerDeleted} Hostinger orphan(s))`
+        : "";
+      addLog(`✅ Completed "${secInfo.label}" file migration to ${targetName}: ${movedCount} file(s) moved${skippedCount > 0 ? `, ${skippedCount} skipped` : ""}${cleanNote}.`);
+      if (!skipConfirm) {
+        alert(`✅ Migration Complete for "${secInfo.label}"!\n\n• Moved ${movedCount} file(s) to ${targetName}\n• Active storage for "${secInfo.label}" is now set to ${targetName}${cleanNote ? `\n• ${cleanNote.trim()}` : ""}.`);
+      }
+    } catch (err) {
+      addLog(`❌ Migration error on "${secInfo.label}": ${err.message}`);
+      alert("Migration error: " + err.message);
+    } finally {
+      setMigratingKey(null);
+      setMigrationProgress({ current: 0, total: 0, label: "" });
+    }
+  };
+
+  const handleCleanSectionOrphans = async (sectionKey) => {
+    const secInfo = cfg.sections[sectionKey];
+    setMigratingKey(`${sectionKey}_clean`);
+    setMigrationProgress({ current: 1, total: 1, label: `Cleaning unused/orphan files in "${secInfo.label}" (Google Drive & Hostinger)...` });
+    try {
+      const nextInv = await scanInventory(C);
+      const activeUrls = (nextInv?.[sectionKey]?.files || []).map(f => f.url);
+      const res = await cleanSectionStorageFolder(sectionKey, activeUrls);
+      addLog(`🧹 Cleaned "${secInfo.label}" folders: ${res.gdriveTrashed} Google Drive file(s) trashed, ${res.hostingerDeleted} Hostinger file(s) deleted.`);
+      if (res.hostingerWarning) addLog(`⚠️ Hostinger Cleanup Warning: ${res.hostingerWarning}`);
+      if (res.gdriveWarning) addLog(`⚠️ Google Drive Cleanup Warning: ${res.gdriveWarning}`);
+
+      let msg = `🧹 Cleanup Complete for "${secInfo.label}"!\n\n• Google Drive orphan files moved to Trash: ${res.gdriveTrashed}\n• Hostinger duplicate/orphan files deleted: ${res.hostingerDeleted}`;
+      if (res.hostingerDeletedFiles?.length > 0) {
+        msg += `\n  (${res.hostingerDeletedFiles.join(", ")})`;
+      }
+      if (res.hostingerWarning) {
+        msg += `\n\n⚠️ Hostinger Notice:\n${res.hostingerWarning}`;
+      }
+      if (res.gdriveWarning) {
+        msg += `\n\n⚠️ Google Drive Notice:\n${res.gdriveWarning}`;
+      }
+      alert(msg);
+    } catch (e) {
+      alert("Cleanup error: " + e.message);
+    } finally {
+      setMigratingKey(null);
+      setMigrationProgress({ current: 0, total: 0, label: "" });
+    }
+  };
+
+  // ── BIDIRECTIONAL DATABASE RECORDS MIGRATION (Hostinger MySQL ⇄ Google Drive JSON DB) ──
+  const handleMigrateSectionRecords = async (sectionKey, targetProvider) => {
+    const sourceProvider = targetProvider === "gdrive" ? "hostinger" : "gdrive";
+    const sourceName = sourceProvider === "gdrive" ? "☁️ Google Drive DB" : "🏢 Hostinger DB";
+    const targetName = targetProvider === "gdrive" ? "☁️ Google Drive DB" : "🏢 Hostinger DB";
+    const secInfo = cfg.sections[sectionKey];
+
+    if (!cfg.gdriveScriptUrl.trim()) {
+      alert("Please configure and save your Google Drive Web App Script URL at the top of this tab first.");
+      return;
+    }
+
+    if (!window.confirm(`Copy & move all database records for "${secInfo.label}" from ${sourceName} → ${targetName}?`)) {
+      return;
+    }
+
+    setMigratingKey(`${sectionKey}_data_${targetProvider}`);
+    addLog(`🚀 Copying database records for "${secInfo.label}" from ${sourceName} → ${targetName}...`);
+
+    try {
+      let count = 0;
+      if (sectionKey === "registrations") {
+        const rows = await fbFetchRegistrations(auth?.idToken, sourceProvider);
+        setMigrationProgress({ current: 0, total: rows.length, label: `Copying ${rows.length} Registration records to ${targetName}...` });
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          setMigrationProgress({ current: i + 1, total: rows.length, label: `Registration ${r["Transaction ID"] || r.id} (${i + 1}/${rows.length})` });
+          await fbRestoreDocument("registrations", r.id, r, auth?.idToken, targetProvider);
+          count++;
+        }
+      } else if (sectionKey === "donations") {
+        const rows = await fbFetchDonations(auth?.idToken, sourceProvider);
+        setMigrationProgress({ current: 0, total: rows.length, label: `Copying ${rows.length} Donation records to ${targetName}...` });
+        for (let i = 0; i < rows.length; i++) {
+          const d = rows[i];
+          const docId = d._docId || d.id;
+          setMigrationProgress({ current: i + 1, total: rows.length, label: `Donation ${docId} (${i + 1}/${rows.length})` });
+          await fbRestoreDocument("donations", docId, d, auth?.idToken, targetProvider);
+          count++;
+        }
+      } else if (sectionKey === "volunteers") {
+        const vols = await fbFetchVolunteers(auth?.idToken, sourceProvider);
+        const cons = await fbFetchContacts(auth?.idToken, sourceProvider);
+        const total = vols.length + cons.length;
+        setMigrationProgress({ current: 0, total, label: `Copying ${total} Volunteer & Directory records to ${targetName}...` });
+        for (let i = 0; i < vols.length; i++) {
+          const v = vols[i];
+          await fbRestoreDocument("volunteers", v._docId || v.id || `vol_${i}`, v, auth?.idToken, targetProvider);
+          count++;
+        }
+        for (let j = 0; j < cons.length; j++) {
+          const c = cons[j];
+          await fbRestoreDocument("contacts", c.id || `con_${j}`, c, auth?.idToken, targetProvider);
+          count++;
+        }
+      }
+
+      await handleToggleProvider(sectionKey, "dataProvider", targetProvider, C, true);
+      await scanInventory();
+      addLog(`✅ Copied ${count} database record(s) for "${secInfo.label}" to ${targetName}!`);
+      alert(`✅ Successfully migrated ${count} database record(s) to ${targetName}!`);
+    } catch (err) {
+      addLog(`❌ Record migration failed: ${err.message}`);
+      alert("Database record migration failed: " + err.message);
+    } finally {
+      setMigratingKey(null);
+      setMigrationProgress({ current: 0, total: 0, label: "" });
+    }
+  };
+
+  const handleBulkMigrateAllToSelected = async () => {
+    if (!window.confirm("Migrate existing files across ALL sections to match each section's currently selected Media Provider (Hostinger or Google Drive)?")) {
+      return;
+    }
+    for (const secKey of Object.keys(cfg.sections)) {
+      const targetProv = cfg.sections[secKey].mediaProvider || "hostinger";
+      if (targetProv === "gdrive" && !cfg.gdriveScriptUrl.trim()) continue;
+      await handleMigrateSectionMedia(secKey, targetProv, true);
+    }
+    alert("✅ Bulk storage alignment completed across all sections!");
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, animation: "fadeIn .25s ease" }}>
+      {/* Header Banner */}
+      <div style={{
+        background: "linear-gradient(135deg, #0D4B5E 0%, #1A6B87 100%)",
+        color: "white",
+        borderRadius: 16,
+        padding: mob ? "20px 16px" : "24px 28px",
+        boxShadow: "0 8px 24px rgba(13, 75, 94, 0.18)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 16
+      }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: "1.8rem" }}>☁️</span>
+            <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: mob ? "1.3rem" : "1.55rem", margin: 0, color: "white" }}>
+              Hybrid Cloud Storage Routing & Migration Center
+            </h2>
+          </div>
+          <p style={{ margin: 0, fontSize: ".86rem", color: "rgba(255,255,255,0.88)", lineHeight: 1.5 }}>
+            Choose per section whether to store data & temporary event files (Marksheets, Gallery Photos, Certificates, Receipts) on <strong>🏢 Hostinger</strong> or <strong>☁️ Google Drive</strong> — and move existing files between storages anytime with 1 click!
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => scanInventory()}
+            disabled={scanning || !!migratingKey}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.3)",
+              background: "rgba(255,255,255,0.12)",
+              color: "white",
+              fontWeight: 700,
+              fontSize: ".82rem",
+              cursor: "pointer"
+            }}
+          >
+            {scanning ? "⏳ Scanning..." : "🔄 Refresh Inventory"}
+          </button>
+          <button
+            onClick={handleBulkMigrateAllToSelected}
+            disabled={!!migratingKey}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "none",
+              background: "var(--sf)",
+              color: "white",
+              fontWeight: 800,
+              fontSize: ".82rem",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(232,101,10,0.35)"
+            }}
+          >
+            🚀 Sync All Sections to Selected Storage
+          </button>
+        </div>
+      </div>
+
+      {/* Live Migration Progress Bar */}
+      {migratingKey && (
+        <div style={{
+          background: "#FFFBEB",
+          border: "2px solid #F59E0B",
+          borderRadius: 14,
+          padding: "16px 20px",
+          boxShadow: "0 4px 16px rgba(245, 158, 11, 0.15)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ color: "#92400E", fontSize: ".9rem" }}>
+              ⏳ {migrationProgress.label || "Migrating storage..."}
+            </strong>
+            <span style={{ fontSize: ".8rem", fontWeight: 800, color: "#B45309" }}>
+              {migrationProgress.total > 0 ? `${migrationProgress.current} / ${migrationProgress.total}` : "Working..."}
+            </span>
+          </div>
+          <div style={{ width: "100%", height: 10, background: "#FDE68A", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{
+              width: migrationProgress.total > 0 ? `${Math.min(100, Math.round((migrationProgress.current / migrationProgress.total) * 100))}%` : "50%",
+              height: "100%",
+              background: "linear-gradient(90deg, #F59E0B, #EA580C)",
+              transition: "width .25s ease"
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* Storage Endpoints Configuration Card */}
+      <div style={{
+        background: "white",
+        borderRadius: 16,
+        border: "1px solid var(--bd)",
+        padding: mob ? 16 : 24,
+        boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.1rem", color: "var(--dt)" }}>🔌 Cloud Storage Endpoints (Hostinger & Google Drive)</h3>
+            <div style={{ fontSize: ".8rem", color: "var(--mu)", marginTop: 2 }}>
+              Hostinger API Active: <code style={{ background: "#F1F5F9", padding: "2px 6px", borderRadius: 4, color: "#0F172A" }}>{import.meta.env.VITE_API_BASE_URL || "/api.php"}</code>
+              {" • "}
+              Upload Endpoint: <code style={{ background: "#F1F5F9", padding: "2px 6px", borderRadius: 4, color: "#0F172A" }}>{getHostingerBaseOrigin()}/upload.php</code>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowScriptCode(!showScriptCode)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1.5px solid #0284C7",
+              background: showScriptCode ? "#0284C7" : "#F0F9FF",
+              color: showScriptCode ? "white" : "#0369A1",
+              fontWeight: 700,
+              fontSize: ".8rem",
+              cursor: "pointer"
+            }}
+          >
+            📜 {showScriptCode ? "Hide Google Drive Setup Script" : "1-Minute Google Drive Script Setup Code"}
+          </button>
+        </div>
+
+        {showScriptCode && (
+          <div style={{
+            background: "#0F172A",
+            color: "#E2E8F0",
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 18,
+            border: "1px solid #334155"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: ".82rem", lineHeight: 1.5 }}>
+                <strong style={{ color: "#38BDF8" }}>How to connect your Google Drive (Free 15 GB):</strong>
+                <div>1. Open <a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#7DD3FC", textDecoration: "underline" }}>script.google.com</a> → <strong>New Project</strong>.</div>
+                <div>2. Click <strong>Copy Script Code</strong> below, paste it into the editor, and click <strong>Deploy → New deployment → Web app</strong>.</div>
+                <div>3. Set <em>Execute as:</em> <strong>Me</strong> and <em>Who has access:</em> <strong>Anyone</strong>, then paste the Web App URL below!</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(GOOGLE_DRIVE_APPS_SCRIPT_CODE);
+                  setCopiedScript(true);
+                  setTimeout(() => setCopiedScript(false), 3000);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: copiedScript ? "#10B981" : "#38BDF8",
+                  color: "#0F172A",
+                  fontWeight: 800,
+                  fontSize: ".8rem",
+                  cursor: "pointer"
+                }}
+              >
+                {copiedScript ? "✅ Copied to Clipboard!" : "📋 Copy Script Code"}
+              </button>
+            </div>
+            <pre style={{
+              maxHeight: 200,
+              overflowY: "auto",
+              background: "#020617",
+              padding: 12,
+              borderRadius: 8,
+              fontSize: ".74rem",
+              fontFamily: "monospace",
+              margin: 0
+            }}>
+              {GOOGLE_DRIVE_APPS_SCRIPT_CODE}
+            </pre>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr auto", gap: 12, alignItems: "end" }}>
+          <div>
+            <label style={{ display: "block", fontSize: ".76rem", fontWeight: 700, color: "var(--dt)", marginBottom: 4 }}>
+              ☁️ Google Drive Apps Script Web App URL
+            </label>
+            <input
+              type="text"
+              value={cfg.gdriveScriptUrl}
+              onChange={e => setCfg({ ...cfg, gdriveScriptUrl: e.target.value })}
+              placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--bd)", fontSize: ".85rem" }}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: ".76rem", fontWeight: 700, color: "var(--dt)", marginBottom: 4 }}>
+              📁 Google Drive Root Folder ID or Folder Link
+            </label>
+            <input
+              type="text"
+              value={cfg.gdriveFolderId}
+              onChange={e => setCfg({ ...cfg, gdriveFolderId: extractGoogleDriveFolderId(e.target.value) })}
+              placeholder="17UEo9AwUfDEiMN8P8fiOPC9f2EkQ4FT5"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--bd)", fontSize: ".85rem" }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => saveStorageConfig(cfg, true)}
+              disabled={saving}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--dt)",
+                color: "white",
+                fontWeight: 700,
+                fontSize: ".82rem",
+                cursor: "pointer",
+                whiteSpace: "nowrap"
+              }}
+            >
+              {saving ? "Saving..." : "💾 Save URL"}
+            </button>
+            <button
+              type="button"
+              onClick={handleTestGoogleDrive}
+              disabled={testingGDrive}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #0284C7",
+                background: "#EFF6FF",
+                color: "#0369A1",
+                fontWeight: 700,
+                fontSize: ".82rem",
+                cursor: "pointer",
+                whiteSpace: "nowrap"
+              }}
+            >
+              {testingGDrive ? "Testing..." : "🔌 Test Drive"}
+            </button>
+          </div>
+        </div>
+
+        {testResult && (
+          <div style={{
+            marginTop: 12,
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: testResult.ok ? "#ECFDF5" : "#FEF2F2",
+            border: `1px solid ${testResult.ok ? "#6EE7B7" : "#FCA5A5"}`,
+            color: testResult.ok ? "#065F46" : "#991B1B",
+            fontSize: ".82rem",
+            fontWeight: 600,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8
+          }}>
+            <span>{testResult.ok ? "✅ " : "❌ "}{testResult.msg}</span>
+            {testResult.url && (
+              <a href={testResult.url} target="_blank" rel="noreferrer" style={{ color: "#047857", fontWeight: 800, textDecoration: "underline" }}>
+                Open Google Drive Folder ↗
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section-by-Section Routing & Bidirectional Migration Table */}
+      <div style={{
+        background: "white",
+        borderRadius: 16,
+        border: "1px solid var(--bd)",
+        overflow: "hidden",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
+      }}>
+        <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--bd)", background: "#F8FAFC", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.1rem", color: "var(--dt)" }}>
+              🗂️ Section-Wise Storage Selection & One-Click Data/File Mover
+            </h3>
+            <p style={{ margin: "3px 0 0 0", fontSize: ".8rem", color: "var(--mu)" }}>
+              Select where each section stores new uploads/entries, or click <strong>Move Files / Move DB</strong> to transfer existing items between Hostinger and Google Drive anytime.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".84rem", minWidth: 920 }}>
+            <thead>
+              <tr style={{ background: "#F1F5F9", color: "#334155", textAlign: "left", borderBottom: "2px solid #E2E8F0" }}>
+                <th style={{ padding: "12px 16px" }}>Section / Tab</th>
+                <th style={{ padding: "12px 16px" }}>Current Storage Inventory</th>
+                <th style={{ padding: "12px 16px" }}>Database Records Target</th>
+                <th style={{ padding: "12px 16px" }}>Uploaded Files / Media Target</th>
+                <th style={{ padding: "12px 16px" }}>Move Existing Files / Data (Hostinger ⇄ Google Drive)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(cfg.sections).map(([secKey, sec], idx) => {
+                const inv = inventory[secKey] || { hostinger: 0, gdrive: 0, inlineOrLegacy: 0, total: 0, recordCount: 0, files: [] };
+                const isMediaGDrive = sec.mediaProvider === "gdrive";
+                const isDataGDrive = sec.dataProvider === "gdrive";
+                const isBusy = migratingKey && migratingKey.startsWith(secKey);
+
+                return (
+                  <tr key={secKey} style={{ borderBottom: "1px solid #E2E8F0", background: idx % 2 === 1 ? "#FCFDFE" : "white" }}>
+                    {/* Column 1: Section Info */}
+                    <td style={{ padding: "14px 16px", maxWidth: 260 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#0F172A", fontSize: ".9rem" }}>
+                        <span style={{ fontSize: "1.2rem" }}>{sec.icon}</span>
+                        <span>{sec.label}</span>
+                      </div>
+                      <div style={{ fontSize: ".75rem", color: "#64748B", marginTop: 3, lineHeight: 1.35 }}>
+                        {sec.desc}
+                      </div>
+                      <div style={{ fontSize: ".68rem", color: "#0369A1", marginTop: 4, fontFamily: "monospace" }}>
+                        Folder: /{sec.folderName}/
+                      </div>
+                    </td>
+
+                    {/* Column 2: Live Inventory */}
+                    <td style={{ padding: "14px 16px", maxWidth: 280 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ fontSize: ".76rem", fontWeight: 700, color: "#334155", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>📊 {inv.recordCount} Record(s) • {inv.total} File(s)</span>
+                          {inv.total > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setInspectSection(inspectSection === secKey ? null : secKey)}
+                              style={{
+                                fontSize: ".68rem",
+                                padding: "2px 7px",
+                                borderRadius: 6,
+                                border: "1px solid #CBD5E1",
+                                background: inspectSection === secKey ? "#0F172A" : "white",
+                                color: inspectSection === secKey ? "white" : "#0369A1",
+                                fontWeight: 700,
+                                cursor: "pointer"
+                              }}
+                            >
+                              {inspectSection === secKey ? "Hide URLs ▲" : "🔍 Verify URLs ▼"}
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{
+                            fontSize: ".7rem",
+                            padding: "2px 8px",
+                            borderRadius: 10,
+                            background: inv.hostinger + inv.inlineOrLegacy > 0 ? "#DBEAFE" : "#F1F5F9",
+                            color: inv.hostinger + inv.inlineOrLegacy > 0 ? "#1E40AF" : "#64748B",
+                            fontWeight: 700
+                          }}>
+                            🏢 Hostinger: {inv.hostinger + inv.inlineOrLegacy}
+                          </span>
+                          <span style={{
+                            fontSize: ".7rem",
+                            padding: "2px 8px",
+                            borderRadius: 10,
+                            background: inv.gdrive > 0 ? "#DCFCE7" : "#F1F5F9",
+                            color: inv.gdrive > 0 ? "#166534" : "#64748B",
+                            fontWeight: 700
+                          }}>
+                            ☁️ GDrive: {inv.gdrive}
+                          </span>
+                        </div>
+                        {inspectSection === secKey && Array.isArray(inv.files) && inv.files.length > 0 && (
+                          <div style={{
+                            marginTop: 6,
+                            padding: 8,
+                            borderRadius: 8,
+                            background: "#F8FAFC",
+                            border: "1px solid #CBD5E1",
+                            maxHeight: 150,
+                            overflowY: "auto",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6
+                          }}>
+                            {inv.files.map((f, fIdx) => (
+                              <div key={fIdx} style={{ fontSize: ".68rem", borderBottom: fIdx < inv.files.length - 1 ? "1px dashed #E2E8F0" : "none", paddingBottom: fIdx < inv.files.length - 1 ? 4 : 0 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+                                  <strong style={{ color: "#0F172A" }}>{f.label}</strong>
+                                  <span style={{
+                                    padding: "1px 6px",
+                                    borderRadius: 6,
+                                    fontWeight: 800,
+                                    background: f.provider === "gdrive" ? "#DCFCE7" : "#DBEAFE",
+                                    color: f.provider === "gdrive" ? "#166534" : "#1E40AF"
+                                  }}>
+                                    {f.provider === "gdrive" ? "☁️ GDrive" : "🏢 Hostinger"}
+                                  </span>
+                                </div>
+                                <div style={{ color: "#64748B", wordBreak: "break-all", fontFamily: "monospace", fontSize: ".63rem", marginTop: 2 }}>
+                                  {f.url.startsWith("data:") ? `${f.url.slice(0, 42)}... (Hostinger DB)` : f.url}
+                                  {!f.url.startsWith("data:") && !f.url.startsWith("asset://") && (
+                                    <>
+                                      {" "}
+                                      <a href={f.url} target="_blank" rel="noreferrer" style={{ color: "#0284C7", fontWeight: 700 }}>
+                                        Open ↗
+                                      </a>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Column 3: Data Records Provider */}
+                    <td style={{ padding: "14px 16px" }}>
+                      {sec.supportsDataToggle ? (
+                        <div style={{ display: "inline-flex", background: "#F1F5F9", padding: 3, borderRadius: 8, border: "1px solid #CBD5E1" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleProvider(secKey, "dataProvider", "hostinger")}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 6,
+                              border: "none",
+                              background: !isDataGDrive ? "#0D4B5E" : "transparent",
+                              color: !isDataGDrive ? "white" : "#475569",
+                              fontWeight: 700,
+                              fontSize: ".74rem",
+                              cursor: "pointer"
+                            }}
+                          >
+                            🏢 Hostinger
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleProvider(secKey, "dataProvider", "gdrive")}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 6,
+                              border: "none",
+                              background: isDataGDrive ? "#15803D" : "transparent",
+                              color: isDataGDrive ? "white" : "#475569",
+                              fontWeight: 700,
+                              fontSize: ".74rem",
+                              cursor: "pointer"
+                            }}
+                          >
+                            ☁️ GDrive
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{
+                          display: "inline-block",
+                          padding: "5px 10px",
+                          borderRadius: 6,
+                          background: "#F1F5F9",
+                          color: "#334155",
+                          fontWeight: 700,
+                          fontSize: ".74rem"
+                        }}>
+                          🏢 Hostinger MySQL
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Column 4: Media / Files Provider */}
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ display: "inline-flex", background: "#F1F5F9", padding: 3, borderRadius: 8, border: "1px solid #CBD5E1" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleProvider(secKey, "mediaProvider", "hostinger")}
+                          style={{
+                            padding: "6px 11px",
+                            borderRadius: 6,
+                            border: "none",
+                            background: !isMediaGDrive ? "#0D4B5E" : "transparent",
+                            color: !isMediaGDrive ? "white" : "#475569",
+                            fontWeight: 700,
+                            fontSize: ".75rem",
+                            cursor: "pointer"
+                          }}
+                        >
+                          🏢 Hostinger
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleProvider(secKey, "mediaProvider", "gdrive")}
+                          style={{
+                            padding: "6px 11px",
+                            borderRadius: 6,
+                            border: "none",
+                            background: isMediaGDrive ? "#15803D" : "transparent",
+                            color: isMediaGDrive ? "white" : "#475569",
+                            fontWeight: 700,
+                            fontSize: ".75rem",
+                            cursor: "pointer"
+                          }}
+                        >
+                          ☁️ Google Drive
+                        </button>
+                      </div>
+                    </td>
+
+                    {/* Column 5: Bidirectional Migration Actions */}
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        <button
+                          type="button"
+                          disabled={!!migratingKey}
+                          onClick={() => handleMigrateSectionMedia(secKey, "gdrive")}
+                          title="Move all files/photos/marksheets in this section to Google Drive and update links"
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #86EFAC",
+                            background: "#F0FDF4",
+                            color: "#166534",
+                            fontWeight: 700,
+                            fontSize: ".73rem",
+                            cursor: migratingKey ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          {isBusy && migratingKey.endsWith("_media_gdrive") ? "⏳ Moving..." : "☁️ Move Files → GDrive"}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!!migratingKey}
+                          onClick={() => handleMigrateSectionMedia(secKey, "hostinger")}
+                          title="Move all files/photos/marksheets in this section from Google Drive back to Hostinger and update links"
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #93C5FD",
+                            background: "#EFF6FF",
+                            color: "#1E40AF",
+                            fontWeight: 700,
+                            fontSize: ".73rem",
+                            cursor: migratingKey ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          {isBusy && migratingKey.endsWith("_media_hostinger") ? "⏳ Moving..." : "🏢 Move Files → Hostinger"}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!!migratingKey}
+                          onClick={() => handleCleanSectionOrphans(secKey)}
+                          title="Delete any unused/duplicate/orphan files in this section's Google Drive and Hostinger folders"
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #FDBA74",
+                            background: "#FFF7ED",
+                            color: "#9A3412",
+                            fontWeight: 700,
+                            fontSize: ".72rem",
+                            cursor: migratingKey ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          {isBusy && migratingKey.endsWith("_clean") ? "⏳ Cleaning..." : "🧹 Clean Orphans"}
+                        </button>
+
+                        {sec.supportsDataToggle && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={!!migratingKey}
+                              onClick={() => handleMigrateSectionRecords(secKey, isDataGDrive ? "hostinger" : "gdrive")}
+                              title={`Copy all database rows in this section to ${isDataGDrive ? "Hostinger MySQL" : "Google Drive DB"}`}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: 6,
+                                border: "1px solid #CBD5E1",
+                                background: "#F8FAFC",
+                                color: "#334155",
+                                fontWeight: 700,
+                                fontSize: ".71rem",
+                                cursor: migratingKey ? "not-allowed" : "pointer"
+                              }}
+                            >
+                              ⇄ Move DB Rows → {isDataGDrive ? "Hostinger" : "GDrive"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Activity & Migration Console Log */}
+      {migrationLogs.length > 0 && (
+        <div style={{
+          background: "#0F172A",
+          color: "#E2E8F0",
+          borderRadius: 12,
+          padding: 16
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ fontSize: ".82rem", color: "#38BDF8" }}>📋 Storage Routing & Migration Log</strong>
+            <button
+              type="button"
+              onClick={() => setMigrationLogs([])}
+              style={{ background: "none", border: "none", color: "#94A3B8", fontSize: ".75rem", cursor: "pointer" }}
+            >
+              Clear
+            </button>
+          </div>
+          <div style={{ maxHeight: 150, overflowY: "auto", fontFamily: "monospace", fontSize: ".76rem", lineHeight: 1.6 }}>
+            {migrationLogs.map((l, i) => (
+              <div key={i}>{l}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
   const isMasterAdmin = (email) => {
     if (!email) return false;
@@ -8789,7 +11220,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
 
   let hasAccess = [];
   if (auth?.email) {
-    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "volunteers", "gallery", "team", "medialibrary", "achievements", "settings", "chatbotaccess", "whatsappadmin", "access", "masterdata", "backup", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "chatbotaccess", "whatsappadmin", "profile"];
+    hasAccess = master ? ["content", "seo", "overview", "donations", "events", "registrations", "volunteers", "gallery", "team", "medialibrary", "achievements", "storagerouting", "settings", "chatbotaccess", "whatsappadmin", "access", "masterdata", "backup", "profile", "meritlist", "inviteletters", "certificates"] : [...(userRole?.permissions || []), "chatbotaccess", "whatsappadmin", "profile"];
   }
 
   const visibleNav = ANAV.filter(item => hasAccess.includes(item.id));
@@ -8852,7 +11283,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
               onMouseLeave={e=>{if(tab!==item.id)e.currentTarget.style.background="transparent"}}>
               <span style={{fontSize:"1.05rem",flexShrink:0}}>{item.icon}</span>
               {open && <span style={{color:tab===item.id?"var(--sflt)":"rgba(255,255,255,.8)",fontSize:".85rem",fontWeight:tab===item.id?600:400,whiteSpace:"nowrap"}}>{item.label}</span>}
-              {open && item.id==="content" && <span style={{marginLeft:"auto",background:"var(--sf)",color:"white",fontSize:".6rem",fontWeight:700,padding:"2px 6px",borderRadius:8}}>NEW</span>}
+              {open && (item.id==="content" || item.id==="storagerouting") && <span style={{marginLeft:"auto",background:"var(--sf)",color:"white",fontSize:".6rem",fontWeight:700,padding:"2px 6px",borderRadius:8}}>NEW</span>}
             </div>
           ))}
         </div>
@@ -8921,6 +11352,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="medialibrary" && hasAccess.includes("medialibrary") && <AdminMediaLibrary mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="gallery"   && hasAccess.includes("gallery") && <AdminGallery mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="achievements" && hasAccess.includes("achievements") && <AdminAchievements mob={mob} C={C} setC={setC} auth={auth}/>}
+          {tab==="storagerouting" && hasAccess.includes("storagerouting") && <AdminStorageRouting mob={mob} C={C} setC={setC} auth={auth}/>}
           {tab==="settings"  && hasAccess.includes("settings") && <Settings mob={mob} C={C} setC={setC} auth={auth} setPage={setPage} hasAccess={hasAccess} master={master}/>}
           {tab==="chatbotaccess" && <ChatbotAccessManager C={C} setC={setC} auth={auth}/>}
           {tab==="whatsappadmin" && <WhatsAppAdminManager C={C} setC={setC} auth={auth}/>}
@@ -10422,7 +12854,7 @@ function Donations({ mob, auth, C }) {
           const blob = await generateReceiptPDF(updated, C, "blob");
           if (blob) {
             const file = new File([blob], `Receipt_${r.id}.pdf`, { type: "application/pdf" });
-            const url = await fbUploadPublicFile(file, auth?.idToken);
+            const url = await fbUploadPublicFile(file, auth?.idToken, "donations");
             updated.receiptUrl = url;
           }
         } catch(err) {
@@ -10471,7 +12903,7 @@ function Donations({ mob, auth, C }) {
       const blob = await generateReceiptPDF(r, C, "blob");
       if (blob) {
         const file = new File([blob], `Receipt_${r.id}.pdf`, { type: "application/pdf" });
-        const url = await fbUploadPublicFile(file, auth?.idToken);
+        const url = await fbUploadPublicFile(file, auth?.idToken, "donations");
         const updated = { ...r, receiptUrl: url };
         
         if (r._docId) {
@@ -12581,7 +15013,7 @@ function AdminAchievements({ mob, C, setC, auth }) {
     if (!auth?.idToken) { alert("Please login to upload media."); return; }
     setUploading(i);
     try {
-      const url = await fbUploadPhoto(file, auth.idToken);
+      const url = await fbUploadPhoto(file, auth.idToken, "achievements");
       updItem(i, "image", url);
     } catch (err) {
       alert("Upload failed: " + err.message);
@@ -13303,7 +15735,7 @@ function AdminTeam({ mob, C, setC, auth }) {
     if (!auth?.idToken) { alert("Please login to upload media."); return; }
     setUploadingImage(true);
     try {
-      const url = await fbUploadPhoto(file, auth.idToken);
+      const url = await fbUploadPhoto(file, auth.idToken, "team");
       updateActiveNode("image", url);
     } catch (err) {
       alert("Upload failed: " + err.message);
@@ -15228,6 +17660,20 @@ function AdminGallery({ mob, C, setC, auth }) {
   const [loading, setLoading] = useState(false);
   const [bulkTag, setBulkTag] = useState("");
   const [selected, setSelected] = useState([]);
+  const [adminMediaFilter, setAdminMediaFilter] = useState("all"); // "all" | "photos" | "videos"
+  const [gridCols, setGridCols] = useState("auto"); // "auto" | "5" | "6"
+  const [previewVideoItem, setPreviewVideoItem] = useState(null);
+
+  // YouTube Video Gallery Add State
+  const [ytUrl, setYtUrl] = useState("");
+  const [ytTitle, setYtTitle] = useState("");
+  const [ytCategory, setYtCategory] = useState("");
+  const [ytDescription, setYtDescription] = useState("");
+  const [ytDate, setYtDate] = useState("");
+  const [ytThumbQuality, setYtThumbQuality] = useState("hqdefault");
+  const [ytFetchingMeta, setYtFetchingMeta] = useState(false);
+  const [ytAuthor, setYtAuthor] = useState("");
+
   const items = C.galleryItems || [];
 
   const saveToFb = async (newC) => {
@@ -15243,6 +17689,58 @@ function AdminGallery({ mob, C, setC, auth }) {
     const newC = {...C, galleryItems: newItems};
     setC(newC);
     saveToFb(newC);
+  };
+
+  const parsedYtId = extractYouTubeVideoId(ytUrl);
+  const previewYtThumb = parsedYtId ? getYouTubeThumbnailUrl(parsedYtId, ytThumbQuality) : "";
+
+  const handleYtUrlChange = async (val) => {
+    setYtUrl(val);
+    const vid = extractYouTubeVideoId(val);
+    if (!vid) {
+      setYtAuthor("");
+      return;
+    }
+    setYtFetchingMeta(true);
+    try {
+      const meta = await fetchYouTubeVideoMeta(vid);
+      if (meta) {
+        if (meta.title && !ytTitle.trim()) {
+          setYtTitle(meta.title);
+        }
+        if (meta.author) {
+          setYtAuthor(meta.author);
+        }
+      }
+    } finally {
+      setYtFetchingMeta(false);
+    }
+  };
+
+  const handleAddYouTubeVideo = () => {
+    const vid = extractYouTubeVideoId(ytUrl);
+    if (!vid) {
+      alert("Please enter a valid YouTube Video URL (e.g., https://www.youtube.com/watch?v=... or https://youtu.be/...).");
+      return;
+    }
+    const thumb = getYouTubeThumbnailUrl(vid, ytThumbQuality);
+    const newItem = {
+      id: "yt-" + Date.now().toString(),
+      type: "youtube",
+      url: `https://www.youtube.com/watch?v=${vid}`,
+      youtubeId: vid,
+      thumbnail: thumb,
+      title: ytTitle.trim() || "YouTube Video",
+      category: ytCategory.trim() || bulkTag.trim() || "Videos",
+      description: ytDescription.trim(),
+      date: ytDate.trim()
+    };
+    upd([newItem, ...items]);
+    setYtUrl("");
+    setYtTitle("");
+    setYtDescription("");
+    setYtDate("");
+    setYtAuthor("");
   };
 
   const uploadPhoto = async (e) => {
@@ -15261,6 +17759,8 @@ function AdminGallery({ mob, C, setC, auth }) {
           url,
           title: isVideo ? "New Video" : "New Photo",
           category: bulkTag.trim() || "General",
+          description: "",
+          date: "",
           type: isVideo ? "video" : "image"
         });
       }
@@ -15274,7 +17774,11 @@ function AdminGallery({ mob, C, setC, auth }) {
   };
 
   const remove = (id) => {
-    if (!window.confirm("Delete this photo?")) return;
+    if (!window.confirm("Delete this gallery item?")) return;
+    const itemToRemove = items.find(g => g.id === id);
+    if (itemToRemove?.url && itemToRemove?.type !== "youtube" && !extractYouTubeVideoId(itemToRemove?.url)) {
+      deleteRemoteFileUrl(itemToRemove.url, auth?.idToken).catch(() => {});
+    }
     upd(items.filter(g => g.id !== id));
   };
 
@@ -15287,66 +17791,567 @@ function AdminGallery({ mob, C, setC, auth }) {
   };
 
   const updateItem = (id, field, val) => {
-    upd(items.map(g => g.id === id ? {...g, [field]: val} : g));
+    upd(items.map(g => {
+      if (g.id !== id) return g;
+      const updated = { ...g, [field]: val };
+      if (field === "url") {
+        const newVid = extractYouTubeVideoId(val);
+        if (newVid) {
+          updated.type = "youtube";
+          updated.youtubeId = newVid;
+          updated.thumbnail = getYouTubeThumbnailUrl(newVid);
+        }
+      }
+      return updated;
+    }));
   };
 
-  const existingCats = [...new Set(items.map(g=>g.category).filter(Boolean))];
+  const existingCats = [...new Set(["General", "Events", "Education", "Videos", ...items.map(g => g.category).filter(Boolean)])];
+
+  const isVideoItem = (g) => g?.type === "youtube" || g?.type === "video" || !!extractYouTubeVideoId(g?.url);
+  const photoCount = items.filter(g => !isVideoItem(g)).length;
+  const videoCount = items.filter(g => isVideoItem(g)).length;
+
+  const visibleItems = items
+    .map((g, originalIdx) => ({ g, originalIdx }))
+    .filter(({ g }) => {
+      if (adminMediaFilter === "photos") return !isVideoItem(g);
+      if (adminMediaFilter === "videos") return isVideoItem(g);
+      return true;
+    });
 
   return (
     <div>
       <datalist id="gallery-categories">
         {existingCats.map(c => <option key={c} value={c}/>)}
       </datalist>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,marginBottom:16}}>
-        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-          <button onClick={() => upd([...items].sort((a,b) => (a.category||"").localeCompare(b.category||"")))} style={{padding:"8px 14px",borderRadius:8,border:"1px solid var(--bd)",background:"white",cursor:"pointer",fontSize:".8rem",fontWeight:600,color:"var(--dt)"}}>Sort by Category</button>
-          <input type="text" list="gallery-categories" value={bulkTag} onChange={e=>setBulkTag(e.target.value)} placeholder="Tag for uploads or selected..." style={{padding:"8px 11px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".8rem",fontFamily:"inherit",width:220}}/>
+
+      {/* ── ADD YOUTUBE VIDEO GALLERY CARD ── */}
+      <div style={{
+        background: "linear-gradient(135deg, #FFF5F5 0%, #FFFFFF 100%)",
+        border: "1.5px solid #FECACA",
+        borderRadius: 14,
+        padding: mob ? 14 : 18,
+        marginBottom: 20,
+        boxShadow: "0 4px 14px rgba(220, 38, 38, 0.06)"
+      }}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{background:"#FF0000",color:"white",padding:"4px 10px",borderRadius:8,fontWeight:800,fontSize:".78rem"}}>▶ YouTube</span>
+            <h4 style={{margin:0,color:"var(--dt)",fontSize:".98rem",fontWeight:800}}>Add YouTube Video to Gallery</h4>
+          </div>
+          <span style={{fontSize:".74rem",color:"var(--mu)"}}>
+            Paste any YouTube link — thumbnail & video title are fetched automatically
+          </span>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:mob?"1fr":(parsedYtId?"1.6fr 1fr":"1fr"),gap:16,alignItems:"start"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* Row 1: YouTube URL */}
+            <div>
+              <label style={{display:"block",fontSize:".72rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>
+                🔗 YouTube Video URL *
+              </label>
+              <input
+                type="url"
+                value={ytUrl}
+                onChange={e => handleYtUrlChange(e.target.value)}
+                placeholder="Paste YouTube URL (e.g. https://www.youtube.com/watch?v=... or https://youtu.be/...)"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #FCA5A5",fontSize:".84rem",fontFamily:"inherit",background:"white"}}
+              />
+              {ytFetchingMeta && (
+                <div style={{fontSize:".72rem",color:"#DC2626",marginTop:4,fontWeight:600}}>
+                  ⏳ Fetching video title & thumbnail from YouTube...
+                </div>
+              )}
+              {parsedYtId && !ytFetchingMeta && (
+                <div style={{fontSize:".72rem",color:"#166534",marginTop:4,fontWeight:600}}>
+                  ✅ Video ID detected: <code>{parsedYtId}</code> {ytAuthor ? `• Channel: ${ytAuthor}` : ""}
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Video Title & Category */}
+            <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1.2fr 1fr",gap:10}}>
+              <div>
+                <label style={{display:"block",fontSize:".72rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>
+                  🎬 Video Title
+                </label>
+                <input
+                  type="text"
+                  value={ytTitle}
+                  onChange={e => setYtTitle(e.target.value)}
+                  placeholder="Auto-filled from YouTube or enter custom title..."
+                  style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".82rem",fontFamily:"inherit"}}
+                />
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:".72rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>
+                  🏷️ Category (Select existing or type new)
+                </label>
+                <input
+                  type="text"
+                  list="gallery-categories"
+                  value={ytCategory}
+                  onChange={e => setYtCategory(e.target.value)}
+                  placeholder="e.g. Events, Education, Videos..."
+                  style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".82rem",fontFamily:"inherit"}}
+                />
+              </div>
+            </div>
+
+            {/* Quick Category Pills */}
+            {existingCats.length > 0 && (
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontSize:".7rem",color:"var(--mu)",fontWeight:600}}>Quick Category:</span>
+                {existingCats.map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setYtCategory(cat)}
+                    style={{
+                      padding:"3px 10px",
+                      borderRadius:14,
+                      fontSize:".7rem",
+                      fontWeight:600,
+                      cursor:"pointer",
+                      background: ytCategory === cat ? "var(--dt)" : "#F3F4F6",
+                      color: ytCategory === cat ? "white" : "var(--dt)",
+                      border: `1px solid ${ytCategory === cat ? "var(--dt)" : "#E5E7EB"}`
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Row 3: Information / Description & Date */}
+            <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1.5fr 0.8fr",gap:10}}>
+              <div>
+                <label style={{display:"block",fontSize:".72rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>
+                  ℹ️ Video Information / Description (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={ytDescription}
+                  onChange={e => setYtDescription(e.target.value)}
+                  placeholder="Add event details, speaker, summary, or information shown on gallery..."
+                  style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".8rem",fontFamily:"inherit"}}
+                />
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:".72rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>
+                  📅 Event Date / Label (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={ytDate}
+                  onChange={e => setYtDate(e.target.value)}
+                  placeholder="e.g. Oct 2026 or 15 Aug 2026"
+                  style={{width:"100%",padding:"8px 11px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".8rem",fontFamily:"inherit"}}
+                />
+              </div>
+            </div>
+
+            <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:4}}>
+              <button
+                type="button"
+                onClick={handleAddYouTubeVideo}
+                disabled={!parsedYtId}
+                style={{
+                  padding: "9px 18px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: parsedYtId ? "#DC2626" : "#E5E7EB",
+                  color: parsedYtId ? "white" : "#9CA3AF",
+                  fontWeight: 800,
+                  fontSize: ".82rem",
+                  cursor: parsedYtId ? "pointer" : "not-allowed",
+                  boxShadow: parsedYtId ? "0 4px 12px rgba(220, 38, 38, 0.25)" : "none"
+                }}
+              >
+                ➕ Add YouTube Video to Gallery
+              </button>
+            </div>
+          </div>
+
+          {/* Auto-Fetched Thumbnail Live Preview */}
+          {parsedYtId && (
+            <div style={{
+              background: "#111",
+              borderRadius: 12,
+              overflow: "hidden",
+              border: "2px solid #FCA5A5",
+              position: "relative"
+            }}>
+              <div style={{
+                aspectRatio: "16/9",
+                backgroundImage: `url("${previewYtThumb}")`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}>
+                <div style={{
+                  width: 48,
+                  height: 34,
+                  borderRadius: 10,
+                  background: "rgba(255,0,0,0.9)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontSize: "1.2rem",
+                  border: "2px solid white"
+                }}>
+                  ▶
+                </div>
+                <span style={{
+                  position: "absolute",
+                  top: 8,
+                  left: 8,
+                  background: "rgba(0,0,0,0.75)",
+                  color: "white",
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  fontSize: ".65rem",
+                  fontWeight: 700
+                }}>
+                  Auto-Fetched Thumbnail
+                </span>
+              </div>
+              <div style={{padding:"8px 10px",background:"#1F2937",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <span style={{fontSize:".73rem",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {ytTitle || "YouTube Video Preview"}
+                </span>
+                <select
+                  value={ytThumbQuality}
+                  onChange={e => setYtThumbQuality(e.target.value)}
+                  style={{fontSize:".68rem",padding:"2px 6px",borderRadius:4,background:"#374151",color:"white",border:"1px solid #4B5563"}}
+                  title="Thumbnail Resolution"
+                >
+                  <option value="hqdefault">HQ Thumbnail</option>
+                  <option value="maxresdefault">HD MaxRes</option>
+                  <option value="mqdefault">Medium</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── FILTER & BULK ACTION TOOLBAR ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,marginBottom:14}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {[
+            { id: "all", label: `All (${items.length})` },
+            { id: "photos", label: `📷 Photos (${photoCount})` },
+            { id: "videos", label: `▶️ Video Gallery (${videoCount})` }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setAdminMediaFilter(tab.id)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 20,
+                fontSize: ".75rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                background: adminMediaFilter === tab.id ? "var(--dt)" : "white",
+                color: adminMediaFilter === tab.id ? "white" : "var(--dt)",
+                border: `1px solid ${adminMediaFilter === tab.id ? "var(--dt)" : "var(--bd)"}`
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+
+          {/* Density / Columns Control */}
+          <div style={{display:"flex",alignItems:"center",gap:3,background:"#F3F4F6",padding:"2px 4px",borderRadius:8,border:"1px solid var(--bd)"}}>
+            <span style={{fontSize:".68rem",fontWeight:700,color:"var(--mu)",padding:"0 3px"}}>Cols:</span>
+            {[
+              { id: "auto", label: "Auto (5-6)" },
+              { id: "5", label: "5" },
+              { id: "6", label: "6" }
+            ].map(col => (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => setGridCols(col.id)}
+                style={{
+                  padding: "3px 7px",
+                  borderRadius: 6,
+                  fontSize: ".68rem",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  background: gridCols === col.id ? "var(--dt)" : "transparent",
+                  color: gridCols === col.id ? "white" : "var(--dt)"
+                }}
+              >
+                {col.label}
+              </button>
+            ))}
+          </div>
+
+          <button onClick={() => upd([...items].sort((a,b) => (a.category||"").localeCompare(b.category||"")))} style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--bd)",background:"white",cursor:"pointer",fontSize:".76rem",fontWeight:600,color:"var(--dt)"}}>Sort by Category</button>
+          <input type="text" list="gallery-categories" value={bulkTag} onChange={e=>setBulkTag(e.target.value)} placeholder="Tag for uploads..." style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".76rem",fontFamily:"inherit",width:170}}/>
           {selected.length > 0 && (
             <button onClick={() => {
               if (!bulkTag.trim()) return alert("Please enter a tag in the box first!");
               const newItems = items.map(g => selected.includes(g.id) ? {...g, category: bulkTag.trim()} : g);
               upd(newItems);
               setSelected([]);
-            }} style={{padding:"8px 14px",borderRadius:8,background:"var(--sf)",color:"white",border:"none",cursor:"pointer",fontSize:".8rem",fontWeight:600}}>
-              Apply Tag to {selected.length} Selected
+            }} style={{padding:"6px 12px",borderRadius:8,background:"var(--sf)",color:"white",border:"none",cursor:"pointer",fontSize:".76rem",fontWeight:600}}>
+              Apply Tag ({selected.length})
             </button>
           )}
         </div>
-        <label className="bs" style={{padding:"8px 14px",borderRadius:8,fontWeight:600,fontSize:".8rem",cursor:"pointer",opacity:loading?0.5:1}}>
-          {loading ? "Uploading..." : "Upload Media"}
+        <label className="bs" style={{padding:"6px 13px",borderRadius:8,fontWeight:600,fontSize:".76rem",cursor:"pointer",opacity:loading?0.5:1}}>
+          {loading ? "Uploading..." : "📷 Upload Photo / Video"}
           <input type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={uploadPhoto} disabled={loading}/>
         </label>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:mob?"1fr 1fr":"repeat(3,1fr)",gap:14}}>
-        {items.map((g, i)=>(
-          <div key={g.id} className="ac" style={{overflow:"hidden",padding:0,position:"relative",border:selected.includes(g.id)?"2px solid var(--sf)":""}}>
-            <input type="checkbox" checked={selected.includes(g.id)} onChange={e => {
-              if (e.target.checked) setSelected([...selected, g.id]);
-              else setSelected(selected.filter(id => id !== g.id));
-            }} style={{position:"absolute",top:8,left:8,width:20,height:20,cursor:"pointer",zIndex:10}}/>
-            {g.type === 'video' ? (
-              <video src={g.url} style={{width:"100%", height:140, objectFit:"cover", display:"block"}} muted playsInline preload="metadata" />
-            ) : (
-              <div style={{height:140,background:"#eee",backgroundImage:`url(${g.url})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
-            )}
-            <div style={{padding:"12px"}}>
-              <input type="text" value={g.title} onChange={e=>updateItem(g.id,"title",e.target.value)} placeholder="Photo Title" style={{width:"100%",padding:"4px 8px",marginBottom:6,border:"1px solid var(--bd)",borderRadius:6,fontSize:".82rem",fontFamily:"inherit"}}/>
-              <input type="text" list="gallery-categories" value={g.category} onChange={e=>updateItem(g.id,"category",e.target.value)} placeholder="Category (e.g. Events)" style={{width:"100%",padding:"4px 8px",marginBottom:10,border:"1px solid var(--bd)",borderRadius:6,fontSize:".75rem",fontFamily:"inherit",color:"var(--mu)"}}/>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{display:"flex",gap:4}}>
-                  <button onClick={()=>move(i, -1)} disabled={i===0} style={{padding:"4px 8px",borderRadius:6,border:"1px solid var(--bd)",background:i===0?"#f5f5f5":"white",cursor:i===0?"not-allowed":"pointer",color:i===0?"#ccc":"var(--dt)",fontSize:".8rem"}}>←</button>
-                  <button onClick={()=>move(i, 1)} disabled={i===items.length-1} style={{padding:"4px 8px",borderRadius:6,border:"1px solid var(--bd)",background:i===items.length-1?"#f5f5f5":"white",cursor:i===items.length-1?"not-allowed":"pointer",color:i===items.length-1?"#ccc":"var(--dt)",fontSize:".8rem"}}>→</button>
+
+      {/* ── GALLERY ITEMS GRID (5-6 CARDS IN A ROW) ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: mob
+          ? "repeat(2, 1fr)"
+          : gridCols === "5"
+            ? "repeat(5, 1fr)"
+            : gridCols === "6"
+              ? "repeat(6, 1fr)"
+              : "repeat(auto-fill, minmax(185px, 1fr))",
+        gap: 12
+      }}>
+        {visibleItems.map(({ g, originalIdx: i }) => {
+          const ytId = extractYouTubeVideoId(g.url);
+          const isYouTube = g.type === "youtube" || !!ytId;
+          const thumbUrl = isYouTube
+            ? (g.thumbnail || getYouTubeThumbnailUrl(ytId || g.url))
+            : normalizeGoogleDriveImageUrls(g.url);
+          const provider = detectUrlStorageProvider(g.url);
+
+          return (
+            <div
+              key={g.id}
+              className="ac"
+              style={{
+                overflow: "hidden",
+                padding: 0,
+                position: "relative",
+                borderRadius: 10,
+                border: selected.includes(g.id) ? "2px solid var(--sf)" : "1px solid var(--bd)",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(g.id)}
+                onChange={e => {
+                  if (e.target.checked) setSelected([...selected, g.id]);
+                  else setSelected(selected.filter(id => id !== g.id));
+                }}
+                style={{position:"absolute",top:6,left:6,width:16,height:16,cursor:"pointer",zIndex:10}}
+              />
+
+              {g.url && (
+                <a
+                  href={isYouTube ? `https://www.youtube.com/watch?v=${ytId}` : normalizeGoogleDriveImageUrls(g.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Current URL: ${g.url}`}
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 6,
+                    zIndex: 10,
+                    padding: "2px 6px",
+                    borderRadius: 5,
+                    fontSize: ".62rem",
+                    fontWeight: 800,
+                    textDecoration: "none",
+                    background: isYouTube
+                      ? "rgba(220, 38, 38, 0.95)"
+                      : provider === "gdrive"
+                        ? "rgba(22, 101, 52, 0.92)"
+                        : "rgba(30, 64, 175, 0.92)",
+                    color: "white",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.25)"
+                  }}
+                >
+                  {isYouTube ? "▶ YouTube ↗" : provider === "gdrive" ? "☁️ GDrive ↗" : "🏢 Hostinger ↗"}
+                </a>
+              )}
+
+              {g.type === "video" && !isYouTube ? (
+                <video src={normalizeGoogleDriveImageUrls(g.url)} style={{width:"100%", height:110, objectFit:"cover", display:"block"}} muted playsInline preload="metadata" />
+              ) : (
+                <div
+                  onClick={() => isYouTube && setPreviewVideoItem(g)}
+                  title={isYouTube ? "Click to preview YouTube video" : ""}
+                  style={{
+                    height: 110,
+                    background: "#111",
+                    backgroundImage: `url("${thumbUrl}")`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: isYouTube ? "pointer" : "default"
+                  }}
+                >
+                  {isYouTube && (
+                    <div style={{
+                      width: 34,
+                      height: 24,
+                      borderRadius: 6,
+                      background: "rgba(255, 0, 0, 0.92)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      fontSize: ".88rem",
+                      border: "1.5px solid white",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.4)"
+                    }}>
+                      ▶
+                    </div>
+                  )}
                 </div>
-                <button onClick={()=>remove(g.id)} style={{padding:"4px 9px",borderRadius:6,background:"#FEF0EF",border:"none",color:"#C0392B",cursor:"pointer",fontSize:".72rem",fontWeight:600}}>Delete</button>
+              )}
+
+              <div style={{padding:"8px 9px",display:"flex",flexDirection:"column",gap:5}}>
+                <input
+                  type="text"
+                  value={g.title || ""}
+                  onChange={e => updateItem(g.id, "title", e.target.value)}
+                  placeholder={isYouTube ? "Video Title" : "Photo Title"}
+                  title={g.title || ""}
+                  style={{width:"100%",padding:"4px 6px",border:"1px solid var(--bd)",borderRadius:5,fontSize:".76rem",fontWeight:700,fontFamily:"inherit"}}
+                />
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                  <input
+                    type="text"
+                    list="gallery-categories"
+                    value={g.category || ""}
+                    onChange={e => updateItem(g.id, "category", e.target.value)}
+                    placeholder="Category"
+                    title={g.category || ""}
+                    style={{width:"100%",padding:"3px 5px",border:"1px solid var(--bd)",borderRadius:5,fontSize:".7rem",fontFamily:"inherit",color:"var(--dt)"}}
+                  />
+                  <input
+                    type="text"
+                    value={g.date || ""}
+                    onChange={e => updateItem(g.id, "date", e.target.value)}
+                    placeholder="📅 Date"
+                    title={g.date || ""}
+                    style={{width:"100%",padding:"3px 5px",border:"1px solid var(--bd)",borderRadius:5,fontSize:".7rem",fontFamily:"inherit",color:"var(--mu)"}}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={g.description || ""}
+                  onChange={e => updateItem(g.id, "description", e.target.value)}
+                  placeholder="ℹ️ Description / info..."
+                  title={g.description || ""}
+                  style={{width:"100%",padding:"3px 5px",border:"1px solid var(--bd)",borderRadius:5,fontSize:".7rem",fontFamily:"inherit",color:"var(--tm)"}}
+                />
+                {isYouTube && (
+                  <input
+                    type="url"
+                    value={g.url || ""}
+                    onChange={e => updateItem(g.id, "url", e.target.value)}
+                    placeholder="YouTube URL"
+                    title={g.url || ""}
+                    style={{width:"100%",padding:"2px 5px",border:"1px solid #FECACA",background:"#FFF5F5",borderRadius:5,fontSize:".65rem",fontFamily:"monospace",color:"#991B1B"}}
+                  />
+                )}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+                  <div style={{display:"flex",gap:3}}>
+                    <button onClick={()=>move(i, -1)} disabled={i===0} style={{padding:"2px 6px",borderRadius:5,border:"1px solid var(--bd)",background:i===0?"#f5f5f5":"white",cursor:i===0?"not-allowed":"pointer",color:i===0?"#ccc":"var(--dt)",fontSize:".72rem"}}>←</button>
+                    <button onClick={()=>move(i, 1)} disabled={i===items.length-1} style={{padding:"2px 6px",borderRadius:5,border:"1px solid var(--bd)",background:i===items.length-1?"#f5f5f5":"white",cursor:i===items.length-1?"not-allowed":"pointer",color:i===items.length-1?"#ccc":"var(--dt)",fontSize:".72rem"}}>→</button>
+                    {isYouTube && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewVideoItem(g)}
+                        style={{padding:"2px 6px",borderRadius:5,border:"1px solid #FCA5A5",background:"#FEF2F2",color:"#DC2626",cursor:"pointer",fontSize:".7rem",fontWeight:700}}
+                      >
+                        ▶ Play
+                      </button>
+                    )}
+                  </div>
+                  <button onClick={()=>remove(g.id)} style={{padding:"2px 7px",borderRadius:5,background:"#FEF0EF",border:"none",color:"#C0392B",cursor:"pointer",fontSize:".7rem",fontWeight:600}}>Delete</button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-        <label style={{border:"2px dashed var(--bd)",borderRadius:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:180,cursor:"pointer",color:"var(--mu)",gap:7,transition:"all .2s",opacity:loading?0.5:1}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--sf)";e.currentTarget.style.color="var(--sf)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--bd)";e.currentTarget.style.color="var(--mu)"}}>
-          <span style={{fontSize:"1.8rem"}}>📤</span><span style={{fontSize:".82rem",fontWeight:600}}>Bulk Upload Media</span>
+          );
+        })}
+        <label
+          style={{
+            border: "2px dashed var(--bd)",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 180,
+            cursor: "pointer",
+            color: "var(--mu)",
+            gap: 5,
+            padding: 10,
+            textAlign: "center",
+            transition: "all .2s",
+            opacity: loading ? 0.5 : 1
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--sf)"; e.currentTarget.style.color = "var(--sf)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--bd)"; e.currentTarget.style.color = "var(--mu)"; }}
+        >
+          <span style={{fontSize:"1.4rem"}}>📤</span>
+          <span style={{fontSize:".74rem",fontWeight:700}}>Upload Media</span>
           <input type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={uploadPhoto} disabled={loading}/>
         </label>
       </div>
+
+      {/* ── ADMIN YOUTUBE PREVIEW MODAL ── */}
+      {previewVideoItem && (
+        <div
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:9999}}
+          onClick={() => setPreviewVideoItem(null)}
+        >
+          <div
+            style={{width:"100%",maxWidth:780,background:"#111",borderRadius:14,overflow:"hidden",position:"relative",boxShadow:"0 20px 50px rgba(0,0,0,0.6)"}}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",background:"#1F2937",color:"white"}}>
+              <strong style={{fontSize:".9rem"}}>{previewVideoItem.title || "YouTube Video Preview"}</strong>
+              <button
+                type="button"
+                onClick={() => setPreviewVideoItem(null)}
+                style={{background:"none",border:"none",color:"white",fontSize:"1.3rem",cursor:"pointer"}}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{width:"100%",aspectRatio:"16/9"}}>
+              <iframe
+                src={getYouTubeEmbedUrl(previewVideoItem.url)}
+                title={previewVideoItem.title || "YouTube Video"}
+                style={{width:"100%",height:"100%",border:"none"}}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -22343,7 +25348,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
     }
   });
 
-  const isPdf = activeDoc && (activeDoc.toLowerCase().includes('.pdf') || activeDoc.startsWith('data:application/pdf'));
+  const isPdf = activeDoc && (activeDoc.toLowerCase().includes('.pdf') || activeDoc.startsWith('data:application/pdf') || activeDoc.includes('drive.google.com/file/d/'));
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?0:16,boxSizing:"border-box"}}>
