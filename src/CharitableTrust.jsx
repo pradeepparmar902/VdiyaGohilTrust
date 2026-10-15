@@ -1982,7 +1982,7 @@ const GITEMS = [
 
 
 // ── LOGO MARK — shared by Navbar and Footer ───────────────────────────────────
-function LogoMark({ logo, mob }) {
+function LogoMark({ logo, mob, C }) {
   if (!logo || !logo.visible) return null;
   const size = mob ? Math.max(30, (logo.size || 42) - 6) : (logo.size || 42);
   const radius = logo.shape === "circle" ? "50%" : logo.shape === "rounded" ? "30%" : "8px";
@@ -1990,15 +1990,16 @@ function LogoMark({ logo, mob }) {
     : logo.bgColor === "transparent" ? "transparent"
     : "linear-gradient(135deg,var(--sf),var(--gd))";
   const border = logo.bgColor === "transparent" ? "2px solid rgba(232,101,10,.4)" : "none";
+  const resolvedUrl = resolveMediaUrl(logo.url, C);
 
   return (
     <div style={{width:size, height:size, borderRadius:radius, background:bg, border,
       display:"flex", alignItems:"center", justifyContent:"center",
       boxShadow: logo.bgColor==="transparent" ? "none" : "0 4px 12px rgba(232,101,10,.3)",
       overflow:"hidden", flexShrink:0, transition:"all .3s"}}>
-      {logo.type === "image" && logo.url
-        ? <img src={logo.url} alt="logo" style={{width:"100%", height:"100%", objectFit:"cover"}}
-            onError={e => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }}/>
+      {logo.type === "image" && resolvedUrl
+        ? <img src={resolvedUrl} alt="logo" style={{width:"100%", height:"100%", objectFit:"cover"}}
+            onError={e => { e.target.style.display="none"; if (e.target.nextSibling) e.target.nextSibling.style.display="flex"; }}/>
         : null}
       {/* Fallback text — always rendered, hidden when image loads */}
       <span style={{
@@ -2270,7 +2271,7 @@ function Hero({ C, lang }) {
     <section id="home" className="hbg" style={{minHeight:mob?"auto":"88vh",display:"flex",flexDirection:"column",justifyContent:"center",position:"relative",paddingBottom:mob?60:80, ...(h?.bgCss ? {background: h.bgCss} : {})}}>
       {isTopBannerShown && (
         <div style={{width:"100%",maxWidth:1200,margin:"0 auto",padding:mob?"20px 20px 0":"20px 32px 0",display:"flex",justifyContent:"center",zIndex:2}}>
-           <img src={h.topBanner} alt="Top Banner" style={{width:"100%", height:h?.topBannerHeight || 250, objectFit:"contain"}} />
+           <img src={resolveMediaUrl(h.topBanner, C)} alt="Top Banner" style={{width:"100%", height:h?.topBannerHeight || 250, objectFit:"contain"}} />
         </div>
       )}
       <div style={{position:"absolute",top:"10%",right:"5%",width:200,height:200,borderRadius:"50%",border:"1px solid rgba(200,134,10,.15)",opacity:.4}} className="sp"/>
@@ -2328,7 +2329,7 @@ function Hero({ C, lang }) {
                   }}>
                     {h.sliderImages.map((img, i) => (
                       <div key={i} style={{width: `${100 / h.sliderImages.length}%`, height:"100%", display:"flex", alignItems:"center", justifyContent:"center"}}>
-                        <img src={img} alt={`Slide ${i}`} style={{
+                        <img src={resolveMediaUrl(img, C)} alt={`Slide ${i}`} style={{
                           maxWidth:"100%",
                           width: "100%",
                           maxHeight: h?.imageMaxHeight || 420,
@@ -2357,7 +2358,7 @@ function Hero({ C, lang }) {
                 </div>
               ) : (
                 <img 
-                  src={h.image} 
+                  src={resolveMediaUrl(h.image, C)} 
                   alt="Campaign Image" 
                   style={{
                     maxWidth:"100%",
@@ -3361,7 +3362,7 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                     <>
                       {formObj.bannerImage && (
                         <div style={{gridColumn:"1 / -1", marginBottom: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--bd)"}}>
-                          <img src={formObj.bannerImage} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
+                          <img src={resolveMediaUrl(formObj.bannerImage, C)} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
                         </div>
                       )}
                       {formObj.instructions && (
@@ -3969,7 +3970,7 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                         <>
                           {formObj.bannerImage && (
                             <div style={{gridColumn:"1 / -1", marginBottom: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--bd)"}}>
-                              <img src={formObj.bannerImage} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
+                              <img src={resolveMediaUrl(formObj.bannerImage, C)} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
                             </div>
                           )}
                           {formObj.instructions && (
@@ -5370,8 +5371,8 @@ function Gallery({ C }) {
           )}
           {filtered.map(g => {
             const ytId = extractYouTubeVideoId(g.url);
-            const isYouTube = g.type === "youtube" || !!ytId;
-            const safeUrl = isYouTube ? g.url : normalizeGoogleDriveImageUrls(g.url);
+            const resolvedRawUrl = resolveMediaUrl(g.url, C);
+            const safeUrl = isYouTube ? g.url : normalizeGoogleDriveImageUrls(resolvedRawUrl);
             const thumbUrl = isYouTube
               ? (g.thumbnail || getYouTubeThumbnailUrl(ytId || g.url))
               : safeUrl;
@@ -6635,11 +6636,12 @@ export const generateReceiptPDF = async (r, C, action="download") => {
     
     const baseFontSize = C?.donate?.receiptFontSize || 14;
     
+    const resolvedTemplate = resolveMediaUrl(template, C);
     const img = new Image();
-    if (template && !template.startsWith('data:')) {
+    if (resolvedTemplate && !resolvedTemplate.startsWith('data:')) {
       img.crossOrigin = "Anonymous";
     }
-    img.src = template;
+    img.src = resolvedTemplate;
     
     await new Promise((resolve, reject) => {
       img.onload = resolve;
@@ -6899,7 +6901,7 @@ const F = ({label, path, ta, rtf, hint}) => {
 };
 
 const ImgUpload = ({ label, path, auth }) => {
-  const { gv, upd } = useContext(EditorContext);
+  const { gv, upd, openMediaPicker, draft } = useContext(EditorContext);
   const val = gv(path);
   const [uploading, setUploading] = useState(false);
   const handleUp = async (e) => {
@@ -6916,8 +6918,20 @@ const ImgUpload = ({ label, path, auth }) => {
   return (
     <div className="cf">
       <label className="cl">{label}</label>
-      <div style={{display:"flex", alignItems:"center", gap:12}}>
-        {val && <img src={val} style={{height:40, objectFit:"contain"}} alt=""/>}
+      <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+        {val && <img src={resolveMediaUrl(val, draft)} style={{height:40, objectFit:"contain", borderRadius:4, border:"1px solid var(--bd)"}} alt=""/>}
+        {openMediaPicker && (
+          <button
+            type="button"
+            onClick={() => openMediaPicker({
+              targetCategory: "banner",
+              onSelect: (asset) => upd(path, asset.id ? `media://${asset.id}` : asset.url)
+            })}
+            style={{padding:"6px 12px", background:"#F0FDFA", border:"1.5px solid #0F766E", color:"#0F766E", borderRadius:6, cursor:"pointer", fontSize:".8rem", fontWeight:700, display:"flex", alignItems:"center", gap:4}}
+          >
+            <span>📁</span> Choose from Media Library
+          </button>
+        )}
         <label style={{padding:"6px 12px", background:"white", border:"1px solid var(--bd)", borderRadius:6, cursor:"pointer", fontSize:".8rem", fontWeight:600, color:"var(--dt)"}}>
           {uploading ? "..." : "Upload Image"}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={handleUp} disabled={uploading}/>
@@ -7021,6 +7035,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
   const [toastMsg, setToastMsg] = useState("");
   const [exp, setExp] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [mediaPickerConfig, setMediaPickerConfig] = useState(null);
   const fileRef = useRef();
   const w = useW(); const mob = w<768;
 
@@ -7156,7 +7171,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
 
 
   return (
-    <EditorContext.Provider value={{ draft, gv, upd, moveItem, delItem, addItem, exp, setExp, mob }}>
+    <EditorContext.Provider value={{ draft, gv, upd, moveItem, delItem, addItem, exp, setExp, mob, openMediaPicker: (cfg) => setMediaPickerConfig(cfg) }}>
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <div>
@@ -7613,8 +7628,21 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
                 <div className="cf">
                   <label className="cl">Image — Upload or Paste URL</label>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <BlurInput className="ci" value={draft.trust.logo.url||""} onCommit={v=>upd("trust.logo.url",v)} placeholder="Paste https://... image URL" style={{marginBottom:0}}/>
+                    <BlurInput className="ci" value={draft.trust.logo.url||""} onCommit={v=>upd("trust.logo.url",v)} placeholder="Paste https://... or choose from Media Library" style={{marginBottom:0}}/>
                     <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <button
+                        type="button"
+                        onClick={() => setMediaPickerConfig({
+                          targetCategory: "banner",
+                          onSelect: (asset) => {
+                            upd("trust.logo.url", asset.id ? `media://${asset.id}` : asset.url);
+                            upd("trust.logo.type", "image");
+                          }
+                        })}
+                        style={{padding:"7px 14px",borderRadius:8,border:"2px solid #0F766E",background:"#F0FDFA",color:"#0F766E",fontWeight:700,fontSize:".78rem",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontFamily:"inherit"}}
+                      >
+                        <span>📁</span> Choose from Media Library
+                      </button>
                       <span style={{fontSize:".75rem",color:"var(--mu)"}}>or</span>
                       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleLogoUpload}/>
                       <button onClick={()=>fileRef.current?.click()} disabled={uploading||!auth?.idToken}
@@ -7810,7 +7838,17 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
                     <div style={{textAlign:"right", fontSize:".8rem", color:"var(--tm2)", fontWeight: "bold"}}>{draft.hero.topBannerHeight || 250}px</div>
                   </div>
                 </div>
-                <div style={{marginBottom: 16}}>
+                <div style={{marginBottom: 16, display:"flex", gap:8}}>
+                  <button
+                    type="button"
+                    onClick={() => setMediaPickerConfig({
+                      targetCategory: "banner",
+                      onSelect: (asset) => upd("hero.topBanner", asset.id ? `media://${asset.id}` : asset.url)
+                    })}
+                    style={{padding:"10px 14px",borderRadius:8,border:"2px solid #0F766E",background:"#F0FDFA",color:"#0F766E",fontWeight:700,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}
+                  >
+                    <span>📁</span> Choose from Media Library
+                  </button>
                   <input id="hero-banner-upload" type="file" accept="image/*" style={{display:"none"}} onChange={handleTopBannerUpload} />
                   <label htmlFor="hero-banner-upload" style={{display:"inline-block",background:"var(--dt)",color:"white",padding:"10px 16px",borderRadius:8,fontSize:".85rem",cursor:"pointer",fontWeight:600}}>
                     {uploading ? "Uploading..." : "Upload"}
@@ -7860,7 +7898,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
                   <label style={{display:"block",fontSize:".85rem",fontWeight:600,color:"var(--dt)",marginBottom:12}}>Slider Images (Will slide right to left)</label>
                   {(draft.hero.sliderImages || []).map((imgUrl, i) => (
                     <div key={i} style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-                      {imgUrl && <img src={imgUrl} alt="Slide" style={{width:40,height:40,objectFit:"cover",borderRadius:4,border:"1px solid #ccc"}} />}
+                      {imgUrl && <img src={resolveMediaUrl(imgUrl, draft)} alt="Slide" style={{width:40,height:40,objectFit:"cover",borderRadius:4,border:"1px solid #ccc"}} />}
                       <input type="text" value={imgUrl} onChange={(e) => {
                         const newImgs = [...(draft.hero.sliderImages || [])];
                         newImgs[i] = e.target.value;
@@ -7873,8 +7911,18 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
                       }} style={{padding:"8px",background:"#ff4d4f",color:"white",border:"none",borderRadius:6,cursor:"pointer",fontSize:".8rem"}}>X</button>
                     </div>
                   ))}
-                  <div style={{display:"flex",gap:12,marginTop:12}}>
+                  <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap"}}>
                     <button onClick={() => upd("hero.sliderImages", [...(draft.hero.sliderImages || []), ""])} style={{padding:"8px 14px",background:"#e0e0e0",color:"var(--dt)",border:"none",borderRadius:6,cursor:"pointer",fontSize:".85rem",fontWeight:600}}>+ Add Image URL</button>
+                    <button
+                      type="button"
+                      onClick={() => setMediaPickerConfig({
+                        targetCategory: "banner",
+                        onSelect: (asset) => upd("hero.sliderImages", [...(draft.hero.sliderImages || []), asset.id ? `media://${asset.id}` : asset.url])
+                      })}
+                      style={{padding:"8px 14px",background:"#F0FDFA",border:"1.5px solid #0F766E",color:"#0F766E",borderRadius:6,cursor:"pointer",fontSize:".85rem",fontWeight:700,display:"flex",alignItems:"center",gap:5}}
+                    >
+                      <span>📁</span> Pick from Media Library
+                    </button>
                     <input id="hero-slider-upload" type="file" accept="image/*" multiple style={{display:"none"}} onChange={(e) => {
                       const files = Array.from(e.target.files);
                       files.forEach(file => {
@@ -7893,7 +7941,17 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
                   <div style={{flex:1}}>
                     <F label="Image URL (Or upload PNG/JPEG)" path="hero.image" hint="Paste image URL or click Upload"/>
                   </div>
-                  <div style={{marginBottom: 16}}>
+                  <div style={{marginBottom: 16, display:"flex", gap:8}}>
+                    <button
+                      type="button"
+                      onClick={() => setMediaPickerConfig({
+                        targetCategory: "banner",
+                        onSelect: (asset) => upd("hero.image", asset.id ? `media://${asset.id}` : asset.url)
+                      })}
+                      style={{padding:"10px 14px",borderRadius:8,border:"2px solid #0F766E",background:"#F0FDFA",color:"#0F766E",fontWeight:700,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}
+                    >
+                      <span>📁</span> Choose from Media Library
+                    </button>
                     <input id="hero-img-upload" type="file" accept="image/*" style={{display:"none"}} onChange={handleHeroImageUpload} />
                     <label htmlFor="hero-img-upload" style={{display:"inline-block",background:"var(--dt)",color:"white",padding:"10px 16px",borderRadius:8,fontSize:".85rem",cursor:"pointer",fontWeight:600}}>
                       {uploading ? "Uploading..." : "Upload File"}
@@ -8432,6 +8490,25 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
           {toast==="warn"   && "⚠️ " + toastMsg}
         </div>
       )}
+
+      {/* Central Media Library Picker Modal for ContentEditor (Logo, Banner, Slider, Hero, About) */}
+      <MediaLibraryModal
+        isOpen={Boolean(mediaPickerConfig)}
+        onClose={() => setMediaPickerConfig(null)}
+        targetCategory={mediaPickerConfig?.targetCategory || "banner"}
+        C={draft}
+        setC={(newC) => {
+          setDraft(newC);
+          if (setC) setC(newC);
+        }}
+        auth={auth}
+        onSelect={(asset) => {
+          if (mediaPickerConfig?.onSelect) {
+            mediaPickerConfig.onSelect(asset);
+          }
+          setMediaPickerConfig(null);
+        }}
+      />
     </div>
     </EditorContext.Provider>
   );
@@ -11428,7 +11505,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="access"    && hasAccess.includes("access") && <AdminAccess C={C} setC={setC} master={master} auth={auth}/>}
           {tab==="masterdata" && hasAccess.includes("masterdata") && <AdminMasterData C={C} setC={setC} auth={auth} />}
           {tab==="backup"    && hasAccess.includes("backup") && <BackupRestore C={C} setC={setC} auth={auth} />}
-          {tab==="profile"   && hasAccess.includes("profile") && <AdminProfile auth={auth} mob={mob} adminProfile={adminProfile} setAdminProfile={setAdminProfile}/>}
+          {tab==="profile"   && hasAccess.includes("profile") && <AdminProfile auth={auth} mob={mob} adminProfile={adminProfile} setAdminProfile={setAdminProfile} C={C}/>}
         
           <AdminManualSidePanel activeTab={tab} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} master={master} C={C} setC={setC} auth={auth} />
         </div>
@@ -13453,6 +13530,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const [editingForm, setEditingForm] = useState(null);
   const [editingFormIdx, setEditingFormIdx] = useState(null);
   const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null);
+  const [showFormMediaModal, setShowFormMediaModal] = useState(false);
 
   const defaultFields = [
     { id: "fl_1", label: "Mobile Number", type: "tel" },
@@ -13603,7 +13681,10 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                  <div>
                    <label style={{display:"block",fontSize:".75rem",fontWeight:700,color:"var(--dt)",marginBottom:4}}>Banner/Header Image</label>
                    <div style={{display:"flex", gap:8, alignItems:"center"}}>
-                     <input value={editingForm.bannerImage||""} onChange={e => updateCurrentForm({...editingForm, bannerImage: e.target.value})} style={{flex:1, padding:"8px",border:"1px solid var(--bd)",borderRadius:6,fontSize:".85rem"}} placeholder="Paste image URL or upload ->"/>
+                     <input value={editingForm.bannerImage||""} onChange={e => updateCurrentForm({...editingForm, bannerImage: e.target.value})} style={{flex:1, minWidth:200, padding:"8px",border:"1px solid var(--bd)",borderRadius:6,fontSize:".85rem"}} placeholder="Paste image URL or choose/upload ->"/>
+                     <button type="button" onClick={() => setShowFormMediaModal(true)} style={{padding:"8px 12px", background:"#3b82f6", color:"white", border:"none", borderRadius:6, fontSize:".8rem", fontWeight:600, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6, whiteSpace:"nowrap"}}>
+                       📁 Choose from Media Library
+                     </button>
                      <label style={{padding:"8px 14px", background:"var(--dt)", color:"white", borderRadius:6, fontSize:".8rem", fontWeight:600, cursor:"pointer", whiteSpace:"nowrap"}}>
                        Upload Image
                        <input type="file" accept="image/*" style={{display:"none"}} onChange={async (e) => {
@@ -13618,7 +13699,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                        }}/>
                      </label>
                    </div>
-                   {editingForm.bannerImage && <img src={editingForm.bannerImage} alt="Banner Preview" style={{marginTop:8, width:"100%", maxHeight:100, objectFit:"cover", borderRadius:6, border:"1px solid var(--bd)"}}/>}
+                   {editingForm.bannerImage && <img src={resolveMediaUrl(editingForm.bannerImage, C)} alt="Banner Preview" style={{marginTop:8, width:"100%", maxHeight:100, objectFit:"cover", borderRadius:6, border:"1px solid var(--bd)"}}/>}
                  </div>
 
                  <div>
@@ -13903,7 +13984,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12,textAlign:"left"}}>
                {previewForm.bannerImage && (
                  <div style={{marginBottom: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--bd)"}}>
-                   <img src={previewForm.bannerImage} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
+                   <img src={resolveMediaUrl(previewForm.bannerImage, C)} alt="Form Banner" style={{width: "100%", maxHeight: 150, objectFit: "cover"}} />
                  </div>
                )}
                 {previewForm.instructions && (
@@ -13943,6 +14024,24 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
              </div>
            </div>
          </div>
+       )}
+
+       {showFormMediaModal && (
+         <MediaLibraryModal
+           isOpen={showFormMediaModal}
+           onClose={() => setShowFormMediaModal(false)}
+           targetCategory="banner"
+           C={C}
+           setC={setC}
+           auth={auth}
+           onSelect={(asset) => {
+             updateCurrentForm({
+               ...editingForm,
+               bannerImage: asset.id ? 'media://' + asset.id : asset.url
+             });
+             setShowFormMediaModal(false);
+           }}
+         />
        )}
     </div>
   );
@@ -14073,7 +14172,7 @@ function CertificateTemplateMapper({ imgUrl, mapData, fontSize, fontColor, onCha
   );
 }
 
-function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert', customTpl = null }) {
+function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert', customTpl = null, C, setC }) {
   const isInvite = type === 'invite';
   const isCustom = type === 'custom' || !!customTpl;
   const initialBgUrl = isCustom ? (customTpl?.bgUrl || "") : isInvite ? (ev.inviteBgUrl || "") : (ev.certBgUrl || "");
@@ -14086,6 +14185,7 @@ function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert
   const [certFontSize, setCertFontSize] = useState(initialFontSize);
   const [certFontColor, setCertFontColor] = useState(initialFontColor);
   const [customText, setCustomText] = useState("");
+  const [showMediaModal, setShowMediaModal] = useState(false);
   
   const [availableFields, setAvailableFields] = useState(["Event Name", "Date", "Group", "Serial Number"]);
   useEffect(() => {
@@ -14174,8 +14274,15 @@ function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert
         <div style={{display:"flex",gap:16,marginBottom:20, flexWrap: "wrap"}}>
           <div style={{flex:1, minWidth: 300}}>
             <label style={{fontSize:".8rem",fontWeight:600,display:"block",marginBottom:6}}>Background Image</label>
-            <div style={{display:"flex",gap:8}}>
-              <input type="text" value={certBgUrl} onChange={e=>setCertBgUrl(e.target.value)} placeholder="Image URL (or upload)..." style={{flex:1,padding:8,borderRadius:6,border:"1px solid var(--bd)"}} />
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input type="text" value={certBgUrl} onChange={e=>setCertBgUrl(e.target.value)} placeholder="Image URL (or choose/upload)..." style={{flex:1,minWidth:180,padding:8,borderRadius:6,border:"1px solid var(--bd)"}} />
+              <button
+                type="button"
+                onClick={() => setShowMediaModal(true)}
+                style={{background:"#3b82f6",color:"white",padding:"8px 14px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,fontSize:".8rem",whiteSpace:"nowrap"}}
+              >
+                📁 Media Library
+              </button>
               <label style={{background:"var(--sf)",color:"white",padding:"8px 16px",borderRadius:6,cursor:"pointer",fontWeight:600}}>
                 {uploading ? "..." : "Upload"}
                 <input type="file" accept="image/*" onChange={handleUpload} style={{display:"none"}} disabled={uploading}/>
@@ -14202,7 +14309,7 @@ function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert
 
         {certBgUrl ? (
           <CertificateTemplateMapper 
-            imgUrl={certBgUrl} 
+            imgUrl={resolveMediaUrl(certBgUrl, C)} 
             mapData={certMap} 
             fontSize={certFontSize}
             fontColor={certFontColor}
@@ -14224,6 +14331,21 @@ function CertificateConfigModal({ ev, onSave, onClose, auth, forms, type = 'cert
           <button onClick={onClose} style={{padding:"8px 16px",borderRadius:6,border:"1px solid var(--bd)",background:"white",cursor:"pointer"}}>Cancel</button>
           <button onClick={save} style={{padding:"8px 16px",borderRadius:6,border:"none",background:"var(--dt)",color:"white",cursor:"pointer",fontWeight:600}}>Save Configuration</button>
         </div>
+
+        {showMediaModal && (
+          <MediaLibraryModal
+            isOpen={showMediaModal}
+            onClose={() => setShowMediaModal(false)}
+            targetCategory={isInvite ? "letterhead" : "certificate"}
+            C={C || (typeof window !== 'undefined' ? window.__MMP_TRUST_CONFIG__ : {})}
+            setC={setC || (() => {})}
+            auth={auth}
+            onSelect={(asset) => {
+              setCertBgUrl(asset.id ? 'media://' + asset.id : asset.url);
+              setShowMediaModal(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -14251,6 +14373,7 @@ function AdminEvents({ mob, C, setC, auth }) {
   const [editIdx, setEditIdx] = useState(null);
   const [configModal, setConfigModal] = useState(null);
   const [qrModal, setQrModal] = useState(null); // { ev, idx }
+  const [eventMediaPickerIdx, setEventMediaPickerIdx] = useState(null);
 
   useEffect(() => {
     const fixed = organizeEventsOrder(C.events || []);
@@ -14330,6 +14453,8 @@ function AdminEvents({ mob, C, setC, auth }) {
         <CertificateConfigModal 
           ev={configModal.ev} 
           auth={auth}
+          C={C}
+          setC={setC}
           forms={C.forms}
           type={configModal.type || 'cert'}
           onClose={() => setConfigModal(null)} 
@@ -14527,8 +14652,15 @@ function AdminEvents({ mob, C, setC, auth }) {
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:".7rem",color:"var(--mu)",fontWeight:600}}>WhatsApp Group QR Code (Optional)</label>
-                  <div style={{display:"flex",gap:8}}>
-                    <input type="text" placeholder="Image URL..." value={ev.waGroupQrCode || ""} onChange={e=>updateItem(i,"waGroupQrCode",e.target.value)} style={{flex:1,padding:"6px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit"}}/>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <input type="text" placeholder="Image URL..." value={ev.waGroupQrCode || ""} onChange={e=>updateItem(i,"waGroupQrCode",e.target.value)} style={{flex:1,minWidth:180,padding:"6px",borderRadius:6,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit"}}/>
+                    <button
+                      type="button"
+                      onClick={() => setEventMediaPickerIdx(i)}
+                      style={{padding:"6px 12px",borderRadius:6,border:"1.5px solid #0F766E",background:"#F0FDFA",color:"#0F766E",fontWeight:700,fontSize:".75rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}
+                    >
+                      📁 Media Library
+                    </button>
                     <label style={{padding:"6px 12px",borderRadius:6,border:"1px solid var(--sf)",background:"#FFF4EC",color:"var(--sf)",fontWeight:700,fontSize:".75rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
                       Upload QR
                       <input type="file" accept="image/*" style={{display:"none"}} onChange={(e) => {
@@ -14906,6 +15038,22 @@ function AdminEvents({ mob, C, setC, auth }) {
           </div>
         </div>
       )}
+
+      {/* Media Library Picker Modal for AdminEvents WhatsApp QR */}
+      {eventMediaPickerIdx !== null && (
+        <MediaLibraryModal
+          isOpen={eventMediaPickerIdx !== null}
+          onClose={() => setEventMediaPickerIdx(null)}
+          targetCategory="banner"
+          C={C || {}}
+          setC={setC}
+          auth={auth}
+          onSelect={(asset) => {
+            updateItem(eventMediaPickerIdx, "waGroupQrCode", asset.id ? `media://${asset.id}` : asset.url);
+            setEventMediaPickerIdx(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -15053,6 +15201,7 @@ function AdminAchievements({ mob, C, setC, auth }) {
   const [items, setItems] = useState(C.achievements || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(null);
+  const [showMediaModal, setShowMediaModal] = useState(null);
 
   useEffect(() => setItems(C.achievements || []), [C.achievements]);
 
@@ -15146,8 +15295,20 @@ function AdminAchievements({ mob, C, setC, auth }) {
               <div>
                 <label style={{display:"block",fontSize:".8rem",fontWeight:600,marginBottom:8,color:"#666"}}>Image</label>
                 <div style={{width:"100%",aspectRatio:"4/3",background:"#f5f5f5",borderRadius:8,border:"1px dashed #ccc",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>document.getElementById(`ach_img_${i}`).click()}>
-                  {a.image ? <img src={a.image} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{color:"#aaa"}}>{uploading===i?"Uploading...":"Click to Upload"}</span>}
+                  {a.image ? <img src={resolveMediaUrl(a.image, C)} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="Achievement"/> : <span style={{color:"#aaa"}}>{uploading===i?"Uploading...":"Click to Upload"}</span>}
                   <input type="file" id={`ach_img_${i}`} style={{display:"none"}} accept="image/*" onChange={(e)=>uploadPhoto(e,i)}/>
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:8}}>
+                  <button
+                    type="button"
+                    onClick={() => setShowMediaModal(i)}
+                    style={{flex:1,padding:"6px 8px",background:"#F0FDFA",border:"1.5px solid #0F766E",color:"#0F766E",borderRadius:6,cursor:"pointer",fontSize:".74rem",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}
+                  >
+                    📁 Media Library
+                  </button>
+                  <label htmlFor={`ach_img_${i}`} style={{padding:"6px 10px",background:"var(--dt)",color:"white",borderRadius:6,cursor:"pointer",fontSize:".74rem",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>
+                    Upload
+                  </label>
                 </div>
               </div>
               
@@ -15194,12 +15355,27 @@ function AdminAchievements({ mob, C, setC, auth }) {
           </div>
         ))}
       </div>
+
+      {showMediaModal !== null && (
+        <MediaLibraryModal
+          isOpen={showMediaModal !== null}
+          onClose={() => setShowMediaModal(null)}
+          targetCategory="banner"
+          C={C || {}}
+          setC={setC}
+          auth={auth}
+          onSelect={(asset) => {
+            updItem(showMediaModal, "image", asset.id ? `media://${asset.id}` : asset.url);
+            setShowMediaModal(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ── CENTRAL MEDIA LIBRARY & ASSET MANAGER ──────────────────────────────────────────
-export const resolveMediaUrl = (url, C = {}) => {
+export function resolveMediaUrl(url, C = {}) {
   if (!url || typeof url !== 'string') return "";
   if (url.startsWith("media://")) {
     const assetId = url.replace("media://", "");
@@ -15227,7 +15403,7 @@ export const resolveMediaUrl = (url, C = {}) => {
 };
 
 export function MediaLibraryModal({
-  isOpen,
+  isOpen = true,
   onClose,
   onSelect = null, // if passed, shows "Select & Connect" button
   targetCategory = "all", // "all" | "letterhead" | "team_profile" | "stamp_signature" | "general"
@@ -15235,7 +15411,7 @@ export function MediaLibraryModal({
   setC,
   auth
 }) {
-  if (!isOpen) return null;
+  if (isOpen === false) return null;
 
   const [activeCat, setActiveCat] = useState(targetCategory || "all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -17759,6 +17935,7 @@ function AdminGallery({ mob, C, setC, auth }) {
   const [adminMediaFilter, setAdminMediaFilter] = useState("all"); // "all" | "photos" | "videos"
   const [gridCols, setGridCols] = useState("auto"); // "auto" | "5" | "6"
   const [previewVideoItem, setPreviewVideoItem] = useState(null);
+  const [showGalleryMediaModal, setShowGalleryMediaModal] = useState(false);
 
   // YouTube Video Gallery Add State
   const [ytUrl, setYtUrl] = useState("");
@@ -18207,10 +18384,19 @@ function AdminGallery({ mob, C, setC, auth }) {
             </button>
           )}
         </div>
-        <label className="bs" style={{padding:"6px 13px",borderRadius:8,fontWeight:600,fontSize:".76rem",cursor:"pointer",opacity:loading?0.5:1}}>
-          {loading ? "Uploading..." : "📷 Upload Photo / Video"}
-          <input type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={uploadPhoto} disabled={loading}/>
-        </label>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button
+            type="button"
+            onClick={() => setShowGalleryMediaModal(true)}
+            style={{padding:"6px 13px",borderRadius:8,fontWeight:700,fontSize:".76rem",cursor:"pointer",background:"#4F46E5",color:"white",border:"none",display:"inline-flex",alignItems:"center",gap:5}}
+          >
+            📁 Choose from Media Library
+          </button>
+          <label className="bs" style={{padding:"6px 13px",borderRadius:8,fontWeight:600,fontSize:".76rem",cursor:"pointer",opacity:loading?0.5:1}}>
+            {loading ? "Uploading..." : "📷 Upload Photo / Video"}
+            <input type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={uploadPhoto} disabled={loading}/>
+          </label>
+        </div>
       </div>
 
       {/* ── GALLERY ITEMS GRID (5-6 CARDS IN A ROW) ── */}
@@ -18230,7 +18416,7 @@ function AdminGallery({ mob, C, setC, auth }) {
           const isYouTube = g.type === "youtube" || !!ytId;
           const thumbUrl = isYouTube
             ? (g.thumbnail || getYouTubeThumbnailUrl(ytId || g.url))
-            : normalizeGoogleDriveImageUrls(g.url);
+            : resolveMediaUrl(normalizeGoogleDriveImageUrls(g.url), C);
           const provider = detectUrlStorageProvider(g.url);
 
           return (
@@ -18258,7 +18444,7 @@ function AdminGallery({ mob, C, setC, auth }) {
 
               {g.url && (
                 <a
-                  href={isYouTube ? `https://www.youtube.com/watch?v=${ytId}` : normalizeGoogleDriveImageUrls(g.url)}
+                  href={isYouTube ? `https://www.youtube.com/watch?v=${ytId}` : resolveMediaUrl(normalizeGoogleDriveImageUrls(g.url), C)}
                   target="_blank"
                   rel="noreferrer"
                   title={`Current URL: ${g.url}`}
@@ -18390,6 +18576,30 @@ function AdminGallery({ mob, C, setC, auth }) {
             </div>
           );
         })}
+        <div
+          onClick={() => setShowGalleryMediaModal(true)}
+          style={{
+            border: "2px dashed #4F46E5",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 180,
+            cursor: "pointer",
+            color: "#4F46E5",
+            background: "#F5F3FF",
+            gap: 5,
+            padding: 10,
+            textAlign: "center",
+            transition: "all .2s"
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#4338CA"; e.currentTarget.style.background = "#EDE9FE"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#4F46E5"; e.currentTarget.style.background = "#F5F3FF"; }}
+        >
+          <span style={{fontSize:"1.4rem"}}>📁</span>
+          <span style={{fontSize:".74rem",fontWeight:700}}>Choose from Media Library</span>
+        </div>
         <label
           style={{
             border: "2px dashed var(--bd)",
@@ -18448,6 +18658,27 @@ function AdminGallery({ mob, C, setC, auth }) {
           </div>
         </div>
       )}
+
+      {showGalleryMediaModal && (
+        <MediaLibraryModal
+          C={C}
+          auth={auth}
+          targetCategory="gallery"
+          onClose={() => setShowGalleryMediaModal(false)}
+          onSelect={(assetDoc) => {
+            const mediaUrl = `media://${assetDoc.id}`;
+            const newItem = {
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+              url: mediaUrl,
+              caption: assetDoc.title || assetDoc.description || "",
+              category: bulkTag || assetDoc.category || "General",
+              type: assetDoc.fileType === "video" ? "video" : "image"
+            };
+            upd([...items, newItem]);
+            setShowGalleryMediaModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -18465,6 +18696,7 @@ function PaymentSettings({ mob, C, setC, auth }) {
   const [toast, setToast] = useState(null);
   const [toastMsg, setToastMsg] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [showReceiptMediaModal, setShowReceiptMediaModal] = useState(false);
 
   useEffect(()=>{ setDraft(getDraft(C)); },[C]);
 
@@ -18598,9 +18830,16 @@ function PaymentSettings({ mob, C, setC, auth }) {
           <label className="cl">80G Receipt Template Image</label>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {draft.donate.receiptTemplate && (
-               <img src={draft.donate.receiptTemplate} style={{width:"100%",maxHeight:150,objectFit:"contain",border:"1px solid var(--bd)",borderRadius:8,background:"#f5f5f5"}} alt="Template"/>
+               <img src={resolveMediaUrl(draft.donate.receiptTemplate, draft)} style={{width:"100%",maxHeight:150,objectFit:"contain",border:"1px solid var(--bd)",borderRadius:8,background:"#f5f5f5"}} alt="Template"/>
             )}
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <button
+                type="button"
+                onClick={() => setShowReceiptMediaModal(true)}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#4F46E5",color:"white",fontWeight:700,fontSize:".78rem",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}
+              >
+                📁 Choose from Media Library
+              </button>
               <label style={{padding:"7px 14px",borderRadius:8,border:"2px solid var(--sf)",background:"#FFF4EC",color:"var(--sf)",fontWeight:700,fontSize:".78rem",cursor:!auth?.idToken||uploading?"not-allowed":"pointer",opacity:!auth?.idToken?.5:1,fontFamily:"inherit",display:"inline-block"}}>
                 {uploading ? "Uploading..." : "Upload Template Image"}
                 <input type="file" accept="image/*" disabled={uploading||!auth?.idToken} style={{display:"none"}} onChange={(e) => {
@@ -18633,14 +18872,14 @@ function PaymentSettings({ mob, C, setC, auth }) {
                 <button type="button" onClick={() => upd("donate.receiptTemplate", null)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #F5B8B8",background:"#FEF0EF",color:"#C0392B",cursor:"pointer",fontSize:".78rem",fontWeight:700}}>Remove Template</button>
               )}
             </div>
-            <span style={{fontSize:".75rem",color:"var(--mu)"}}>Upload a blank PNG/JPG template. Text will be overlaid automatically.</span>
+            <span style={{fontSize:".75rem",color:"var(--mu)"}}>Upload a blank PNG/JPG template or select from Media Library. Text will be overlaid automatically.</span>
           </div>
         </div>
 
         {draft.donate.receiptTemplate && (
           <>
             <TemplateMapper 
-              imgUrl={draft.donate.receiptTemplate} 
+              imgUrl={resolveMediaUrl(draft.donate.receiptTemplate, draft)} 
               mapData={draft.donate.receiptMap} 
               fontSize={draft.donate.receiptFontSize}
               onChange={(map, size) => { 
@@ -18704,6 +18943,18 @@ function PaymentSettings({ mob, C, setC, auth }) {
       </div>
 
 
+        {showReceiptMediaModal && (
+          <MediaLibraryModal
+            C={draft}
+            auth={auth}
+            targetCategory="letterhead"
+            onClose={() => setShowReceiptMediaModal(false)}
+            onSelect={(assetDoc) => {
+              upd("donate.receiptTemplate", `media://${assetDoc.id}`);
+              setShowReceiptMediaModal(false);
+            }}
+          />
+        )}
       </div>
     </EditorContext.Provider>
   );
@@ -19958,7 +20209,7 @@ function UserDashboard({ C, globalProfile: propGlobalProfile, globalAuthToken: p
                         return (
                           <div key={i} style={{background:"white",borderRadius:12,border:"1px solid var(--bd)",overflow:"hidden",boxShadow:"0 4px 12px rgba(0,0,0,.04)",display:"flex",flexDirection:"column"}}>
                             {a.ev.certBgUrl ? (
-                              <div style={{height:140,background:`url(${a.ev.certBgUrl}) center/cover no-repeat`,position:"relative",borderBottom:"1px solid var(--bd)"}}>
+                              <div style={{height:140,background:`url(${resolveMediaUrl(a.ev.certBgUrl, C)}) center/cover no-repeat`,position:"relative",borderBottom:"1px solid var(--bd)"}}>
                                  <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.6), transparent)"}} />
                                  <div style={{position:"absolute",bottom:12,left:12,right:12,color:"white"}}>
                                    <div style={{fontSize:".7rem",fontWeight:700,textTransform:"uppercase",letterSpacing:1,opacity:0.9}}>Certificate of Award</div>
@@ -20144,7 +20395,7 @@ function UserDashboard({ C, globalProfile: propGlobalProfile, globalAuthToken: p
                         return (
                           <div key={i} style={{background:"white",borderRadius:12,border:"1px solid var(--bd)",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 4px 12px rgba(0,0,0,0.04)",transition:"transform 0.2s"}} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"} onMouseLeave={e=>e.currentTarget.style.transform="none"}>
                             {a.ev.inviteBgUrl ? (
-                              <div style={{height:140,backgroundImage:`url(${a.ev.inviteBgUrl})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative",borderBottom:"1px solid var(--bd)"}}>
+                              <div style={{height:140,backgroundImage:`url(${resolveMediaUrl(a.ev.inviteBgUrl, C)})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative",borderBottom:"1px solid var(--bd)"}}>
                                  <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.8), transparent)"}}/>
                                  <div style={{position:"absolute",bottom:12,left:16,right:16,color:"white"}}>
                                    <div style={{fontSize:".7rem",opacity:.9,textTransform:"uppercase",letterSpacing:1,fontWeight:600,marginBottom:4}}>Invite Letter</div>
@@ -21074,6 +21325,7 @@ function LoginScreen({ C, onLogin, onSkip }) {
 // ── Dedicated WhatsApp Admin Console ───────────────────────────────────────────
 function WhatsAppAdminManager({ C, setC, auth }) {
   const [activeTab, setActiveTab] = useState("templates"); // "templates" | "gateway"
+  const [showWaMediaModal, setShowWaMediaModal] = useState(false);
 
   const DEFAULT_PENDING_TPL = `🏛️ *MUMBAI MEGHWAL PANCHAYAT*\n🏆 *Education Felicitation 2026*\n═══════════════════════\nNamaste *{STUDENT_NAME}*,\n\nThank you for submitting your registration for *Education Felicitation 2026*.\n\n📋 *Application Summary:*\n• *Transaction ID:* {TXN_ID}\n• *Student Name:* {STUDENT_NAME}\n• *Vibhag:* {VIBHAG}\n• *Stream / Class:* {STREAM}\n• *Current Status:* ⏳ *Under Verification / Review*\n\nOur Verification Committee is currently reviewing your submitted details and documents. You will receive an update once the verification is completed.\n\n👉 Track your live application status on your student dashboard:\n{PORTAL_URL}\n\nWarm regards,\n*Mumbai Meghwal Panchayat & Vidya Gohil Trust*\n📞 Committee Helpline: {HELPLINE_PHONES}`;
 
@@ -25339,6 +25591,26 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         }}
                       />
                     </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowWaMediaModal(true)}
+                      style={{
+                        padding:"6px 14px",
+                        background:"#EEF2FF",
+                        color:"#4F46E5",
+                        border:"1px solid #C7D2FE",
+                        borderRadius:6,
+                        fontSize:".75rem",
+                        fontWeight:700,
+                        cursor:"pointer",
+                        display:"flex",
+                        alignItems:"center",
+                        gap:6
+                      }}
+                    >
+                      <span>📁</span> Choose from Media Library
+                    </button>
                   </div>
 
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -25396,7 +25668,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                 {/* Active Image Thumbnail & Details */}
                 <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",background:"white",padding:12,borderRadius:8,border:"1px solid #BBF7D0"}}>
                   <img
-                    src={curTpl.gpayScannerUrl || "./mmp_bhim_qr.png"}
+                    src={resolveMediaUrl(curTpl.gpayScannerUrl || "./mmp_bhim_qr.png", C)}
                     alt="Active QR / Banner Preview"
                     style={{width:90,height:120,objectFit:"contain",borderRadius:6,border:"1.5px solid #86EFAC",background:"white"}}
                     onError={e => { e.target.src = "./mmp_bhim_qr.png"; }}
@@ -25471,6 +25743,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
               >
                 💾 Save All WhatsApp Templates & Settings to Database
               </button>
+
+              {showWaMediaModal && (
+                <MediaLibraryModal
+                  C={C}
+                  auth={auth}
+                  targetCategory="banner"
+                  onClose={() => setShowWaMediaModal(false)}
+                  onSelect={(asset) => {
+                    updateCurTpl("gpayScannerUrl", 'media://' + asset.id);
+                    updateCurTpl("imageSource", "custom");
+                    setShowWaMediaModal(false);
+                  }}
+                />
+              )}
             </div>
           </div>
         );
@@ -25833,6 +26119,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
   const [eventFilter, setEventFilter] = useState(viewing.eventName || viewing.eventTitle || viewing.eventId || "");
   const [statusFilter, setStatusFilter] = useState(viewing['Status'] || "Pending");
   const [showDocUploadModal, setShowDocUploadModal] = useState(false);
+  const [showDocMediaModal, setShowDocMediaModal] = useState(false);
   const [showAdminUserPortal, setShowAdminUserPortal] = useState(false);
   const [showDashboardPreview, setShowDashboardPreview] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -25883,7 +26170,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
 
   const currentIndex = filteredList.findIndex(r => r.id === viewing.id);
 
-  const docKeys = Object.keys(viewing).filter(k => typeof viewing[k] === 'string' && viewing[k].startsWith('http'));
+  const docKeys = Object.keys(viewing).filter(k => typeof viewing[k] === 'string' && (viewing[k].startsWith('http') || viewing[k].startsWith('media://')));
   const [activeDoc, setActiveDoc] = useState(docKeys.length > 0 ? viewing[docKeys[0]] : null);
   const [status, setStatus] = useState(viewing['Status'] || 'Pending');
   const [remarks, setRemarks] = useState(viewing['Remarks'] || '');
@@ -25897,8 +26184,8 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
     Object.keys(obj).forEach(k => {
       if (k.startsWith('_') || ['id','eventId','eventName','Status','status','Remarks','remarks','Updated By','updatedBy','logHistory','submitterMob','transactionId'].includes(k)) return;
       const val = obj[k];
-      if (typeof val === 'string' && (val.includes('http') || val.startsWith('data:image') || val.startsWith('data:application/pdf') || val.startsWith('blob:'))) {
-        const urls = val.split(',').map(s => s.trim()).filter(s => s.startsWith('http') || s.startsWith('data:') || s.startsWith('blob:'));
+      if (typeof val === 'string' && (val.includes('http') || val.startsWith('data:image') || val.startsWith('data:application/pdf') || val.startsWith('blob:') || val.startsWith('media://'))) {
+        const urls = val.split(',').map(s => s.trim()).filter(s => s.startsWith('http') || s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('media://'));
         urls.forEach((url, idx) => {
           const isRevised = k.toLowerCase().includes('revised') || k.toLowerCase().includes('additional');
           const displayLabel = urls.length > 1 ? `${k} (${idx + 1})` : k;
@@ -25915,6 +26202,57 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
   };
 
   const docItems = getDocItemsFromObj(editedReg?.id === viewing?.id ? (editedReg || viewing) : viewing);
+
+  const handleSelectMediaDoc = async (asset) => {
+    try {
+      const mediaRef = 'media://' + asset.id;
+      let baseField = (uploadDocTarget === "__custom__" ? customDocLabel : uploadDocTarget).trim();
+      if (!baseField) baseField = "Supporting Document";
+
+      let docKey = baseField;
+      if (!docKey.toLowerCase().startsWith("revised") && !docKey.toLowerCase().startsWith("additional")) {
+        docKey = `Revised ${docKey}`;
+      }
+      if (editedReg[docKey] && editedReg[docKey] !== mediaRef) {
+        let rev = 2;
+        while (editedReg[`${docKey} (${rev})`]) {
+          rev++;
+        }
+        docKey = `${docKey} (${rev})`;
+      }
+
+      const existingLogs = Array.isArray(editedReg.logHistory) ? editedReg.logHistory : [];
+      const updatedBy = auth?.email || "Admin";
+      const docLog = {
+        timestamp: new Date().toISOString(),
+        actor: updatedBy,
+        action: `Revised Document Attached: ${docKey}`,
+        status: status || editedReg.Status || "Pending",
+        remarks: `Admin selected document (${asset.name || asset.id}) from Central Media Library on behalf of applicant. Original document preserved for audit.`
+      };
+
+      const updatedReg = {
+        ...editedReg,
+        [docKey]: mediaRef,
+        "Updated By": updatedBy,
+        logHistory: [...existingLogs, docLog]
+      };
+
+      setEditedReg(updatedReg);
+      setViewing(updatedReg);
+      setActiveDoc(mediaRef);
+      setActiveTab("docs");
+      setShowDocMediaModal(false);
+      setShowDocUploadModal(false);
+      setSelectedUploadFile(null);
+      setCustomDocLabel("");
+
+      await saveVerification(updatedReg, status || editedReg.Status || "Pending", remarks || editedReg.Remarks || "");
+      alert(`✅ Revised document "${docKey}" attached from Central Media Library!`);
+    } catch (e) {
+      alert("Failed to attach media document: " + e.message);
+    }
+  };
 
   const handleDirectDocUpload = async (file, targetField) => {
     if (!file) {
@@ -26086,7 +26424,8 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
     }
   });
 
-  const isPdf = activeDoc && (activeDoc.toLowerCase().includes('.pdf') || activeDoc.startsWith('data:application/pdf') || activeDoc.includes('drive.google.com/file/d/'));
+  const resolvedActiveDoc = resolveMediaUrl(activeDoc, C);
+  const isPdf = resolvedActiveDoc && (resolvedActiveDoc.toLowerCase().includes('.pdf') || resolvedActiveDoc.startsWith('data:application/pdf') || resolvedActiveDoc.includes('drive.google.com/file/d/'));
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?0:16,boxSizing:"border-box"}}>
@@ -26233,9 +26572,9 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
 
                   <div style={{flex:1,padding:mob?8:16,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                     {isPdf ? (
-                      <iframe src={activeDoc} style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"white",boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}} title="Document" />
+                      <iframe src={resolvedActiveDoc} style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"white",boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}} title="Document" />
                     ) : (
-                      <img src={activeDoc} alt="Document" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}} />
+                      <img src={resolvedActiveDoc} alt="Document" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}} />
                     )}
                   </div>
                 </>
@@ -26322,7 +26661,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                 <div style={{display:"flex",flexDirection:"column",gap:16}}>
                   {fieldsToRender.map(f => {
                     const val = (editedReg || viewing)[f.key];
-                    if (typeof val === 'string' && val.startsWith('http')) return null; // Skip docs
+                    if (typeof val === 'string' && (val.startsWith('http') || val.startsWith('media://'))) return null; // Skip docs
                     const displayVal = typeof val === 'string' ? val.replace(/\|/g, ' ') : String(val);
 
                     if (isEditing) {
@@ -26700,6 +27039,33 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                   )}
                 </div>
 
+                <div style={{display:"flex",alignItems:"center",gap:8,margin:"2px 0"}}>
+                  <div style={{flex:1,height:1,background:"#E2E8F0"}} />
+                  <span style={{fontSize:".72rem",color:"#94A3B8",fontWeight:700}}>OR</span>
+                  <div style={{flex:1,height:1,background:"#E2E8F0"}} />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDocMediaModal(true)}
+                  style={{
+                    padding:"8px 14px",
+                    background:"#EEF2FF",
+                    color:"#4F46E5",
+                    border:"1.5px solid #C7D2FE",
+                    borderRadius:6,
+                    fontSize:".82rem",
+                    fontWeight:700,
+                    cursor:"pointer",
+                    display:"flex",
+                    alignItems:"center",
+                    justifyContent:"center",
+                    gap:6
+                  }}
+                >
+                  <span>📁</span> Choose from Central Media Library
+                </button>
+
                 <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}}>
                   <button
                     onClick={() => { setShowDocUploadModal(false); setSelectedUploadFile(null); }}
@@ -26764,7 +27130,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                   <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16}}>
                     {fieldsToRender.map(f => {
                       const val = (editedReg || viewing)[f.key];
-                      if (typeof val === 'string' && val.startsWith('http')) return null; // Rendered in docs section
+                      if (typeof val === 'string' && (val.startsWith('http') || val.startsWith('media://'))) return null; // Rendered in docs section
 
                       if (f.type === 'fullname') {
                         const parts = (editedReg[f.key] || "||").split("|");
@@ -26863,7 +27229,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                             <span style={{fontSize:"1.4rem"}}>📄</span>
                             <div style={{minWidth:0}}>
                               <div style={{fontSize:".82rem",fontWeight:700,color:"#0F172A",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.label}</div>
-                              <a href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:".72rem",color:"#2563EB",textDecoration:"underline"}}>Open in New Tab ↗</a>
+                              <a href={resolveMediaUrl(d.url, C)} target="_blank" rel="noopener noreferrer" style={{fontSize:".72rem",color:"#2563EB",textDecoration:"underline"}}>Open in New Tab ↗</a>
                             </div>
                           </div>
                           <button
@@ -26926,6 +27292,16 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
           onClose={() => setShowDashboardPreview(false)}
           onLogout={() => setShowDashboardPreview(false)}
           isAdminPreview={true}
+        />
+      )}
+
+      {showDocMediaModal && (
+        <MediaLibraryModal
+          C={C}
+          auth={auth}
+          targetCategory="document"
+          onClose={() => setShowDocMediaModal(false)}
+          onSelect={handleSelectMediaDoc}
         />
       )}
     </div>
@@ -32270,6 +32646,12 @@ export const generateCertificateImageBlob = async (ev, regData, sName, docType) 
 
       if (!targetBgUrl) return resolve(null);
 
+      if (targetBgUrl.startsWith('media://')) {
+        const resolved = resolveMediaUrl(targetBgUrl, ev);
+        if (resolved && resolved !== targetBgUrl) {
+          targetBgUrl = resolved;
+        }
+      }
       if (targetBgUrl.startsWith('asset://') || targetBgUrl.startsWith('media://')) {
         const assetId = targetBgUrl.replace('asset://', '').replace('media://', '');
         const realData = await fbGetAssetDoc(assetId);
@@ -37407,6 +37789,8 @@ function AdminCertificates({ mob, C, setC, auth }) {
         <CertificateConfigModal
           ev={configModal.ev || activeEvent}
           auth={auth}
+          C={C}
+          setC={setC}
           forms={C.forms}
           type={configModal.type || 'cert'}
           customTpl={configModal.customTpl}
@@ -40767,6 +41151,8 @@ This cannot be undone.`)) return;
         <CertificateConfigModal
           ev={configModal.ev || activeEvent}
           auth={auth}
+          C={C}
+          setC={setC}
           forms={C.forms}
           type={configModal.type || 'cert'}
           customTpl={configModal.customTpl}
@@ -42917,6 +43303,8 @@ This cannot be undone.`)) return;
         <CertificateConfigModal
           ev={configModal.ev || activeEvent}
           auth={auth}
+          C={C}
+          setC={setC}
           forms={C.forms}
           type={configModal.type || 'cert'}
           customTpl={configModal.customTpl}
@@ -44279,10 +44667,11 @@ function AdminMeritList({ mob, C, auth }) {
 }
 
 
-function AdminProfile({ auth, mob, adminProfile, setAdminProfile }) {
+function AdminProfile({ auth, mob, adminProfile, setAdminProfile, C }) {
   const [data, setData] = useState({ name: "", email: "", mobile: "", address: "", gender: "", photo: "" });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showProfileMediaModal, setShowProfileMediaModal] = useState(false);
 
   useEffect(() => {
     if (adminProfile) {
@@ -44343,13 +44732,33 @@ function AdminProfile({ auth, mob, adminProfile, setAdminProfile }) {
         
         <div style={{display:"flex",gap:24,marginBottom:32,alignItems:"center",flexDirection:mob?"column":"row"}}>
           <div style={{width:100,height:100,borderRadius:"50%",background:"#f5f5f5",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",border:"2px solid var(--bd)"}}>
-            {data.photo ? <img src={data.photo} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:"2.5rem"}}>👤</span>}
+            {data.photo ? <img src={resolveMediaUrl(data.photo, C)} alt="Admin Profile" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:"2.5rem"}}>👤</span>}
           </div>
-          <div style={{flex:1,textAlign:mob?"center":"left"}}>
+          <div style={{flex:1,textAlign:mob?"center":"left",display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <label style={{cursor:"pointer",display:"inline-block",background:"var(--dt)",color:"white",padding:"8px 16px",borderRadius:8,fontWeight:600,fontSize:".9rem"}}>
               {uploading ? "Uploading..." : "Change Admin Photo"}
               <input type="file" style={{display:"none"}} accept="image/*" onChange={handlePhotoUpload} disabled={uploading}/>
             </label>
+
+            <button
+              type="button"
+              onClick={() => setShowProfileMediaModal(true)}
+              style={{
+                background: "#EEF2FF",
+                color: "#4F46E5",
+                border: "1.5px solid #C7D2FE",
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: ".9rem",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6
+              }}
+            >
+              <span>📁</span> Choose from Media Library
+            </button>
           </div>
         </div>
 
@@ -44371,6 +44780,19 @@ function AdminProfile({ auth, mob, adminProfile, setAdminProfile }) {
         <button onClick={handleSave} disabled={saving} className="btn-primary" style={{width:mob?"100%":"auto",padding:"12px 32px",borderRadius:8,fontSize:"1rem"}}>
           {saving ? "Saving Changes..." : "Save Admin Profile"}
         </button>
+
+        {showProfileMediaModal && (
+          <MediaLibraryModal
+            C={C}
+            auth={auth}
+            targetCategory="team_profile"
+            onClose={() => setShowProfileMediaModal(false)}
+            onSelect={(asset) => {
+              setData(prev => ({ ...prev, photo: 'media://' + asset.id }));
+              setShowProfileMediaModal(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -45209,9 +45631,10 @@ export async function downloadPosterImage(dataUrl, fileName = "Certificate.png")
 }
 
 // ── Canvas-based Donor Appreciation Poster Generator ──
-export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositions) => {
+export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositions, C) => {
   return new Promise(async (resolve, reject) => {
-    const activeTpl = templateImgUrl || getAppreciationTemplateDefaultUrl();
+    const rawTpl = templateImgUrl || getAppreciationTemplateDefaultUrl();
+    const activeTpl = (typeof resolveMediaUrl === 'function' && C) ? resolveMediaUrl(rawTpl, C) : (typeof resolveMediaUrl === 'function' ? resolveMediaUrl(rawTpl) : rawTpl);
     const defaultTpl = getAppreciationTemplateDefaultUrl();
 
     let objectUrl = null;
@@ -45726,18 +46149,18 @@ export const generateMergedDonorPosterCanvas = (certificateDataUrl, photoDataUrl
     certImg.crossOrigin = "anonymous";
     certImg.onload = () => { certLoaded = true; tryRender(); };
     certImg.onerror = reject;
-    certImg.src = certificateDataUrl;
+    certImg.src = (typeof resolveMediaUrl === 'function' && C) ? resolveMediaUrl(certificateDataUrl, C) : certificateDataUrl;
 
     photoImg.crossOrigin = "anonymous";
     photoImg.onload = () => { photoLoaded = true; tryRender(); };
     photoImg.onerror = reject;
-    photoImg.src = photoDataUrl;
+    photoImg.src = (typeof resolveMediaUrl === 'function' && C) ? resolveMediaUrl(photoDataUrl, C) : photoDataUrl;
   });
 };
 
 // ── Visual Drag & Drop Poster Designer Component ──
 export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuccess }) {
-  const tplImgUrl = C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl();
+  const tplImgUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
   const defaultPositions = {
     name: { x: 42.5, y: 52.6, fontSize: 21, color: "#0A2540", visible: true, label: "👤 Name (English)" },
     nameGu: { x: 42.5, y: 55.2, fontSize: 18, color: "#064E3B", visible: true, label: "🇮🇳 Name (ગુજરાતી)" },
@@ -46061,6 +46484,7 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
   const [baseCertUrl, setBaseCertUrl] = useState(null);
   const [posterUrl, setPosterUrl] = useState(null);
   const [attachedPhotoUrl, setAttachedPhotoUrl] = useState(null);
+  const [showPhotoMediaModal, setShowPhotoMediaModal] = useState(false);
   const [mergeLayout, setMergeLayout] = useState("side-by-side");
   const [generating, setGenerating] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -46079,8 +46503,8 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
   const loadPoster = async () => {
     setGenerating(true);
     try {
-      const tplUrl = C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl();
-      const certUrl = await generateDonorPosterCanvas(donation, tplUrl, C?.donorPosterPositions);
+      const tplUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
+      const certUrl = await generateDonorPosterCanvas(donation, tplUrl, C?.donorPosterPositions, C);
       setBaseCertUrl(certUrl);
 
       if (attachedPhotoUrl) {
@@ -46301,6 +46725,14 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
           >
             <span>{attachedPhotoUrl ? "🔄 Change Photo" : "➕ Upload Local Photo"}</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setShowPhotoMediaModal(true)}
+            style={{padding:"6px 12px",borderRadius:6,background:"#0D9488",color:"white",border:"none",fontWeight:800,fontSize:".74rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 2px 6px rgba(13,148,136,0.25)"}}
+            title="Choose handover photo or ceremony picture from Central Media Library"
+          >
+            <span>📁 Choose from Media Library</span>
+          </button>
           {attachedPhotoUrl && (
             <button
               type="button"
@@ -46508,6 +46940,20 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
           onSaveSuccess={() => {
             loadPoster();
             if (onReload) onReload();
+          }}
+        />
+      )}
+      {showPhotoMediaModal && (
+        <MediaLibraryModal
+          isOpen={showPhotoMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowPhotoMediaModal(false)}
+          onSelect={(asset) => {
+            setAttachedPhotoUrl('media://' + asset.id);
+            setShowPhotoMediaModal(false);
           }}
         />
       )}
@@ -46916,8 +47362,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
     const dId = d._docId || d.id || d.name;
     setSavingPosterId(dId);
     try {
-      const tplUrl = C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl();
-      const posterDataUrl = await generateDonorPosterCanvas(d, tplUrl, C?.donorPosterPositions);
+      const tplUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
+      const posterDataUrl = await generateDonorPosterCanvas(d, tplUrl, C?.donorPosterPositions, C);
       const fileName = `MMP_Appreciation_Certificate_${(d.name || 'Donor').replace(/[^a-zA-Z0-9]/g, '_')}_₹${d.amount || 0}.png`;
       await downloadPosterImage(posterDataUrl, fileName);
     } catch(err) {
@@ -46942,8 +47388,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
 
     // Try generating and copying poster to clipboard for instant pasting
     try {
-      const tplUrl = C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl();
-      const posterDataUrl = await generateDonorPosterCanvas(d, tplUrl, C?.donorPosterPositions);
+      const tplUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
+      const posterDataUrl = await generateDonorPosterCanvas(d, tplUrl, C?.donorPosterPositions, C);
       const res = await fetch(posterDataUrl);
       const blob = await res.blob();
       if (navigator.clipboard && navigator.clipboard.write) {
@@ -46972,6 +47418,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   const [editingDonation, setEditingDonation] = useState(null);
   const [activePosterDonor, setActivePosterDonor] = useState(null);
   const [showPosterTplUploadModal, setShowPosterTplUploadModal] = useState(false);
+  const [showDonorMediaModal, setShowDonorMediaModal] = useState(false);
   const [showPosterMapperModal, setShowPosterMapperModal] = useState(false);
   const [showWhatsAppEditorModal, setShowWhatsAppEditorModal] = useState(false);
   const [uploadingPosterTpl, setUploadingPosterTpl] = useState(false);
@@ -47656,7 +48103,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
                 Current active template for Certificate of Appreciation:
               </p>
               <img 
-                src={C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl()} 
+                src={resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C)} 
                 alt="Current Template" 
                 style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius:8,border:"1px solid #CBD5E1",boxShadow:"0 2px 6px rgba(0,0,0,0.1)"}}
               />
@@ -47718,14 +48165,24 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
               }}
             />
 
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button
                 type="button"
                 onClick={() => posterTplInputRef.current?.click()}
                 disabled={uploadingPosterTpl}
-                style={{flex:1,padding:"10px",borderRadius:8,background:"#0D4B5E",color:"white",border:"none",fontWeight:800,fontSize:".82rem",cursor:uploadingPosterTpl?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                style={{flex:1,minWidth:"140px",padding:"10px",borderRadius:8,background:"#0D4B5E",color:"white",border:"none",fontWeight:800,fontSize:".82rem",cursor:uploadingPosterTpl?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
               >
-                <span>📂</span> {uploadingPosterTpl ? "Uploading..." : "Upload New Template Image"}
+                <span>📂</span> {uploadingPosterTpl ? "Uploading..." : "Upload New Template"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDonorMediaModal(true)}
+                disabled={uploadingPosterTpl}
+                style={{flex:1,minWidth:"140px",padding:"10px",borderRadius:8,background:"#0D9488",color:"white",border:"none",fontWeight:800,fontSize:".82rem",cursor:uploadingPosterTpl?"wait":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                title="Select a certificate template from Central Media Library"
+              >
+                <span>📁</span> Media Library
               </button>
 
               {C?.donorPosterTemplateUrl && (
@@ -48151,6 +48608,32 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
             </form>
           </div>
         </div>
+      )}
+
+      {showDonorMediaModal && (
+        <MediaLibraryModal
+          isOpen={showDonorMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowDonorMediaModal(false)}
+          onSelect={async (asset) => {
+            setShowDonorMediaModal(false);
+            if (C) {
+              const mediaRef = 'media://' + asset.id;
+              const newC = { ...C, donorPosterTemplateUrl: mediaRef };
+              if (typeof setC === "function") setC(newC);
+              try {
+                await fbSave(newC, auth?.idToken);
+                alert("✅ Appreciation poster template selected from Central Media Library!");
+                setShowPosterTplUploadModal(false);
+              } catch(e) {
+                alert("Error saving template: " + e.message);
+              }
+            }
+          }}
+        />
       )}
 
     </div>
