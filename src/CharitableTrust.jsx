@@ -5371,6 +5371,7 @@ function Gallery({ C }) {
           )}
           {filtered.map(g => {
             const ytId = extractYouTubeVideoId(g.url);
+            const isYouTube = g.type === "youtube" || !!ytId;
             const resolvedRawUrl = resolveMediaUrl(g.url, C);
             const safeUrl = isYouTube ? g.url : normalizeGoogleDriveImageUrls(resolvedRawUrl);
             const thumbUrl = isYouTube
