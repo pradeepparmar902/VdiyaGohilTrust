@@ -1984,36 +1984,49 @@ const GITEMS = [
 // ── LOGO MARK — shared by Navbar and Footer ───────────────────────────────────
 function LogoMark({ logo, mob, C }) {
   if (!logo || !logo.visible) return null;
+  const [imgFailed, setImgFailed] = useState(false);
   const size = mob ? Math.max(30, (logo.size || 42) - 6) : (logo.size || 42);
   const radius = logo.shape === "circle" ? "50%" : logo.shape === "rounded" ? "30%" : "8px";
   const bg = logo.bgColor === "white" ? "white"
     : logo.bgColor === "transparent" ? "transparent"
     : "linear-gradient(135deg,var(--sf),var(--gd))";
   const border = logo.bgColor === "transparent" ? "2px solid rgba(232,101,10,.4)" : "none";
-  const resolvedUrl = resolveMediaUrl(logo.url, C);
+  const resolvedUrl = resolveMediaUrl(logo?.url, C);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [resolvedUrl]);
+
+  const showImg = logo.type === "image" && Boolean(resolvedUrl) && !imgFailed;
 
   return (
     <div style={{width:size, height:size, borderRadius:radius, background:bg, border,
       display:"flex", alignItems:"center", justifyContent:"center",
       boxShadow: logo.bgColor==="transparent" ? "none" : "0 4px 12px rgba(232,101,10,.3)",
       overflow:"hidden", flexShrink:0, transition:"all .3s"}}>
-      {logo.type === "image" && resolvedUrl
-        ? <img src={resolvedUrl} alt="logo" style={{width:"100%", height:"100%", objectFit:"cover"}}
-            onError={e => { e.target.style.display="none"; if (e.target.nextSibling) e.target.nextSibling.style.display="flex"; }}/>
-        : null}
-      {/* Fallback text — always rendered, hidden when image loads */}
-      <span style={{
-        display: logo.type === "image" && logo.url ? "none" : "flex",
-        alignItems:"center", justifyContent:"center",
-        color: logo.bgColor === "white" ? "var(--sf)" : "white",
-        fontWeight:700, fontSize: size * 0.38,
-        fontFamily:"'Playfair Display',serif", lineHeight:1
-      }}>
-        {logo.text || "T"}
-      </span>
+      {showImg ? (
+        <img
+          key={resolvedUrl}
+          src={resolvedUrl}
+          alt={logo.text || "logo"}
+          style={{width:"100%", height:"100%", objectFit:"contain", display:"block"}}
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <span style={{
+          display: "flex",
+          alignItems: "center", justifyContent: "center",
+          color: logo.bgColor === "white" ? "var(--sf)" : "white",
+          fontWeight: 700, fontSize: size * 0.38,
+          fontFamily: "'Playfair Display',serif", lineHeight: 1
+        }}>
+          {logo.text || "T"}
+        </span>
+      )}
     </div>
   );
 }
+
 
 // ── NAVBAR ────────────────────────────────────────────────────────────────────
 function Navbar({ C, lang, setLang, setPage, auth, onShowLogin, globalProfile, onPublicLogout, onShowDashboard, onShowUserLogin, onHomeClick }) {
@@ -2098,7 +2111,7 @@ function Navbar({ C, lang, setLang, setPage, auth, onShowLogin, globalProfile, o
 
         {/* Logo */}
         <div style={{display:"flex",alignItems:"center",gap:mob?6:10,cursor:"pointer",flexShrink:1,minWidth:0}} onClick={()=>go("home")}>
-          <LogoMark logo={C.trust.logo} mob={mob}/>
+          <LogoMark logo={C.trust.logo} mob={mob} C={C}/>
           <div style={{flexShrink:1,minWidth:0}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontWeight:700,fontSize:mob?".85rem":".95rem",color:"var(--dt)",lineHeight:1.2,wordBreak:"break-word"}}>{lang==="en"?C.trust.name:C.trust.nameGu}</div>
             {(!mob && C.trust.subtitle) && <div style={{fontSize:".6rem",color:"var(--mu)",letterSpacing:"1px",textTransform:"uppercase"}}>{C.trust.subtitle}</div>}
@@ -5758,7 +5771,7 @@ function Footer({ C, onFooterLinkClick }) {
         <div style={{display:"grid",gridTemplateColumns:mob?"1fr 1fr":w<900?"2fr 1fr 1fr":"2fr 1fr 1fr 1fr",gap:mob?24:36,marginBottom:32}}>
           <div style={{gridColumn:mob?"1/-1":"auto"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-              <LogoMark logo={C.trust.logo} mob={false}/>
+              <LogoMark logo={C.trust.logo} mob={false} C={C}/>
               <div style={{fontFamily:"'Playfair Display',serif",fontWeight:700,color:"white",fontSize:".9rem"}}>{C.trust.name}</div>
             </div>
             <p style={{fontSize:".82rem",lineHeight:1.7,marginBottom:12}}>{C.footer?.description || `Serving humanity with compassion since ${C.trust.estd}. Registered under Gujarat Public Trust Act. 80G and FCRA Certified.`}</p>
@@ -7042,6 +7055,15 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
 
   useEffect(()=>{ setDraft(getDraft(C)); },[C]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__MMP_CURRENT_DRAFT__ = draft;
+      if (Array.isArray(draft?.mediaLibrary)) {
+        window.__MMP_MEDIA_LIBRARY__ = draft.mediaLibrary;
+      }
+    }
+  }, [draft]);
+
   const showToast = (type, msg) => { setToast(type); setToastMsg(msg); setTimeout(()=>setToast(null),3500); };
 
   const save = async () => {
@@ -7588,7 +7610,7 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
 
           {/* Live preview */}
           <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",background:"var(--ww)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:18}}>
-            <LogoMark logo={draft.trust.logo} mob={false}/>
+            <LogoMark logo={draft.trust.logo} mob={false} C={draft}/>
             <div>
               <div style={{fontFamily:"'Playfair Display',serif",fontWeight:700,fontSize:".9rem",color:"var(--dt)"}}>{draft.trust.name}</div>
               <div style={{fontSize:".6rem",color:"var(--mu)",textTransform:"uppercase",letterSpacing:1}}>Live Preview</div>
@@ -7705,9 +7727,20 @@ function ContentEditor({ C, setC, setPage, auth, hasAccess, master }) {
             <div style={{marginTop:8,padding:"10px 14px",background:"#FEF9EC",borderRadius:8,border:"1px solid #F5E8B8",fontSize:".78rem",color:"#6B5900"}}>
               Paste a direct image link (ending in .png, .jpg, .svg). If the image fails to load, the text fallback will show automatically.
               {draft.trust.logo.url && (
-                <div style={{marginTop:8}}>
-                  <img src={draft.trust.logo.url} alt="preview" style={{height:48,borderRadius:8,border:"1px solid var(--bd)",objectFit:"contain",background:"white",padding:4}}
-                    onError={e=>e.target.style.opacity=0.2}/>
+                <div style={{marginTop:8, display:"flex", alignItems:"center", gap:10}}>
+                  <img
+                    key={resolveMediaUrl(draft.trust.logo.url, draft)}
+                    src={resolveMediaUrl(draft.trust.logo.url, draft)}
+                    alt="preview"
+                    style={{height:48, maxWidth:120, borderRadius:8, border:"1px solid var(--bd)", objectFit:"contain", background:"white", padding:4}}
+                    onError={e => { e.target.style.opacity = "0.3"; }}
+                    onLoad={e => { e.target.style.opacity = "1"; }}
+                  />
+                  {draft.trust.logo.url.startsWith("media://") && (
+                    <span style={{fontSize:".75rem", color:"#0F766E", fontWeight:600}}>
+                      🔗 Connected from Media Library
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -11359,7 +11392,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
       {mob && open && <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:199}}/>}
       <div className="as" style={{width:sw,transition:"width .3s",position:"fixed",top:0,left:0,bottom:0,zIndex:200,overflowX:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"16px 12px",borderBottom:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",gap:10,justifyContent:open?"flex-start":"center"}}>
-          <LogoMark logo={{...C.trust.logo, size: 34, visible: true}} />
+          <LogoMark logo={{...C.trust.logo, size: 34, visible: true}} C={C} />
           {open && <div style={{fontFamily:"'Playfair Display',serif",color:"white",fontWeight:700,fontSize:".82rem",whiteSpace:"nowrap"}}>{C.trust.adminHeader || "Trust Admin"}</div>}
         </div>
         <div style={{flex:1,padding:"10px 6px",overflowY:"auto"}}>
@@ -15383,7 +15416,16 @@ export function resolveMediaUrl(url, C = {}) {
     if (typeof assetCache !== 'undefined' && assetCache[assetId]) return assetCache[assetId];
     let lib = Array.isArray(C?.mediaLibrary) ? C.mediaLibrary : null;
     if (!lib && typeof window !== 'undefined') {
-      lib = window.__MMP_MEDIA_LIBRARY__ || window.__MMP_TRUST_CONFIG__?.mediaLibrary || null;
+      lib = window.__MMP_CURRENT_DRAFT__?.mediaLibrary || window.__MMP_MEDIA_LIBRARY__ || window.__MMP_TRUST_CONFIG__?.mediaLibrary || null;
+      if (!lib) {
+        try {
+          const cached = localStorage.getItem("trustConfig");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed?.mediaLibrary)) lib = parsed.mediaLibrary;
+          }
+        } catch (e) {}
+      }
     }
     if (Array.isArray(lib)) {
       const found = lib.find(m => m.id === assetId || m.name === assetId);
@@ -15395,10 +15437,12 @@ export function resolveMediaUrl(url, C = {}) {
     if (typeof window !== 'undefined' && window.__MMP_MEDIA_CACHE__ && window.__MMP_MEDIA_CACHE__[assetId]) {
       return window.__MMP_MEDIA_CACHE__[assetId];
     }
+    return "";
   }
   if (url.startsWith("asset://")) {
     const assetId = url.replace("asset://", "");
     if (typeof assetCache !== 'undefined' && assetCache[assetId]) return assetCache[assetId];
+    return "";
   }
   return url;
 };
@@ -21254,7 +21298,7 @@ function LoginScreen({ C, onLogin, onSkip }) {
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
-            <LogoMark logo={{...C.trust.logo, size: 56}} mob={false} />
+            <LogoMark logo={{...C.trust.logo, size: 56}} mob={false} C={C} />
           </div>
           <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",color:"var(--dt)",fontWeight:700}}>Admin Login</h2>
           <p style={{color:"var(--mu)",fontSize:".8rem",marginTop:4}}>Connect to save content to the database</p>
@@ -51501,24 +51545,27 @@ export default function App() {
       setMetaTag('meta[property="twitter:description"]', 'twitter:description', C.seoOgDesc || C.seoDescription);
 
       if (C.trust?.logo?.url) {
-        let link = document.querySelector("link[rel~='icon']");
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = 'icon';
-          document.head.appendChild(link);
-        }
-        link.href = C.trust.logo.url;
+        const resolvedFavicon = resolveMediaUrl(C.trust.logo.url, C);
+        if (resolvedFavicon) {
+          let link = document.querySelector("link[rel~='icon']");
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = resolvedFavicon;
 
-        let appleLink = document.querySelector("link[rel='apple-touch-icon']");
-        if (!appleLink) {
-          appleLink = document.createElement('link');
-          appleLink.rel = 'apple-touch-icon';
-          document.head.appendChild(appleLink);
+          let appleLink = document.querySelector("link[rel='apple-touch-icon']");
+          if (!appleLink) {
+            appleLink = document.createElement('link');
+            appleLink.rel = 'apple-touch-icon';
+            document.head.appendChild(appleLink);
+          }
+          appleLink.href = resolvedFavicon;
         }
-        appleLink.href = C.trust.logo.url;
       }
     }
-  }, [C?.seoTitle, C?.seoDescription, C?.seoKeywords, C?.seoAuthor, C?.seoOgTitle, C?.seoOgDesc, C?.trust?.name, C?.trust?.logo?.url]);
+  }, [C?.seoTitle, C?.seoDescription, C?.seoKeywords, C?.seoAuthor, C?.seoOgTitle, C?.seoOgDesc, C?.trust?.name, C?.trust?.logo?.url, C?.mediaLibrary]);
 
   // ── Admin access — always open, login optional ───────────────────────────
   const goAdmin = () => setPage("admin");
@@ -51544,7 +51591,7 @@ export default function App() {
     <div id="app-root" className={C?.theme || "classic"}>
       <G theme={C?.theme || "classic"} />
       <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0D4B5E,#1A6B87)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
-        <LogoMark logo={{...C.trust.logo, size: 60}} mob={false} />
+        <LogoMark logo={{...C.trust.logo, size: 60}} mob={false} C={C} />
         <div style={{color:"white",fontFamily:"'Playfair Display',serif",fontSize:"1.1rem"}}>
           Loading {C.trust.name === "Mumbai Meghwal Panchayat" && !localStorage.getItem("trustConfig") ? "Community Portal" : C.trust.name}...
         </div>
@@ -51570,7 +51617,7 @@ export default function App() {
         <div style={{minHeight:"100vh",background:"#F4F7FB",padding:"20px 12px",display:"flex",justifyContent:"center",alignItems:"flex-start"}}>
           <div style={{width:"100%",maxWidth:550}}>
             <div style={{textAlign:"center",marginBottom:20}}>
-              <LogoMark logo={{...C.trust?.logo, size: 50}} mob={false} />
+              <LogoMark logo={{...C.trust?.logo, size: 50}} mob={false} C={C} />
               <h2 style={{fontFamily:"'Playfair Display',serif",color:"var(--dt)",fontSize:"1.4rem",marginTop:8,marginBottom:4}}>{C.trust?.name}</h2>
               <p style={{fontSize:".8rem",color:"var(--mu)",margin:0}}>Official Event Registration Portal</p>
             </div>
