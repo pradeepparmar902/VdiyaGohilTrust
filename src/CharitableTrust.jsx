@@ -4470,19 +4470,7 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
       
 
       
-      {showMasterImportModal && (
-        <AdminMasterImportModal
-          isOpen={showMasterImportModal}
-          onClose={() => setShowMasterImportModal(false)}
-          regs={regs}
-          filteredRegs={filteredRegs}
-          selectedIds={selectedIds}
-          masterTables={C?.masterTables || []}
-          auth={auth}
-          allKeys={allKeys}
-          onUpdateRegs={handleApplyMasterImportUpdates}
-        />
-      )}
+      
 
       {previewFile && (
         <div style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",background:"rgba(0,0,0,0.8)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -38209,6 +38197,21 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           </div>
         </div>
       )}
+
+      {showMasterImportModal && (
+        <AdminMasterImportModal
+          isOpen={showMasterImportModal}
+          onClose={() => setShowMasterImportModal(false)}
+          regs={regs}
+          filteredRegs={filteredRegs}
+          selectedIds={selectedIds}
+          masterTables={C?.masterTables || []}
+          auth={auth}
+          allKeys={allKeys}
+          onUpdateRegs={handleApplyMasterImportUpdates}
+        />
+      )}
+
 
 
       
