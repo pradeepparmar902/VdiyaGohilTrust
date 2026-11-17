@@ -11385,6 +11385,15 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
   const [adminProfile, setAdminProfile] = useState(null);
   const [adminPreviewUser, setAdminPreviewUser] = useState(null);
   const [showUserPickerModal, setShowUserPickerModal] = useState(false);
+  const saveToFb = async (newC) => {
+    try {
+      await fbSave(newC, auth?.idToken);
+      if (setC) setC(newC);
+    } catch (err) {
+      console.error("Admin saveToFb failed:", err);
+      throw err;
+    }
+  };
   
   useEffect(() => {
     if (auth?.idToken && auth?.localId) {
