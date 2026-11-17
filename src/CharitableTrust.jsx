@@ -14243,6 +14243,7 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
   const [createTableCols, setCreateTableCols] = useState('Name');
 
   const [importPreview, setImportPreview] = useState(null); // { mode: 'new'|'append'|'replace', targetTableId, tableName, columns, rows }
+  const [multiImportTables, setMultiImportTables] = useState(null); // Array of candidate tables for batch/multi-sheet import
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteTableName, setPasteTableName] = useState('');
   const [pasteText, setPasteText] = useState('');
@@ -14285,12 +14286,24 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
     }
   };
 
-  // Helper to parse Excel or CSV file
+  // Helper to read file as ArrayBuffer safely
+  const readFileAsBuffer = (file) => {
+    if (file.arrayBuffer) {
+      return file.arrayBuffer();
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => resolve(evt.target.result);
+      reader.onerror = (err) => reject(err);
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  // Helper to parse Excel or CSV file (single-sheet callback for legacy/paste support)
   const parseSpreadsheetFile = (file, callback) => {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
+    readFileAsBuffer(file).then((buffer) => {
       try {
-        const data = new Uint8Array(evt.target.result);
+        const data = new Uint8Array(buffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheetName = workbook.SheetNames[0];
         const firstSheet = workbook.Sheets[sheetName];
@@ -14301,9 +14314,13 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
           return;
         }
 
-        // Clean headers: remove empty string keys
-        const rawHeaders = Object.keys(rawJson[0]).filter(k => k && !k.startsWith("__EMPTY"));
-        const columns = rawHeaders.length > 0 ? rawHeaders : ["Column 1"];
+        const allKeys = new Set();
+        rawJson.forEach(row => {
+          Object.keys(row).forEach(k => {
+            if (k && !k.startsWith("__EMPTY")) allKeys.add(String(k).trim());
+          });
+        });
+        const columns = allKeys.size > 0 ? Array.from(allKeys) : ["Column 1"];
 
         const rows = rawJson.map((row, idx) => {
           const r = { id: 'row_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(7) };
@@ -14313,7 +14330,6 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
           return r;
         });
 
-        // Proposed table name: file name without extension
         const defaultName = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim() : sheetName;
 
         callback({
@@ -14325,42 +14341,147 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
         console.error("Spreadsheet parse error:", err);
         alert("Failed to read file: " + err.message);
       }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Handle uploading file to create a NEW table
-  const handleUploadNewTable = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    parseSpreadsheetFile(file, ({ tableName, columns, rows }) => {
-      setImportPreview({
-        mode: 'new',
-        targetTableId: null,
-        tableName,
-        columns,
-        rows
-      });
+    }).catch(err => {
+      console.error("File buffer read error:", err);
+      alert("Failed to read file: " + err.message);
     });
-    e.target.value = null;
   };
 
-  // Handle uploading file into an EXISTING table
-  const handleUploadIntoExistingTable = (e, targetTableId) => {
+  // Handle uploading multiple files or multi-sheet Excel files to create NEW master tables
+  const handleUploadNewTables = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+
+    const candidates = [];
+
+    for (let fIdx = 0; fIdx < fileList.length; fIdx++) {
+      const file = fileList[fIdx];
+      try {
+        const buffer = await readFileAsBuffer(file);
+        const data = new Uint8Array(buffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetNames = workbook.SheetNames || [];
+        const fileBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim() : "Master Table";
+
+        for (let sIdx = 0; sIdx < sheetNames.length; sIdx++) {
+          const sheetName = sheetNames[sIdx];
+          const sheet = workbook.Sheets[sheetName];
+          if (!sheet) continue;
+
+          const rawJson = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+          if (!rawJson || rawJson.length === 0) continue;
+
+          // Collect all column headers from rows
+          const allKeys = new Set();
+          rawJson.forEach(row => {
+            Object.keys(row).forEach(k => {
+              if (k && !k.startsWith("__EMPTY")) allKeys.add(String(k).trim());
+            });
+          });
+          const columns = allKeys.size > 0 ? Array.from(allKeys) : ["Column 1"];
+
+          const rows = rawJson.map((row, rIdx) => {
+            const r = { id: 'row_' + Date.now() + '_' + fIdx + '_' + sIdx + '_' + rIdx + '_' + Math.random().toString(36).substring(7) };
+            columns.forEach(c => {
+              r[c] = row[c] !== undefined && row[c] !== null ? String(row[c]).trim() : '';
+            });
+            return r;
+          });
+
+          // Intelligent proposed table name
+          let proposedName = sheetName.trim();
+          if (sheetNames.length === 1 && (/^sheet\s*\d+$/i.test(sheetName) || sheetName.toLowerCase() === 'data')) {
+            proposedName = fileBase;
+          } else if (fileList.length > 1 && sheetNames.length > 1) {
+            proposedName = `${fileBase} - ${sheetName}`;
+          }
+
+          candidates.push({
+            tempId: 'cand_' + Date.now() + '_' + fIdx + '_' + sIdx + '_' + Math.random().toString(36).substring(7),
+            name: proposedName || "Master Table",
+            sourceFile: file.name,
+            sheetName: sheetName,
+            columns,
+            rows,
+            selected: true,
+            showPreview: false
+          });
+        }
+      } catch (err) {
+        console.error("Spreadsheet parse error for " + file.name + ":", err);
+        alert(`Error reading "${file.name}": ${err.message}`);
+      }
+    }
+
+    e.target.value = null;
+
+    if (candidates.length === 0) {
+      alert("⚠️ No data rows were found in the selected file(s). Please check that your sheets have a header row and data.");
+      return;
+    }
+
+    setMultiImportTables(candidates);
+  };
+
+  // Backwards-compatible single table upload alias
+  const handleUploadNewTable = handleUploadNewTables;
+
+  // Handle uploading file into an EXISTING table (with multi-sheet sheet picker)
+  const handleUploadIntoExistingTable = async (e, targetTableId) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const targetTable = tables.find(t => t.id === targetTableId);
     if (!targetTable) return;
 
-    parseSpreadsheetFile(file, ({ tableName, columns, rows }) => {
+    try {
+      const buffer = await readFileAsBuffer(file);
+      const data = new Uint8Array(buffer);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheetNames = workbook.SheetNames || [];
+      if (!sheetNames.length) {
+        alert("No sheets found in file.");
+        return;
+      }
+
+      const parseSheetData = (sName) => {
+        const sheet = workbook.Sheets[sName];
+        const rawJson = sheet ? XLSX.utils.sheet_to_json(sheet, { defval: "" }) : [];
+        if (!rawJson.length) return { columns: ["Column 1"], rows: [] };
+        const allKeys = new Set();
+        rawJson.forEach(row => {
+          Object.keys(row).forEach(k => {
+            if (k && !k.startsWith("__EMPTY")) allKeys.add(String(k).trim());
+          });
+        });
+        const columns = allKeys.size > 0 ? Array.from(allKeys) : ["Column 1"];
+        const rows = rawJson.map((row, idx) => {
+          const r = { id: 'row_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(7) };
+          columns.forEach(c => {
+            r[c] = row[c] !== undefined && row[c] !== null ? String(row[c]).trim() : '';
+          });
+          return r;
+        });
+        return { columns, rows };
+      };
+
+      const initialSheet = sheetNames[0];
+      const { columns, rows } = parseSheetData(initialSheet);
+
       setImportPreview({
         mode: 'append', // default to append
         targetTableId,
         tableName: targetTable.name,
+        sheetNames,
+        currentSheet: initialSheet,
+        parseSheetData,
         columns,
         rows
       });
-    });
+    } catch (err) {
+      console.error("Existing table import error:", err);
+      alert("Failed to parse file: " + err.message);
+    }
     e.target.value = null;
   };
 
@@ -14847,6 +14968,233 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
   const totalColumnsCount = tables.reduce((acc, t) => acc + (t.columns?.length || 0), 0);
   const totalRowsCount = tables.reduce((acc, t) => acc + (t.rows?.length || 0), 0);
 
+  function renderMultiImportModal() {
+    if (!multiImportTables || multiImportTables.length === 0) return null;
+
+    const selectedCount = multiImportTables.filter(t => t.selected).length;
+    const allSelected = selectedCount === multiImportTables.length;
+    const totalSelectedRows = multiImportTables.filter(t => t.selected).reduce((acc, t) => acc + (t.rows?.length || 0), 0);
+
+    const toggleSelectAll = () => {
+      const nextVal = !allSelected;
+      setMultiImportTables(multiImportTables.map(t => ({ ...t, selected: nextVal })));
+    };
+
+    const toggleSelectTable = (tempId) => {
+      setMultiImportTables(multiImportTables.map(t => t.tempId === tempId ? { ...t, selected: !t.selected } : t));
+    };
+
+    const updateTableName = (tempId, newName) => {
+      setMultiImportTables(multiImportTables.map(t => t.tempId === tempId ? { ...t, name: newName } : t));
+    };
+
+    const toggleTablePreview = (tempId) => {
+      setMultiImportTables(multiImportTables.map(t => t.tempId === tempId ? { ...t, showPreview: !t.showPreview } : t));
+    };
+
+    const handleConfirmMultiImport = () => {
+      const selected = multiImportTables.filter(t => t.selected);
+      if (selected.length === 0) {
+        return alert("Please select at least one table to import.");
+      }
+
+      const existingNames = new Set(tables.map(t => (t.name || "").toLowerCase()));
+      const newTablesToAdd = selected.map((item, idx) => {
+        let finalName = (item.name || "Master Table").trim();
+        if (existingNames.has(finalName.toLowerCase())) {
+          finalName = `${finalName} (${new Date().toLocaleDateString()})`;
+        }
+        existingNames.add(finalName.toLowerCase());
+
+        return {
+          id: 'table_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(7),
+          name: finalName,
+          columns: item.columns,
+          rows: item.rows,
+          createdAt: new Date().toISOString()
+        };
+      });
+
+      save([...tables, ...newTablesToAdd]);
+      alert(`✅ Successfully imported ${newTablesToAdd.length} master table(s) with ${totalSelectedRows} total records!`);
+      setMultiImportTables(null);
+    };
+
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:"white",borderRadius:14,width:"100%",maxWidth:860,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+          {/* Header */}
+          <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #1E293B, #0F172A)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <h3 style={{margin:0,fontSize:"1.1rem",fontWeight:800}}>📁 Import Multiple Master Tables</h3>
+              <span style={{background:'#3B82F6',color:'white',padding:'2px 8px',borderRadius:10,fontSize:'.75rem',fontWeight:700}}>
+                {multiImportTables.length} Tables Detected
+              </span>
+            </div>
+            <button onClick={() => setMultiImportTables(null)} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+          </div>
+
+          {/* Toolbar Info */}
+          <div style={{padding:'12px 20px',background:'#F8FAFC',borderBottom:'1px solid #E2E8F0',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:'.84rem',fontWeight:700,color:'#334155'}}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  style={{cursor:'pointer',width:16,height:16}}
+                />
+                Select All ({selectedCount}/{multiImportTables.length})
+              </label>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,fontSize:'.82rem',color:'#64748B'}}>
+              <span style={{background:'#F0FDF4',border:'1px solid #BBF7D0',color:'#166534',padding:'4px 12px',borderRadius:6,fontWeight:700}}>
+                📊 {totalSelectedRows} total rows selected
+              </span>
+            </div>
+          </div>
+
+          {/* Scrollable Tables List */}
+          <div style={{padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:12,maxHeight:'60vh'}}>
+            <div style={{fontSize:'.82rem',color:'#64748B',marginBottom:4}}>
+              Review detected tables from your files/sheets, customize table names if needed, and uncheck any tables you do not wish to import:
+            </div>
+
+            {multiImportTables.map((item) => (
+              <div
+                key={item.tempId}
+                style={{
+                  border: item.selected ? '2px solid #3B82F6' : '1px solid #CBD5E1',
+                  background: item.selected ? '#FFFFFF' : '#F8FAFC',
+                  borderRadius: 10,
+                  padding: 14,
+                  boxShadow: item.selected ? '0 2px 8px rgba(59,130,246,0.1)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {/* Card Row 1: Checkbox + Table Name Input + File/Sheet Tag */}
+                <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:8}}>
+                  <input
+                    type="checkbox"
+                    checked={item.selected}
+                    onChange={() => toggleSelectTable(item.tempId)}
+                    style={{width:18,height:18,cursor:'pointer'}}
+                  />
+                  <div style={{flex:1,minWidth:220}}>
+                    <label style={{display:'block',fontSize:'.7rem',fontWeight:700,color:'#64748B',textTransform:'uppercase',marginBottom:2}}>Table Name:</label>
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={e => updateTableName(item.tempId, e.target.value)}
+                      placeholder="Table Name"
+                      style={{width:'100%',padding:'6px 10px',borderRadius:6,border:'1.5px solid #CBD5E1',fontSize:'.9rem',fontWeight:700,color:'#0F172A'}}
+                    />
+                  </div>
+                  <div style={{background:'#F1F5F9',border:'1px solid #E2E8F0',padding:'5px 10px',borderRadius:8,fontSize:'.74rem',color:'#475569'}}>
+                    📄 <strong>{item.sourceFile}</strong> {item.sheetName ? `• Sheet: "${item.sheetName}"` : ''}
+                  </div>
+                </div>
+
+                {/* Card Row 2: Counts + Column Pills + Sample Preview Toggle */}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,paddingLeft:30}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    <span style={{fontSize:'.78rem',fontWeight:700,color:'#2563EB',background:'#EFF6FF',padding:'2px 8px',borderRadius:6}}>
+                      {item.columns.length} columns
+                    </span>
+                    <span style={{fontSize:'.78rem',fontWeight:700,color:'#16A34A',background:'#F0FDF4',padding:'2px 8px',borderRadius:6}}>
+                      {item.rows.length} rows
+                    </span>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      {item.columns.slice(0, 5).map(col => (
+                        <span key={col} style={{background:'#F1F5F9',border:'1px solid #E2E8F0',color:'#475569',fontSize:'.72rem',padding:'2px 6px',borderRadius:4}}>
+                          {col}
+                        </span>
+                      ))}
+                      {item.columns.length > 5 && (
+                        <span style={{fontSize:'.72rem',color:'#94A3B8'}}>+{item.columns.length - 5} more</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => toggleTablePreview(item.tempId)}
+                    style={{background:'none',border:'1px solid #CBD5E1',color:'#475569',fontSize:'.74rem',padding:'4px 8px',borderRadius:6,cursor:'pointer',fontWeight:600}}
+                  >
+                    {item.showPreview ? '🙈 Hide Preview' : '👁️ Preview Sample Rows'}
+                  </button>
+                </div>
+
+                {/* Card Row 3: Expandable Sample Preview */}
+                {item.showPreview && (
+                  <div style={{marginTop:10,paddingLeft:30,overflowX:'auto'}}>
+                    <div style={{border:'1px solid #E2E8F0',borderRadius:6,overflow:'hidden'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.75rem'}}>
+                        <thead style={{background:'#F8FAFC'}}>
+                          <tr>
+                            <th style={{padding:'4px 8px',textAlign:'center',borderBottom:'1px solid #E2E8F0',color:'#94A3B8'}}>#</th>
+                            {item.columns.map(col => (
+                              <th key={col} style={{padding:'4px 8px',textAlign:'left',borderBottom:'1px solid #E2E8F0',color:'#1E293B',fontWeight:700}}>
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.rows.slice(0, 3).map((r, rIdx) => (
+                            <tr key={rIdx} style={{borderBottom:'1px solid #F1F5F9'}}>
+                              <td style={{padding:'4px 8px',textAlign:'center',color:'#94A3B8'}}>{rIdx + 1}</td>
+                              {item.columns.map(col => (
+                                <td key={col} style={{padding:'4px 8px',whiteSpace:'nowrap',color:'#334155'}}>
+                                  {r[col] || '-'}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer Actions */}
+          <div style={{padding:"14px 20px",borderTop:"1px solid #E2E8F0",background:"#F8FAFC",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+            <div style={{fontSize:'.82rem',color:'#475569'}}>
+              <strong>{selectedCount}</strong> of <strong>{multiImportTables.length}</strong> tables selected
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button
+                onClick={() => setMultiImportTables(null)}
+                style={{padding:'9px 18px',borderRadius:8,background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#475569',fontWeight:700,fontSize:'.84rem',cursor:'pointer'}}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={selectedCount === 0}
+                onClick={handleConfirmMultiImport}
+                style={{
+                  padding:'9px 24px',
+                  borderRadius:8,
+                  background: selectedCount > 0 ? 'linear-gradient(135deg, #15803D, #166534)' : '#94A3B8',
+                  color:'white',
+                  border:'none',
+                  fontWeight:800,
+                  fontSize:'.85rem',
+                  cursor: selectedCount > 0 ? 'pointer' : 'not-allowed',
+                  boxShadow: selectedCount > 0 ? '0 2px 6px rgba(22,101,52,0.25)' : 'none'
+                }}
+              >
+                Confirm & Import {selectedCount} Table{selectedCount !== 1 ? 's' : ''} ({totalSelectedRows} Rows)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderImportPreviewModal() {
     if (!importPreview) return null;
     const { mode, tableName, columns, rows } = importPreview;
@@ -14896,6 +15244,33 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
                     🔄 Replace all existing rows
                   </label>
                 </div>
+              </div>
+            )}
+
+            {/* Sheet Selector if multi-sheet file */}
+            {importPreview.sheetNames && importPreview.sheetNames.length > 1 && (
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>
+                  Excel Sheet to Import from:
+                </label>
+                <select
+                  value={importPreview.currentSheet}
+                  onChange={e => {
+                    const nextSheet = e.target.value;
+                    const { columns: nextCols, rows: nextRows } = importPreview.parseSheetData(nextSheet);
+                    setImportPreview({
+                      ...importPreview,
+                      currentSheet: nextSheet,
+                      columns: nextCols,
+                      rows: nextRows
+                    });
+                  }}
+                  style={{padding:"8px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".88rem",fontWeight:600,width:"100%",background:"white"}}
+                >
+                  {importPreview.sheetNames.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -15036,9 +15411,9 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
           </button>
 
           {/* Import from Excel / CSV */}
-          <label style={{background:'linear-gradient(135deg, #D97706, #B45309)',color:'white',padding:'9px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'flex',alignItems:'center',gap:6,boxShadow:'0 2px 6px rgba(180,83,9,0.25)'}}>
-            📁 Import Table from Excel / CSV
-            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleUploadNewTable} style={{display:"none"}}/>
+          <label style={{background:'linear-gradient(135deg, #D97706, #B45309)',color:'white',padding:'9px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'flex',alignItems:'center',gap:6,boxShadow:'0 2px 6px rgba(180,83,9,0.25)'}} title="Upload one or more Excel (.xlsx, .xls) workbooks or CSV files. All sheets will be detected as separate tables.">
+            📁 Import Table(s) from Excel / CSV
+            <input type="file" accept=".xlsx, .xls, .csv" multiple onChange={handleUploadNewTables} style={{display:"none"}}/>
           </label>
 
           {/* Paste Spreadsheet Data */}
@@ -15152,9 +15527,9 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
               >
                 ➕ Create Blank Table
               </button>
-              <label style={{background:'#D97706',color:'white',padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'inline-block'}}>
-                📁 Import from Excel
-                <input type="file" accept=".xlsx, .xls, .csv" onChange={handleUploadNewTable} style={{display:"none"}}/>
+              <label style={{background:'#D97706',color:'white',padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'inline-block'}} title="Upload one or more Excel (.xlsx, .xls) workbooks or CSV files. All sheets will be detected as separate tables.">
+                📁 Import Table(s) from Excel / CSV
+                <input type="file" accept=".xlsx, .xls, .csv" multiple onChange={handleUploadNewTables} style={{display:"none"}}/>
               </label>
             </div>
           </div>
@@ -15270,6 +15645,9 @@ function AdminMasterData({ C, setC, auth, saveToFb }) {
           </div>
         </div>
       )}
+
+      {/* Modal: Multi-Table Import Review Modal */}
+      {renderMultiImportModal()}
 
       {/* Modal: Import Preview Modal (New Table) */}
       {renderImportPreviewModal()}
