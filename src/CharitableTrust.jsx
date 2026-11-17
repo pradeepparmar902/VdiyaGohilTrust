@@ -12971,7 +12971,7 @@ const MultiSelect = ({ options, value, onChange, width = 100 }) => {
 };
 
 // ── Unified Event Archive Modal (Donations & Registrations) ───────────────────
-export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedSuccess, initialProgram = "" }) {
+export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedSuccess, initialProgram = "", defaultCategory = "" }) {
   const [loadingData, setLoadingData] = useState(true);
   const [allDons, setAllDons] = useState([]);
   const [allRegs, setAllRegs] = useState([]);
@@ -12998,47 +12998,88 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
     }
   };
 
+  const isRecordArchived = (x) => Boolean(x?.archived === true || x?.isArchived === true || x?.status === "Archived" || x?.Status === "Archived");
+
+  const activeDons = useMemo(() => allDons.filter(d => !isRecordArchived(d)), [allDons]);
+  const activeRegs = useMemo(() => allRegs.filter(r => !r.deleted && !isRecordArchived(r)), [allRegs]);
+  const activeDonsTotal = useMemo(() => activeDons.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0), [activeDons]);
+
   useEffect(() => {
     if (isOpen) {
       loadAll();
-      if (initialProgram) setSelectedEvent(initialProgram);
+      if (initialProgram) {
+        setSelectedEvent(initialProgram);
+        setArchiveDonations(true);
+        setArchiveRegistrations(true);
+      } else if (defaultCategory === "donations") {
+        setSelectedEvent("__ALL_ACTIVE_DONATIONS__");
+        setArchiveDonations(true);
+        setArchiveRegistrations(false);
+      } else if (defaultCategory === "registrations") {
+        setSelectedEvent("__ALL_ACTIVE_REGS__");
+        setArchiveDonations(false);
+        setArchiveRegistrations(true);
+      } else {
+        setSelectedEvent("__ALL_ACTIVE_DONATIONS__");
+        setArchiveDonations(true);
+        setArchiveRegistrations(false);
+      }
     }
-  }, [isOpen, initialProgram]);
+  }, [isOpen, initialProgram, defaultCategory]);
 
-  const isRecordArchived = (x) => Boolean(x?.archived === true || x?.isArchived === true || x?.status === "Archived" || x?.Status === "Archived");
-
-  // Collect all distinct events/programs across C.events, donations, and registrations
+  // Collect and deduplicate (case-insensitively) all distinct events/programs
   const eventOptions = useMemo(() => {
-    const set = new Set();
+    const map = new Map();
+    const addEvent = (raw) => {
+      if (!raw) return;
+      const trimmed = String(raw).trim();
+      if (!trimmed || trimmed === "Default") return;
+      const key = trimmed.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, trimmed);
+      } else {
+        const existing = map.get(key);
+        if (/^[A-Z]/.test(trimmed) && !/^[A-Z]/.test(existing)) {
+          map.set(key, trimmed);
+        }
+      }
+    };
+
     (C?.events || []).forEach(e => {
-      if (e.title) set.add(e.title.trim());
-      if (e.name) set.add(e.name.trim());
+      addEvent(e.title);
+      addEvent(e.name);
     });
     allDons.forEach(d => {
-      const p = (d.program || d.purpose || "").trim();
-      if (p) set.add(p);
+      addEvent(d.program || d.purpose || d.eventName);
     });
     allRegs.forEach(r => {
-      const n = (r.eventName || r.eventTitle || r.eventId || r.program || r.purpose || "").trim();
-      if (n && n !== "Default") set.add(n);
+      addEvent(r.eventName || r.eventTitle || r.eventId || r.program || r.purpose);
     });
-    return Array.from(set).filter(Boolean).sort((a,b) => a.localeCompare(b));
+
+    return Array.from(map.values()).sort((a,b) => a.localeCompare(b));
   }, [C?.events, allDons, allRegs]);
 
   // Matcher for donations
   const doesDonMatch = (d, evt) => {
     if (!d || !evt) return false;
+    if (evt === "__ALL_ACTIVE_DONATIONS__" || evt === "__ALL_ACTIVE_ALL__") return true;
+    if (evt === "__ALL_ACTIVE_REGS__") return false;
     const t = evt.toLowerCase().trim();
     const p = String(d.program || d.purpose || d.eventName || "").toLowerCase().trim();
+    if (!p) {
+      return t.includes("general") || t.includes("offline") || t.includes("direct") || t.includes("uncategorized");
+    }
     return p.includes(t) || t.includes(p);
   };
 
   // Matcher for registrations
   const doesRegMatch = (r, evt) => {
     if (!r || !evt) return false;
+    if (evt === "__ALL_ACTIVE_REGS__" || evt === "__ALL_ACTIVE_ALL__") return true;
+    if (evt === "__ALL_ACTIVE_DONATIONS__") return false;
     const t = evt.toLowerCase().trim();
     const rn = String(r.eventName || r.eventTitle || r.eventId || r.formId || r.program || r.purpose || "").toLowerCase().trim();
-    if (rn.includes(t) || t.includes(rn)) return true;
+    if (rn && (rn.includes(t) || t.includes(rn))) return true;
     if ((t.includes("edu") || t.includes("felicitation") || t.includes("education")) &&
         (rn.includes("edu") || rn.includes("felicitation") || rn.includes("education") || String(r['Transaction ID'] || '').toUpperCase().startsWith("EDU") || String(r['Transaction ID'] || '').toUpperCase().startsWith("VG-"))) {
       return true;
@@ -13048,19 +13089,29 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
 
   const matchingDons = useMemo(() => {
     if (!selectedEvent) return [];
-    return allDons.filter(d => !isRecordArchived(d) && doesDonMatch(d, selectedEvent));
-  }, [allDons, selectedEvent]);
+    if (selectedEvent === "__ALL_ACTIVE_REGS__") return [];
+    if (selectedEvent === "__ALL_ACTIVE_DONATIONS__" || selectedEvent === "__ALL_ACTIVE_ALL__") {
+      return activeDons;
+    }
+    return activeDons.filter(d => doesDonMatch(d, selectedEvent));
+  }, [activeDons, selectedEvent]);
 
   const matchingRegs = useMemo(() => {
     if (!selectedEvent) return [];
-    return allRegs.filter(r => !r.deleted && !isRecordArchived(r) && doesRegMatch(r, selectedEvent));
-  }, [allRegs, selectedEvent]);
+    if (selectedEvent === "__ALL_ACTIVE_DONATIONS__") return [];
+    if (selectedEvent === "__ALL_ACTIVE_REGS__" || selectedEvent === "__ALL_ACTIVE_ALL__") {
+      return activeRegs;
+    }
+    return activeRegs.filter(r => doesRegMatch(r, selectedEvent));
+  }, [activeRegs, selectedEvent]);
 
-  const donsTotalSum = matchingDons.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+  const donsTotalSum = useMemo(() => {
+    return matchingDons.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+  }, [matchingDons]);
 
   const handleConfirmArchive = async () => {
     if (!selectedEvent) {
-      alert("Please select an Event / Programme to archive.");
+      alert("Please select what you would like to archive.");
       return;
     }
     if (!archiveDonations && !archiveRegistrations) {
@@ -13072,11 +13123,16 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
     const regCount = archiveRegistrations ? matchingRegs.length : 0;
 
     if (donCount === 0 && regCount === 0) {
-      alert(`No active records found under "${selectedEvent}" for the selected categories. They may already be archived.`);
+      alert("No active records found for the selected option. They may already be archived.");
       return;
     }
 
-    const confirmMsg = `Are you sure you want to move the following records under "${selectedEvent}" to Archive?\n\n` +
+    const eventLabel = selectedEvent === "__ALL_ACTIVE_DONATIONS__" ? "All Active Donations"
+      : selectedEvent === "__ALL_ACTIVE_REGS__" ? "All Active Registrations"
+      : selectedEvent === "__ALL_ACTIVE_ALL__" ? "All Active Records"
+      : `Event "${selectedEvent}"`;
+
+    const confirmMsg = `Are you sure you want to move the following records under ${eventLabel} to Archive?\n\n` +
       (archiveDonations ? `• 💰 ${donCount} Donations (Total: ₹${donsTotalSum.toLocaleString()})\n` : "") +
       (archiveRegistrations ? `• 📋 ${regCount} Registrations\n` : "") +
       `\nArchived records will be safely preserved in the "Archived" tabs and excluded from day-to-day collection tallies.`;
@@ -13098,7 +13154,9 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
           const targetId = d._docId || d.id;
           await fbUpdateDonation(targetId, updated, token);
           doneDons++;
-          if (i % 5 === 0) setProgressMsg(`Archiving donations (${doneDons} / ${matchingDons.length})...`);
+          if (i % 5 === 0 || i === matchingDons.length - 1) {
+            setProgressMsg(`Archiving donations (${doneDons} / ${matchingDons.length})...`);
+          }
         }
       }
 
@@ -13111,11 +13169,16 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
           delete updated._submittedAt;
           await fbUpdateRegistration(r.id, updated, token);
           doneRegs++;
-          if (i % 5 === 0) setProgressMsg(`Archiving registrations (${doneRegs} / ${matchingRegs.length})...`);
+          if (i % 5 === 0 || i === matchingRegs.length - 1) {
+            setProgressMsg(`Archiving registrations (${doneRegs} / ${matchingRegs.length})...`);
+          }
         }
       }
 
-      alert(`✅ Archive Complete!\n\nSuccessfully archived:\n• ${doneDons} Donations\n• ${doneRegs} Registrations\nunder "${selectedEvent}".`);
+      alert(`✅ Archive Complete!\n\nSuccessfully moved to Archive:\n` +
+        (doneDons > 0 ? `• 💰 ${doneDons} Donations (₹${donsTotalSum.toLocaleString()})\n` : "") +
+        (doneRegs > 0 ? `• 📋 ${doneRegs} Registrations\n` : "") +
+        `\nActive day-to-day collection has been reset to ₹0 for your new events!`);
       onClose();
       if (onArchivedSuccess) onArchivedSuccess({ program: selectedEvent, donsCount: doneDons, regsCount: doneRegs });
     } catch(err) {
@@ -13128,130 +13191,200 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
 
   if (!isOpen) return null;
 
+  const totalSelectedCount = (archiveDonations ? matchingDons.length : 0) + (archiveRegistrations ? matchingRegs.length : 0);
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:520,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+      <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:560,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+        {/* Header */}
         <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #334155, #1E293B)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:"1.2rem"}}>📦</span>
-            <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>Move Past Event to Archive</h3>
+            <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>Move Past Records to Archive</h3>
           </div>
           <button onClick={onClose} disabled={processing} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
 
-        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:14}}>
           <p style={{margin:0,fontSize:".84rem",color:"#475569",lineHeight:1.5}}>
-            Select which event or programme's records to move to <strong>Archive</strong>. Archived records remain 100% safe for audits and receipts, but are <strong>excluded from active day-to-day collections</strong>.
+            Archive past event donations or registrations to start clean for upcoming events. Archived records remain 100% preserved for receipts and audit history, but are <strong>excluded from active daily collections</strong>.
           </p>
 
+          {/* Quick Active Overview Cards */}
+          <div style={{display:"flex",gap:10}}>
+            <div style={{flex:1,background:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:8,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:".68rem",color:"#166534",fontWeight:700,textTransform:"uppercase"}}>Active Donations</div>
+                <div style={{fontSize:".98rem",fontWeight:800,color:"#15803D"}}>
+                  {loadingData ? "..." : `${activeDons.length} Donors`}
+                </div>
+                <div style={{fontSize:".74rem",color:"#166534",fontWeight:600}}>
+                  Total: ₹{activeDonsTotal.toLocaleString()}
+                </div>
+              </div>
+              <span style={{fontSize:"1.3rem"}}>💰</span>
+            </div>
+
+            <div style={{flex:1,background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:8,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:".68rem",color:"#1E40AF",fontWeight:700,textTransform:"uppercase"}}>Active Registrations</div>
+                <div style={{fontSize:".98rem",fontWeight:800,color:"#1D4ED8"}}>
+                  {loadingData ? "..." : `${activeRegs.length} Entries`}
+                </div>
+                <div style={{fontSize:".74rem",color:"#1E40AF",fontWeight:600}}>
+                  Applicants / Members
+                </div>
+              </div>
+              <span style={{fontSize:"1.3rem"}}>📋</span>
+            </div>
+          </div>
+
+          {/* Select Scope / Event Dropdown */}
           <div>
-            <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:"#334155",marginBottom:4}}>
-              1. Select Event / Programme to Archive *
+            <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#1E293B",marginBottom:5}}>
+              1. Select What to Archive *
             </label>
             <select
               value={selectedEvent}
-              onChange={e=>setSelectedEvent(e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                setSelectedEvent(val);
+                if (val === "__ALL_ACTIVE_DONATIONS__") {
+                  setArchiveDonations(true);
+                  setArchiveRegistrations(false);
+                } else if (val === "__ALL_ACTIVE_REGS__") {
+                  setArchiveDonations(false);
+                  setArchiveRegistrations(true);
+                } else {
+                  setArchiveDonations(true);
+                  setArchiveRegistrations(true);
+                }
+              }}
               disabled={loadingData || processing}
-              style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",background:"white"}}
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".88rem",background:"white",fontWeight:600,color:"#1E293B"}}
             >
-              <option value="">-- Choose Event / Programme --</option>
-              {eventOptions.map(p => {
-                const dCount = allDons.filter(d => !isRecordArchived(d) && doesDonMatch(d, p)).length;
-                const rCount = allRegs.filter(r => !r.deleted && !isRecordArchived(r) && doesRegMatch(r, p)).length;
-                return (
-                  <option key={p} value={p}>
-                    {p} ({dCount} dons, {rCount} regs)
-                  </option>
-                );
-              })}
+              <option value="">-- Choose Archive Target or Event --</option>
+              
+              <optgroup label="🌟 Quick Bulk Actions (Archive Entire Collection / Roster)">
+                <option value="__ALL_ACTIVE_DONATIONS__">
+                  💰 ALL Active Donations ({activeDons.length} Donors • ₹{activeDonsTotal.toLocaleString()})
+                </option>
+                <option value="__ALL_ACTIVE_REGS__">
+                  📋 ALL Active Registrations ({activeRegs.length} Entries)
+                </option>
+                <option value="__ALL_ACTIVE_ALL__">
+                  📦 ALL Active Records ({activeDons.length} Donations & {activeRegs.length} Registrations)
+                </option>
+              </optgroup>
+
+              <optgroup label="📅 By Specific Event / Programme">
+                {eventOptions.map(p => {
+                  const dCount = activeDons.filter(d => doesDonMatch(d, p)).length;
+                  const rCount = activeRegs.filter(r => doesRegMatch(r, p)).length;
+                  let summary = [];
+                  if (dCount > 0) summary.push(`${dCount} ${dCount === 1 ? 'donation' : 'donations'}`);
+                  if (rCount > 0) summary.push(`${rCount} ${rCount === 1 ? 'registration' : 'registrations'}`);
+                  const label = summary.length > 0 ? ` (${summary.join(', ')})` : ' (0 records)';
+                  return (
+                    <option key={p} value={p}>
+                      {p}{label}
+                    </option>
+                  );
+                })}
+              </optgroup>
             </select>
           </div>
 
+          {/* Options / Confirmation Checkboxes */}
           {selectedEvent && (
             <div style={{background:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontSize:".76rem",fontWeight:800,color:"#1E293B",textTransform:"uppercase",letterSpacing:.5}}>
-                2. Choose what to Archive for "{selectedEvent}":
+                2. Categories to Archive:
               </div>
 
               {/* Option: Archive Donations */}
-              <label style={{
-                display:"flex",
-                alignItems:"flex-start",
-                gap:10,
-                padding:10,
-                borderRadius:8,
-                background:archiveDonations?"#F0FDF4":"white",
-                border:`1px solid ${archiveDonations?"#86EFAC":"#CBD5E1"}`,
-                cursor:matchingDons.length>0?"pointer":"not-allowed",
-                opacity:matchingDons.length>0?1:0.6
-              }}>
-                <input
-                  type="checkbox"
-                  checked={archiveDonations && matchingDons.length > 0}
-                  onChange={e=>setArchiveDonations(e.target.checked)}
-                  disabled={matchingDons.length === 0 || processing}
-                  style={{marginTop:3,cursor:"pointer"}}
-                />
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:800,fontSize:".84rem",color:"#166534",display:"flex",justifyContent:"space-between"}}>
-                    <span>💰 Event Donations</span>
-                    <span>{matchingDons.length} found</span>
+              {selectedEvent !== "__ALL_ACTIVE_REGS__" && (
+                <label style={{
+                  display:"flex",
+                  alignItems:"flex-start",
+                  gap:10,
+                  padding:10,
+                  borderRadius:8,
+                  background:archiveDonations?"#F0FDF4":"white",
+                  border:`1px solid ${archiveDonations?"#86EFAC":"#CBD5E1"}`,
+                  cursor:matchingDons.length>0?"pointer":"not-allowed",
+                  opacity:matchingDons.length>0?1:0.6
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={archiveDonations && matchingDons.length > 0}
+                    onChange={e=>setArchiveDonations(e.target.checked)}
+                    disabled={matchingDons.length === 0 || processing}
+                    style={{marginTop:3,cursor:"pointer"}}
+                  />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:800,fontSize:".84rem",color:"#166534",display:"flex",justifyContent:"space-between"}}>
+                      <span>💰 Donations</span>
+                      <span style={{background:"#DCFCE7",padding:"2px 8px",borderRadius:10,fontSize:".74rem"}}>{matchingDons.length} found</span>
+                    </div>
+                    <div style={{fontSize:".75rem",color:"#334155",marginTop:3}}>
+                      Total Amount: <strong style={{color:"#15803D"}}>₹{donsTotalSum.toLocaleString()}</strong>
+                    </div>
+                    <div style={{fontSize:".68rem",color:"#64748B",marginTop:2}}>
+                      {matchingDons.length > 0 
+                        ? "Moves donations to 'Archived' tab. Excludes them from active day-to-day collection tallies." 
+                        : "(No active donations found for this selection)"}
+                    </div>
                   </div>
-                  <div style={{fontSize:".74rem",color:"#475569",marginTop:2}}>
-                    Total Amount: <strong>₹{donsTotalSum.toLocaleString()}</strong>
-                  </div>
-                  <div style={{fontSize:".68rem",color:"#64748B",marginTop:2}}>
-                    {matchingDons.length > 0 
-                      ? "Moves donations to 'Archived' tab. Excludes them from active day-to-day collection tallies." 
-                      : "(No active donations found for this event)"}
-                  </div>
-                </div>
-              </label>
+                </label>
+              )}
 
               {/* Option: Archive Registrations */}
-              <label style={{
-                display:"flex",
-                alignItems:"flex-start",
-                gap:10,
-                padding:10,
-                borderRadius:8,
-                background:archiveRegistrations?"#EFF6FF":"white",
-                border:`1px solid ${archiveRegistrations?"#93C5FD":"#CBD5E1"}`,
-                cursor:matchingRegs.length>0?"pointer":"not-allowed",
-                opacity:matchingRegs.length>0?1:0.6
-              }}>
-                <input
-                  type="checkbox"
-                  checked={archiveRegistrations && matchingRegs.length > 0}
-                  onChange={e=>setArchiveRegistrations(e.target.checked)}
-                  disabled={matchingRegs.length === 0 || processing}
-                  style={{marginTop:3,cursor:"pointer"}}
-                />
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:800,fontSize:".84rem",color:"#1E40AF",display:"flex",justifyContent:"space-between"}}>
-                    <span>📋 Event Registrations</span>
-                    <span>{matchingRegs.length} found</span>
+              {selectedEvent !== "__ALL_ACTIVE_DONATIONS__" && (
+                <label style={{
+                  display:"flex",
+                  alignItems:"flex-start",
+                  gap:10,
+                  padding:10,
+                  borderRadius:8,
+                  background:archiveRegistrations?"#EFF6FF":"white",
+                  border:`1px solid ${archiveRegistrations?"#93C5FD":"#CBD5E1"}`,
+                  cursor:matchingRegs.length>0?"pointer":"not-allowed",
+                  opacity:matchingRegs.length>0?1:0.6
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={archiveRegistrations && matchingRegs.length > 0}
+                    onChange={e=>setArchiveRegistrations(e.target.checked)}
+                    disabled={matchingRegs.length === 0 || processing}
+                    style={{marginTop:3,cursor:"pointer"}}
+                  />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:800,fontSize:".84rem",color:"#1E40AF",display:"flex",justifyContent:"space-between"}}>
+                      <span>📋 Registrations</span>
+                      <span style={{background:"#DBEAFE",padding:"2px 8px",borderRadius:10,fontSize:".74rem"}}>{matchingRegs.length} found</span>
+                    </div>
+                    <div style={{fontSize:".75rem",color:"#334155",marginTop:3}}>
+                      Applicants / Participants: <strong style={{color:"#1D4ED8"}}>{matchingRegs.length} entries</strong>
+                    </div>
+                    <div style={{fontSize:".68rem",color:"#64748B",marginTop:2}}>
+                      {matchingRegs.length > 0 
+                        ? "Moves registrations to 'Archived' tab. Keeps active list clean for upcoming event." 
+                        : "(No active registrations found for this selection)"}
+                    </div>
                   </div>
-                  <div style={{fontSize:".74rem",color:"#475569",marginTop:2}}>
-                    Applicants / Participants: <strong>{matchingRegs.length} entries</strong>
-                  </div>
-                  <div style={{fontSize:".68rem",color:"#64748B",marginTop:2}}>
-                    {matchingRegs.length > 0 
-                      ? "Moves registrations to 'Archived' tab. Keeps list clean for your upcoming event." 
-                      : "(No active registrations found for this event)"}
-                  </div>
-                </div>
-              </label>
+                </label>
+              )}
             </div>
           )}
 
           {processing && (
-            <div style={{padding:10,background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,fontSize:".8rem",color:"#92400E",fontWeight:700,display:"flex",alignItems:"center",gap:8}}>
-              <span style={{animation:"spin 1s linear infinite"}}>⏳</span> {progressMsg || "Archiving records, please wait..."}
+            <div style={{padding:12,background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:8,fontSize:".82rem",color:"#92400E",fontWeight:700,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span> {progressMsg || "Archiving records, please wait..."}
             </div>
           )}
 
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:6}}>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
             <button
               onClick={onClose}
               disabled={processing}
@@ -13260,22 +13393,22 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
               Cancel
             </button>
             <button
-              disabled={!selectedEvent || processing || (!archiveDonations && !archiveRegistrations) || ((archiveDonations ? matchingDons.length : 0) + (archiveRegistrations ? matchingRegs.length : 0) === 0)}
+              disabled={!selectedEvent || processing || (!archiveDonations && !archiveRegistrations) || totalSelectedCount === 0}
               onClick={handleConfirmArchive}
               style={{
-                padding:"8px 18px",
+                padding:"9px 20px",
                 borderRadius:8,
                 background:"linear-gradient(135deg, #15803D, #166534)",
                 color:"white",
                 border:"none",
                 fontWeight:800,
-                fontSize:".82rem",
+                fontSize:".84rem",
                 cursor:processing?"wait":"pointer",
                 boxShadow:"0 2px 6px rgba(22,101,52,0.25)",
-                opacity:(!selectedEvent || processing || (!archiveDonations && !archiveRegistrations) || ((archiveDonations ? matchingDons.length : 0) + (archiveRegistrations ? matchingRegs.length : 0) === 0)) ? 0.5 : 1
+                opacity:(!selectedEvent || processing || (!archiveDonations && !archiveRegistrations) || totalSelectedCount === 0) ? 0.5 : 1
               }}
             >
-              {processing ? "Archiving..." : "Confirm & Archive Selected"}
+              {processing ? "Archiving..." : `Confirm & Archive Selected (${totalSelectedCount})`}
             </button>
           </div>
         </div>
