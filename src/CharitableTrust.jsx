@@ -36888,15 +36888,32 @@ function AdminColumnCustomizerModal({
 
   if (!isOpen) return null;
 
+  const isColVisible = (col) => {
+    if (!col) return false;
+    const colLower = col.toLowerCase();
+    for (const item of tempSelected) {
+      if (item && item.toLowerCase() === colLower) return true;
+    }
+    return false;
+  };
+
   const handleToggle = (col) => {
     setTempSelected(prev => {
       const next = new Set(prev);
-      if (next.has(col)) {
+      const colLower = col.toLowerCase();
+      let matched = null;
+      for (const item of next) {
+        if (item && item.toLowerCase() === colLower) {
+          matched = item;
+          break;
+        }
+      }
+      if (matched) {
         if (next.size <= 1) {
           alert("At least one column must remain visible.");
           return prev;
         }
-        next.delete(col);
+        next.delete(matched);
       } else {
         next.add(col);
       }
@@ -36905,15 +36922,44 @@ function AdminColumnCustomizerModal({
   };
 
   const handleSelectAll = () => {
-    setTempSelected(new Set(tempOrder));
+    if (search.trim()) {
+      setTempSelected(prev => {
+        const next = new Set(prev);
+        filteredOrder.forEach(c => next.add(c));
+        return next;
+      });
+    } else {
+      setTempSelected(new Set(tempOrder));
+    }
   };
 
   const handleClearAll = () => {
-    setTempSelected(new Set(tempOrder.slice(0, 2)));
+    if (search.trim()) {
+      setTempSelected(prev => {
+        const next = new Set(prev);
+        filteredOrder.forEach(c => {
+          const cLow = c.toLowerCase();
+          for (const item of next) {
+            if (item && item.toLowerCase() === cLow) next.delete(item);
+          }
+        });
+        if (next.size === 0) {
+          next.add(tempOrder[0] || "Full Name");
+        }
+        return next;
+      });
+    } else {
+      setTempSelected(new Set(tempOrder.slice(0, 2)));
+    }
   };
 
   const handlePreset = (presetCols) => {
-    const valid = presetCols.filter(c => tempOrder.includes(c));
+    const valid = [];
+    presetCols.forEach(p => {
+      const pLow = p.toLowerCase();
+      const match = tempOrder.find(c => c.toLowerCase() === pLow);
+      if (match && !valid.includes(match)) valid.push(match);
+    });
     setTempSelected(new Set(valid));
     const remaining = tempOrder.filter(c => !valid.includes(c));
     setTempOrder([...valid, ...remaining]);
@@ -36965,7 +37011,7 @@ function AdminColumnCustomizerModal({
   };
 
   const handleApply = (saveToCloud = false) => {
-    const selArray = tempOrder.filter(c => tempSelected.has(c));
+    const selArray = tempOrder.filter(c => isColVisible(c));
     if (selArray.length === 0) {
       alert("Please select at least one column to display.");
       return;
@@ -37009,7 +37055,7 @@ function AdminColumnCustomizerModal({
               <span>⚙️</span> Customize Table Columns
             </h3>
             <p style={{margin:"4px 0 0 0",fontSize:".78rem",color:"#64748B"}}>
-              Check columns to show/hide in the table. Use arrows or drag to change their left-to-right display order.
+              Click any column row or checkbox to select/deselect. Drag handle ⋮⋮ or click arrows to reorder.
             </p>
           </div>
           <button
@@ -37057,15 +37103,17 @@ function AdminColumnCustomizerModal({
               type="button"
               onClick={handleSelectAll}
               style={{padding:"3px 8px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#15803D",fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+              title={search.trim() ? "Select all filtered columns" : "Select all columns"}
             >
-              Select All
+              {search.trim() ? "Select Filtered" : "Select All"}
             </button>
             <button
               type="button"
               onClick={handleClearAll}
               style={{padding:"3px 8px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#DC2626",fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+              title={search.trim() ? "Deselect all filtered columns" : "Deselect all columns"}
             >
-              Clear
+              {search.trim() ? "Clear Filtered" : "Clear"}
             </button>
           </div>
         </div>
@@ -37074,13 +37122,13 @@ function AdminColumnCustomizerModal({
         <div style={{padding:"10px 20px",borderBottom:"1px solid #F1F5F9",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
           <input
             type="text"
-            placeholder="🔍 Search column name..."
+            placeholder="🔍 Search column name (e.g. vibhag, stream)..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{padding:"6px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",width:240,outline:"none"}}
+            style={{padding:"6px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",width:260,outline:"none"}}
           />
           <div style={{fontSize:".8rem",color:"#475569"}}>
-            <strong>{tempSelected.size}</strong> of <strong>{tempOrder.length}</strong> columns visible in table
+            <strong>{tempOrder.filter(c => isColVisible(c)).length}</strong> of <strong>{tempOrder.length}</strong> columns visible in table
           </div>
         </div>
 
@@ -37088,58 +37136,71 @@ function AdminColumnCustomizerModal({
         <div style={{padding:"12px 20px",overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:6}}>
           {filteredOrder.map((col) => {
             const realIdx = tempOrder.indexOf(col);
-            const isVisible = tempSelected.has(col);
+            const isVisible = isColVisible(col);
             const cat = getColCategory(col);
 
             return (
               <div
                 key={col}
-                draggable
-                onDragStart={(e) => handleDragStart(e, realIdx)}
                 onDragOver={(e) => handleDragOver(e, realIdx)}
-                onDragEnd={handleDragEnd}
+                onClick={(e) => {
+                  if (e.target.closest('button') || e.target.closest('.drag-handle')) return;
+                  handleToggle(col);
+                }}
                 style={{
                   display:"flex",
                   alignItems:"center",
                   justifyContent:"space-between",
-                  padding:"7px 12px",
+                  padding:"8px 12px",
                   borderRadius:8,
-                  border: isVisible ? "1.5px solid #93C5FD" : "1px solid #E2E8F0",
-                  background: isVisible ? "#F0F7FF" : "#FAFAFA",
-                  opacity: isVisible ? 1 : 0.65,
-                  cursor:"grab",
+                  border: isVisible ? "1.5px solid #3B82F6" : "1px solid #E2E8F0",
+                  background: isVisible ? "#EFF6FF" : "#FFFFFF",
+                  cursor:"pointer",
+                  userSelect:"none",
+                  boxShadow: isVisible ? "0 1px 4px rgba(37,99,235,0.1)" : "none",
                   transition:"all 0.15s ease"
                 }}
+                title="Click anywhere to select or deselect this column"
               >
                 {/* Left: Drag Handle, Checkbox, Number, Name, Tag */}
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{color:"#94A3B8",fontSize:"1.1rem",cursor:"grab",userSelect:"none"}} title="Drag to reorder">
+                <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+                  <span 
+                    className="drag-handle"
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, realIdx)}
+                    onDragEnd={handleDragEnd}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{color:"#94A3B8",fontSize:"1.2rem",cursor:"grab",userSelect:"none",padding:"2px 4px",display:"inline-flex",alignItems:"center"}} 
+                    title="Click and drag to reorder"
+                  >
                     ⋮⋮
                   </span>
                   
                   <input
                     type="checkbox"
-                    id={`col-chk-${col}`}
                     checked={isVisible}
-                    onChange={() => handleToggle(col)}
-                    style={{width:16,height:16,cursor:"pointer",accentColor:"#2563EB"}}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleToggle(col);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{width:18,height:18,cursor:"pointer",accentColor:"#2563EB"}}
                   />
 
                   <span style={{fontSize:".74rem",fontWeight:700,color:"#64748B",minWidth:22}}>
                     #{realIdx + 1}
                   </span>
 
-                  <label
-                    htmlFor={`col-chk-${col}`}
+                  <span
                     style={{
-                      fontSize:".86rem",
+                      fontSize:".88rem",
                       fontWeight: isVisible ? 700 : 500,
-                      color: isVisible ? "#0F172A" : "#64748B",
+                      color: isVisible ? "#1E3A8A" : "#334155",
                       cursor:"pointer"
                     }}
                   >
                     {col === 'Transaction ID' ? 'Txn ID (Transaction ID)' : col}
-                  </label>
+                  </span>
 
                   <span style={{
                     fontSize:".68rem",
@@ -37155,7 +37216,10 @@ function AdminColumnCustomizerModal({
                 </div>
 
                 {/* Right: Reorder Up/Down & Position buttons */}
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  style={{display:"flex",alignItems:"center",gap:4}}
+                >
                   <button
                     type="button"
                     onClick={() => handleMoveToTop(realIdx)}
@@ -37246,7 +37310,7 @@ function AdminColumnCustomizerModal({
                 boxShadow:"0 2px 6px rgba(37,99,235,0.3)"
               }}
             >
-              Apply ({tempSelected.size} Columns)
+              Apply ({tempOrder.filter(c => isColVisible(c)).length} Columns)
             </button>
           </div>
         </div>
@@ -38029,18 +38093,37 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       "Gender", "Alternate Mobile Number", "Age_year", "Supporting Document"
     ];
     
-    const combinedSet = new Set([...priorityList, ...allKeys, ...systemCols]);
-    const list = Array.from(combinedSet).filter(c => {
-      if (!c) return false;
-      const lower = c.toLowerCase().trim();
-      if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id') return false;
-      return true;
+    const seenLower = new Set();
+    const list = [];
+    [...priorityList, ...allKeys, ...systemCols].forEach(raw => {
+      if (!raw) return;
+      const c = String(raw).trim();
+      const lower = c.toLowerCase();
+      if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id') return;
+      if (!seenLower.has(lower)) {
+        seenLower.add(lower);
+        list.push(c);
+      }
     });
 
     if (Array.isArray(colOrder) && colOrder.length > 0) {
-      const ordered = [...colOrder.filter(c => list.includes(c))];
+      const ordered = [];
+      const orderedLower = new Set();
+      colOrder.forEach(raw => {
+        if (!raw) return;
+        const cl = String(raw).trim();
+        const low = cl.toLowerCase();
+        const match = list.find(x => x.toLowerCase() === low);
+        if (match && !orderedLower.has(low)) {
+          orderedLower.add(low);
+          ordered.push(match);
+        }
+      });
       list.forEach(c => {
-        if (!ordered.includes(c)) ordered.push(c);
+        if (!orderedLower.has(c.toLowerCase())) {
+          orderedLower.add(c.toLowerCase());
+          ordered.push(c);
+        }
       });
       return ordered;
     }
@@ -38050,8 +38133,11 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
 
   // The active subset of columns to display on screen in the user's customized order
   const visibleColumns = useMemo(() => {
-    const set = new Set(selectedCols.map(c => c === 'Txn ID' ? 'Transaction ID' : c));
-    const visible = allMasterCols.filter(c => set.has(c));
+    const selectedLower = new Set(selectedCols.map(c => {
+      const str = String(c || '').trim();
+      return (str === 'Txn ID' ? 'Transaction ID' : str).toLowerCase();
+    }));
+    const visible = allMasterCols.filter(c => selectedLower.has(c.toLowerCase()));
     return visible.length > 0 ? visible : ["Full Name", "Mobile Number", "Status"];
   }, [allMasterCols, selectedCols]);
 
