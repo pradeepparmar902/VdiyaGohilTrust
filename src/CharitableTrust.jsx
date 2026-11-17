@@ -1458,7 +1458,10 @@ const fbUpdateRegistration = async (docId, newData, idToken, forceProvider = nul
       }
     })
   }, forceProvider);
-  if (!res.ok) throw new Error("Update failed");
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody?.error || "Update failed (Status " + res.status + ")");
+  }
   return true;
 };
 
@@ -1506,7 +1509,10 @@ const fbUpdateDonation = async (docId, newData, idToken, forceProvider = null) =
       }
     })
   }, forceProvider);
-  if (!res.ok) throw new Error("Update failed");
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody?.error || "Update failed (Status " + res.status + ")");
+  }
   return true;
 };
 
@@ -13152,11 +13158,31 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
           const d = matchingDons[i];
           const updated = { ...d, archived: true, isArchived: true };
           const targetId = d._docId || d.id;
-          await fbUpdateDonation(targetId, updated, token);
-          doneDons++;
-          if (i % 5 === 0 || i === matchingDons.length - 1) {
-            setProgressMsg(`Archiving donations (${doneDons} / ${matchingDons.length})...`);
+          
+          let success = false;
+          let lastErr = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await fbUpdateDonation(targetId, updated, token);
+              success = true;
+              break;
+            } catch(patchErr) {
+              lastErr = patchErr;
+              if (attempt < 3) {
+                await new Promise(r => setTimeout(r, 200 * attempt));
+              }
+            }
           }
+
+          if (success) {
+            doneDons++;
+          } else {
+            console.warn("Failed to archive donation " + targetId + ":", lastErr);
+          }
+
+          setProgressMsg(`Archiving donations (${i + 1} / ${matchingDons.length})...`);
+          // 90ms spacing to prevent MySQL connection limits on Hostinger
+          await new Promise(r => setTimeout(r, 90));
         }
       }
 
@@ -13167,11 +13193,30 @@ export function UnifiedEventArchiveModal({ isOpen, onClose, C, auth, onArchivedS
           const updated = { ...r, archived: true, isArchived: true };
           delete updated.id;
           delete updated._submittedAt;
-          await fbUpdateRegistration(r.id, updated, token);
-          doneRegs++;
-          if (i % 5 === 0 || i === matchingRegs.length - 1) {
-            setProgressMsg(`Archiving registrations (${doneRegs} / ${matchingRegs.length})...`);
+          
+          let success = false;
+          let lastErr = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await fbUpdateRegistration(r.id, updated, token);
+              success = true;
+              break;
+            } catch(patchErr) {
+              lastErr = patchErr;
+              if (attempt < 3) {
+                await new Promise(r => setTimeout(r, 200 * attempt));
+              }
+            }
           }
+
+          if (success) {
+            doneRegs++;
+          } else {
+            console.warn("Failed to archive registration " + r.id + ":", lastErr);
+          }
+
+          setProgressMsg(`Archiving registrations (${i + 1} / ${matchingRegs.length})...`);
+          await new Promise(r => setTimeout(r, 90));
         }
       }
 
