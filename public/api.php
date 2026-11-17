@@ -110,7 +110,7 @@ function firestoreFieldsToArray($fields) {
 
 
 if ($method === 'GET') {
-    if ($docId) {
+    if ($docId !== "" && $docId !== null) {
         // Fetch single document
         $stmt = $pdo->prepare("SELECT data FROM `$collection` WHERE id = ?");
         $stmt->execute([$docId]);
@@ -153,7 +153,7 @@ if ($method === 'GET') {
     ]);
 } elseif ($method === 'PATCH' || $method === 'PUT') {
     // Update existing document
-    if (!$docId) {
+    if ($docId === "" || $docId === null) {
         http_response_code(400);
         echo json_encode(["error" => "Document ID required for update"]);
         exit;

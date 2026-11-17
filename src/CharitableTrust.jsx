@@ -1682,14 +1682,45 @@ const fbFetchDonations = async (idToken, forceProvider = null) => {
   if (!res.ok) throw new Error("Failed to fetch donations");
   const data = await res.json();
   if (!data.documents) return [];
-  return data.documents.map(doc => {
-    try {
-      const parsed = JSON.parse(doc.fields.data.stringValue);
-      return { _docId: doc.name.split("/").pop(), ...parsed, _submittedAt: doc.fields.submittedAt?.timestampValue };
-    } catch(e) { return null; }
-  }).filter(Boolean).sort((a,b) => new Date(b._submittedAt || 0).getTime() - new Date(a._submittedAt || 0).getTime());
-};
 
+  const map = new Map();
+
+  for (const doc of data.documents) {
+    const rawDocId = doc.name.split("/").pop();
+    let parsed = null;
+    if (doc.fields?.data?.stringValue) {
+      try { parsed = JSON.parse(doc.fields.data.stringValue); } catch(e) {}
+    } else if (doc.fields) {
+      parsed = {};
+      for (let k in doc.fields) {
+        parsed[k] = doc.fields[k].stringValue || doc.fields[k].integerValue || doc.fields[k].booleanValue || doc.fields[k].timestampValue;
+      }
+    }
+    if (!parsed) continue;
+
+    const docId = (/^\d+$/.test(rawDocId) && parsed._docId && !/^\d+$/.test(parsed._docId))
+      ? parsed._docId
+      : rawDocId;
+
+    const item = {
+      ...parsed,
+      _docId: docId,
+      _submittedAt: doc.fields?.submittedAt?.timestampValue || parsed._submittedAt
+    };
+
+    if (!map.has(docId)) {
+      map.set(docId, item);
+    } else {
+      const existing = map.get(docId);
+      if (item.archived || item.isArchived) {
+        map.set(docId, { ...existing, ...item });
+      }
+    }
+  }
+
+  const list = Array.from(map.values());
+  return list.sort((a,b) => new Date(b._submittedAt || 0).getTime() - new Date(a._submittedAt || 0).getTime());
+};
 
 const fbSignUp = async (email, password) => {
   const SIGNUP_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${getFB().apiKey}`;
