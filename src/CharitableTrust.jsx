@@ -11574,7 +11574,7 @@ function Admin({ C, setC, setPage, auth, onLogout, onShowLogin }) {
           {tab==="chatbotaccess" && <ChatbotAccessManager C={C} setC={setC} auth={auth}/>}
           {tab==="whatsappadmin" && <WhatsAppAdminManager C={C} setC={setC} auth={auth}/>}
           {tab==="access"    && hasAccess.includes("access") && <AdminAccess C={C} setC={setC} master={master} auth={auth}/>}
-          {tab==="masterdata" && hasAccess.includes("masterdata") && <AdminMasterData C={C} setC={setC} auth={auth} />}
+          {tab==="masterdata" && hasAccess.includes("masterdata") && <AdminMasterData C={C} setC={setC} auth={auth} saveToFb={saveToFb} />}
           {tab==="backup"    && hasAccess.includes("backup") && <BackupRestore C={C} setC={setC} auth={auth} />}
           {tab==="profile"   && hasAccess.includes("profile") && <AdminProfile auth={auth} mob={mob} adminProfile={adminProfile} setAdminProfile={setAdminProfile} C={C}/>}
         
@@ -14109,176 +14109,1070 @@ function Donations({ mob, auth, C }) {
 }
 
 
-function AdminMasterData({ C, setC, auth }) {
+// ── Helper to resolve Master Data options for Registration Forms ─────────────
+export const resolveMasterDataOptions = (optionsStr, masterTables = []) => {
+  if (!optionsStr) return [];
+  if (Array.isArray(optionsStr)) return optionsStr;
+  if (typeof optionsStr === 'string' && optionsStr.startsWith('@master:')) {
+    const parts = optionsStr.split(':');
+    const tableId = parts[1];
+    const colName = parts[2];
+    const table = (masterTables || []).find(t => t.id === tableId || t.name === tableId);
+    if (table && Array.isArray(table.rows)) {
+      return table.rows.map(r => r[colName]).filter(v => v !== undefined && v !== null && String(v).trim() !== "");
+    }
+    return [];
+  }
+  return String(optionsStr).split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+};
+
+// ── Master Data Tables Management Component ───────────────────────────────────
+function AdminMasterData({ C, setC, auth, saveToFb }) {
   const [tables, setTables] = useState(C.masterTables || []);
   const [editingTableId, setEditingTableId] = useState(null);
-  const [newTableName, setNewTableName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [rowSearchQuery, setRowSearchQuery] = useState('');
+  const [saveStatus, setSaveStatus] = useState(''); // '' | 'saving' | 'saved' | 'error'
+
+  // Modals
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createTableName, setCreateTableName] = useState('');
+  const [createTableCols, setCreateTableCols] = useState('Name');
+
+  const [importPreview, setImportPreview] = useState(null); // { mode: 'new'|'append'|'replace', targetTableId, tableName, columns, rows }
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteTableName, setPasteTableName] = useState('');
+  const [pasteText, setPasteText] = useState('');
+
+  // Column editing inside table editor
   const [newColName, setNewColName] = useState('');
   const [showAddCol, setShowAddCol] = useState(false);
+  const [editingColIndex, setEditingColIndex] = useState(null);
+  const [editingColVal, setEditingColVal] = useState('');
 
-  const save = (newTables) => {
+  // Sync state if C.masterTables changes externally
+  useEffect(() => {
+    if (Array.isArray(C.masterTables)) {
+      setTables(C.masterTables);
+    }
+  }, [C.masterTables]);
+
+  // Save tables permanently to backend
+  const save = async (newTables, successNotice = "") => {
     setTables(newTables);
-    setC({...C, masterTables: newTables});
+    const updatedC = { ...C, masterTables: newTables };
+    setC(updatedC);
+    setSaveStatus('saving');
+    try {
+      const token = auth?.idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
+      if (typeof saveToFb === 'function') {
+        await saveToFb(updatedC);
+      } else {
+        await fbSave(updatedC, token);
+      }
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+      if (successNotice) {
+        // optional brief toast feedback
+      }
+    } catch (err) {
+      console.error("Master data save error:", err);
+      setSaveStatus('error');
+      alert("⚠️ Error saving changes to server: " + err.message);
+    }
   };
 
-  const addTable = () => {
-    if(!newTableName.trim()) return;
-    const nt = { id: 'table_' + Date.now(), name: newTableName.trim(), columns: ['Name'], rows: [] };
-    save([...tables, nt]);
-    setNewTableName('');
+  // Helper to parse Excel or CSV file
+  const parseSpreadsheetFile = (file, callback) => {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const firstSheet = workbook.Sheets[sheetName];
+        const rawJson = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+
+        if (!rawJson || rawJson.length === 0) {
+          alert("No data found in the uploaded file.");
+          return;
+        }
+
+        // Clean headers: remove empty string keys
+        const rawHeaders = Object.keys(rawJson[0]).filter(k => k && !k.startsWith("__EMPTY"));
+        const columns = rawHeaders.length > 0 ? rawHeaders : ["Column 1"];
+
+        const rows = rawJson.map((row, idx) => {
+          const r = { id: 'row_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(7) };
+          columns.forEach(c => {
+            r[c] = row[c] !== undefined && row[c] !== null ? String(row[c]).trim() : '';
+          });
+          return r;
+        });
+
+        // Proposed table name: file name without extension
+        const defaultName = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim() : sheetName;
+
+        callback({
+          tableName: defaultName || "New Master Table",
+          columns,
+          rows
+        });
+      } catch (err) {
+        console.error("Spreadsheet parse error:", err);
+        alert("Failed to read file: " + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
-  const deleteTable = (id) => {
-    if(window.confirm('Delete this master table?')) save(tables.filter(t => t.id !== id));
+  // Handle uploading file to create a NEW table
+  const handleUploadNewTable = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    parseSpreadsheetFile(file, ({ tableName, columns, rows }) => {
+      setImportPreview({
+        mode: 'new',
+        targetTableId: null,
+        tableName,
+        columns,
+        rows
+      });
+    });
+    e.target.value = null;
   };
 
-  if(editingTableId) {
+  // Handle uploading file into an EXISTING table
+  const handleUploadIntoExistingTable = (e, targetTableId) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const targetTable = tables.find(t => t.id === targetTableId);
+    if (!targetTable) return;
+
+    parseSpreadsheetFile(file, ({ tableName, columns, rows }) => {
+      setImportPreview({
+        mode: 'append', // default to append
+        targetTableId,
+        tableName: targetTable.name,
+        columns,
+        rows
+      });
+    });
+    e.target.value = null;
+  };
+
+  // Confirm import from preview modal
+  const confirmImportPreview = () => {
+    if (!importPreview) return;
+    const { mode, targetTableId, tableName, columns, rows } = importPreview;
+
+    if (mode === 'new') {
+      const finalName = (tableName || "New Master Table").trim();
+      const newTable = {
+        id: 'table_' + Date.now(),
+        name: finalName,
+        columns,
+        rows,
+        createdAt: new Date().toISOString()
+      };
+      save([...tables, newTable]);
+      alert(`✅ Table "${finalName}" created with ${columns.length} columns and ${rows.length} rows!`);
+    } else {
+      const targetTable = tables.find(t => t.id === targetTableId);
+      if (!targetTable) return;
+
+      const mergedColumns = Array.from(new Set([...targetTable.columns, ...columns]));
+      let finalRows = [];
+      if (mode === 'append') {
+        finalRows = [...targetTable.rows, ...rows];
+      } else {
+        finalRows = rows;
+      }
+
+      const updated = {
+        ...targetTable,
+        columns: mergedColumns,
+        rows: finalRows,
+        updatedAt: new Date().toISOString()
+      };
+      save(tables.map(t => t.id === targetTableId ? updated : t));
+      alert(`✅ Successfully ${mode === 'append' ? 'appended' : 'imported'} ${rows.length} rows into "${targetTable.name}"!`);
+    }
+
+    setImportPreview(null);
+  };
+
+  // Handle parsing pasted spreadsheet text (TSV / CSV)
+  const handleConfirmPaste = () => {
+    if (!pasteText.trim()) return alert("Please paste spreadsheet data first.");
+    const lines = pasteText.trim().split(/[\r\n]+/);
+    if (lines.length < 1) return alert("No valid rows found in pasted text.");
+
+    // Detect delimiter: tab or comma
+    const firstLine = lines[0];
+    const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+    const rawHeaders = firstLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    const columns = rawHeaders.length > 0 ? rawHeaders : ["Column 1"];
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const cells = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+      const r = { id: 'row_' + Date.now() + '_' + i };
+      columns.forEach((col, cIdx) => {
+        r[col] = cells[cIdx] || '';
+      });
+      rows.push(r);
+    }
+
+    if (rows.length === 0) {
+      return alert("No data rows found below the header row.");
+    }
+
+    const tName = (pasteTableName || "Pasted Master Table").trim();
+    setImportPreview({
+      mode: 'new',
+      targetTableId: null,
+      tableName: tName,
+      columns,
+      rows
+    });
+    setShowPasteModal(false);
+    setPasteText('');
+    setPasteTableName('');
+  };
+
+  // Handle creating a blank table
+  const handleConfirmCreateTable = () => {
+    if (!createTableName.trim()) return alert("Please enter a table name.");
+    const parsedCols = createTableCols.split(/[,\n]+/).map(c => c.trim()).filter(Boolean);
+    const cols = parsedCols.length > 0 ? Array.from(new Set(parsedCols)) : ["Name"];
+
+    const newTable = {
+      id: 'table_' + Date.now(),
+      name: createTableName.trim(),
+      columns: cols,
+      rows: [],
+      createdAt: new Date().toISOString()
+    };
+    save([...tables, newTable]);
+    setCreateTableName('');
+    setCreateTableCols('Name');
+    setShowCreateModal(false);
+    setEditingTableId(newTable.id);
+  };
+
+  // Export any table as Excel
+  const handleExportTableExcel = (table) => {
+    if (!table) return;
+    try {
+      const excelRows = (table.rows || []).map((r, idx) => {
+        const item = { "#": idx + 1 };
+        table.columns.forEach(c => { item[c] = r[c] || ''; });
+        return item;
+      });
+      const ws = XLSX.utils.json_to_sheet(excelRows.length > 0 ? excelRows : [table.columns.reduce((acc, c) => ({ ...acc, [c]: "" }), {})]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, (table.name || "MasterData").substring(0, 31));
+      const safeName = (table.name || "MasterData").replace(/[^a-zA-Z0-9_-]/g, "_");
+      XLSX.writeFile(wb, `${safeName}_MasterData.xlsx`);
+    } catch(err) {
+      alert("Export failed: " + err.message);
+    }
+  };
+
+  // Delete an entire master table
+  const handleDeleteTable = (id, name) => {
+    if (window.confirm(`Are you sure you want to delete master table "${name}"?\n\nAll associated column data will be permanently removed.`)) {
+      save(tables.filter(t => t.id !== id));
+      if (editingTableId === id) setEditingTableId(null);
+    }
+  };
+
+  // Rename a master table
+  const handleRenameTable = (id, currentName) => {
+    const newName = window.prompt("Enter new name for this master table:", currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      save(tables.map(t => t.id === id ? { ...t, name: newName.trim() } : t));
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // VIEW: EDIT SPECIFIC MASTER TABLE
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (editingTableId) {
     const table = tables.find(t => t.id === editingTableId);
-    if(!table) return null;
-    const updateTable = (updated) => save(tables.map(t => t.id === editingTableId ? updated : t));
-    
+    if (!table) {
+      setEditingTableId(null);
+      return null;
+    }
+
+    const updateCurrentTable = (updated) => {
+      save(tables.map(t => t.id === editingTableId ? updated : t));
+    };
+
     const confirmAddColumn = () => {
       const colName = newColName.trim();
-      if(colName && !table.columns.includes(colName)) {
-        updateTable({...table, columns: [...table.columns, colName]});
-        setNewColName('');
-        setShowAddCol(false);
-      } else if (table.columns.includes(colName)) {
-        alert('Column already exists!');
+      if (!colName) return;
+      if (table.columns.includes(colName)) {
+        return alert("Column '" + colName + "' already exists!");
       }
+      updateCurrentTable({
+        ...table,
+        columns: [...table.columns, colName]
+      });
+      setNewColName('');
+      setShowAddCol(false);
+    };
+
+    const handleRenameColumn = (oldCol) => {
+      const newName = window.prompt("Enter new name for column '" + oldCol + "':", oldCol);
+      if (!newName || !newName.trim() || newName.trim() === oldCol) return;
+      const clean = newName.trim();
+      if (table.columns.includes(clean)) {
+        return alert("A column named '" + clean + "' already exists!");
+      }
+      const updatedCols = table.columns.map(c => c === oldCol ? clean : c);
+      const updatedRows = table.rows.map(r => {
+        const nr = { ...r, [clean]: r[oldCol] || '' };
+        delete nr[oldCol];
+        return nr;
+      });
+      updateCurrentTable({
+        ...table,
+        columns: updatedCols,
+        rows: updatedRows
+      });
     };
 
     const deleteColumn = (col) => {
-      if(table.columns.length <= 1) return alert('At least one column is required.');
-      if(window.confirm('Delete column ' + col + '? Data will be lost.')) {
-        updateTable({...table, columns: table.columns.filter(c => c !== col), rows: table.rows.map(r => { const nr = {...r}; delete nr[col]; return nr; })});
+      if (table.columns.length <= 1) {
+        return alert("At least one column is required.");
+      }
+      if (window.confirm("Delete column '" + col + "'? Any data in this column will be lost.")) {
+        updateCurrentTable({
+          ...table,
+          columns: table.columns.filter(c => c !== col),
+          rows: table.rows.map(r => {
+            const nr = { ...r };
+            delete nr[col];
+            return nr;
+          })
+        });
       }
     };
 
     const addRow = () => {
-      const newRow = { id: 'row_' + Date.now() };
-      table.columns.forEach(c => newRow[c] = '');
-      updateTable({...table, rows: [...table.rows, newRow]});
+      const newRow = { id: 'row_' + Date.now() + '_' + Math.random().toString(36).substring(7) };
+      table.columns.forEach(c => { newRow[c] = ''; });
+      updateCurrentTable({
+        ...table,
+        rows: [...table.rows, newRow]
+      });
     };
 
-    const updateRow = (rowId, col, val) => updateTable({...table, rows: table.rows.map(r => r.id === rowId ? { ...r, [col]: val } : r)});
-    const deleteRow = (rowId) => { if(window.confirm('Delete this row?')) updateTable({...table, rows: table.rows.filter(r => r.id !== rowId)}); };
-
-    const handleImportExcel = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const data = new Uint8Array(evt.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const importedRows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
-          
-          if (importedRows.length === 0) {
-            alert("No data found in the Excel file.");
-            return;
-          }
-          
-          const headers = Object.keys(importedRows[0]);
-          const mergedColumns = [...new Set([...table.columns, ...headers])];
-          
-          const newRows = importedRows.map(row => {
-            const r = { id: 'row_' + Date.now() + Math.random().toString(36).substring(7) };
-            mergedColumns.forEach(c => r[c] = row[c] || '');
-            return r;
-          });
-          
-          updateTable({...table, columns: mergedColumns, rows: [...table.rows, ...newRows]});
-          alert("Successfully imported " + newRows.length + " rows.");
-        } catch (err) {
-          console.error(err);
-          alert("Error parsing Excel file.");
-        }
-      };
-      reader.readAsArrayBuffer(file);
-      e.target.value = null; // reset
+    const updateCell = (rowId, col, val) => {
+      updateCurrentTable({
+        ...table,
+        rows: table.rows.map(r => r.id === rowId ? { ...r, [col]: val } : r)
+      });
     };
+
+    const deleteRow = (rowId) => {
+      updateCurrentTable({
+        ...table,
+        rows: table.rows.filter(r => r.id !== rowId)
+      });
+    };
+
+    const clearAllRows = () => {
+      if (table.rows.length === 0) return;
+      if (window.confirm(`Are you sure you want to delete all ${table.rows.length} rows in "${table.name}"?`)) {
+        updateCurrentTable({
+          ...table,
+          rows: []
+        });
+      }
+    };
+
+    const filteredRows = (table.rows || []).filter(r => {
+      if (!rowSearchQuery.trim()) return true;
+      const q = rowSearchQuery.toLowerCase();
+      return table.columns.some(col => String(r[col] || '').toLowerCase().includes(q));
+    });
 
     return (
-      <div style={{padding:'20px',maxWidth:'1000px',margin:'0 auto'}}>
-        <button onClick={()=>setEditingTableId(null)} className="modern-button" style={{marginBottom:15,background:'#64748B',color:'white',padding:'8px 12px',borderRadius:6,border:'none',cursor:'pointer'}}>← Back to Tables</button>
-        <h3 style={{fontSize:'1.5rem',marginBottom:20}}>Edit Table: {table.name}</h3>
-        
-        <div style={{display:'flex',gap:10,marginBottom:20, flexWrap:'wrap', alignItems:'center'}}>
-          {!showAddCol ? (
-            <button onClick={()=>setShowAddCol(true)} className="modern-button" style={{background:'#1A7A3E',color:'white',padding:'8px 12px',borderRadius:6,border:'none',cursor:'pointer'}}>+ Add Column</button>
-          ) : (
-            <div style={{display:'flex',gap:6, background:'#F1F5F9', padding:6, borderRadius:6}}>
-              <input value={newColName} onChange={e=>setNewColName(e.target.value)} placeholder="New Col Name" style={{padding:'6px',borderRadius:4,border:'1px solid #CBD5E1'}} autoFocus />
-              <button onClick={confirmAddColumn} style={{background:'#1A7A3E',color:'white',border:'none',borderRadius:4,padding:'6px 12px',cursor:'pointer'}}>Save</button>
-              <button onClick={()=>setShowAddCol(false)} style={{background:'#94A3B8',color:'white',border:'none',borderRadius:4,padding:'6px 12px',cursor:'pointer'}}>Cancel</button>
+      <div style={{padding:'20px',maxWidth:'1200px',margin:'0 auto'}}>
+        {/* Navigation & Header */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <button
+              onClick={() => setEditingTableId(null)}
+              style={{background:'#475569',color:'white',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'flex',alignItems:'center',gap:6}}
+            >
+              ← Back to Tables
+            </button>
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <h3 style={{margin:0,fontSize:'1.4rem',fontWeight:800,color:'#1E293B'}}>{table.name}</h3>
+                <button onClick={() => handleRenameTable(table.id, table.name)} title="Rename Table" style={{background:'none',border:'none',cursor:'pointer',fontSize:'1rem',color:'#64748B'}}>✏️</button>
+              </div>
+              <div style={{fontSize:'.78rem',color:'#64748B',marginTop:2}}>
+                {table.columns.length} columns • {table.rows.length} rows • Master Lookup Table
+              </div>
+            </div>
+          </div>
+
+          {/* Cloud Save Indicator */}
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            {saveStatus === 'saving' && (
+              <span style={{background:'#FEF3C7',border:'1px solid #FCD34D',color:'#92400E',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+                ⏳ Saving changes to cloud...
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span style={{background:'#DCFCE7',border:'1px solid #86EFAC',color:'#166534',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+                ✅ Saved to cloud
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span style={{background:'#FEE2E2',border:'1px solid #FCA5A5',color:'#991B1B',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+                ⚠️ Save failed
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Action Toolbar */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#F8FAFC',border:'1px solid #E2E8F0',padding:'12px 16px',borderRadius:10,marginBottom:16,flexWrap:'wrap',gap:10}}>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+            <button
+              onClick={addRow}
+              style={{background:'#16A34A',color:'white',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'flex',alignItems:'center',gap:6}}
+            >
+              ➕ Add Row
+            </button>
+
+            {!showAddCol ? (
+              <button
+                onClick={() => setShowAddCol(true)}
+                style={{background:'#2563EB',color:'white',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'flex',alignItems:'center',gap:6}}
+              >
+                ➕ Add Column
+              </button>
+            ) : (
+              <div style={{display:'flex',gap:4,alignItems:'center',background:'white',padding:'3px 6px',borderRadius:8,border:'1.5px solid #2563EB'}}>
+                <input
+                  value={newColName}
+                  onChange={e => setNewColName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmAddColumn(); }}
+                  placeholder="New column name..."
+                  autoFocus
+                  style={{padding:'4px 8px',borderRadius:4,border:'1px solid #CBD5E1',fontSize:'.82rem',outline:'none'}}
+                />
+                <button onClick={confirmAddColumn} style={{background:'#16A34A',color:'white',border:'none',borderRadius:4,padding:'4px 10px',fontWeight:700,cursor:'pointer',fontSize:'.78rem'}}>Save</button>
+                <button onClick={() => setShowAddCol(false)} style={{background:'#94A3B8',color:'white',border:'none',borderRadius:4,padding:'4px 8px',cursor:'pointer',fontSize:'.78rem'}}>✕</button>
+              </div>
+            )}
+
+            {/* Import / Append Excel file */}
+            <label style={{background:'#D97706',color:'white',padding:'8px 14px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'flex',alignItems:'center',gap:6}}>
+              📁 Import / Append Excel
+              <input type="file" accept=".xlsx, .xls, .csv" onChange={e => handleUploadIntoExistingTable(e, table.id)} style={{display:"none"}}/>
+            </label>
+
+            {/* Export Excel */}
+            <button
+              onClick={() => handleExportTableExcel(table)}
+              style={{background:'#0D9488',color:'white',padding:'8px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'flex',alignItems:'center',gap:6}}
+            >
+              📥 Export Excel
+            </button>
+
+            {table.rows.length > 0 && (
+              <button
+                onClick={clearAllRows}
+                style={{background:'#FEE2E2',border:'1px solid #FECACA',color:'#DC2626',padding:'8px 12px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}
+              >
+                Clear All Rows
+              </button>
+            )}
+          </div>
+
+          {/* Quick Row Search Bar */}
+          <div style={{position:'relative',minWidth:220}}>
+            <input
+              type="text"
+              value={rowSearchQuery}
+              onChange={e => setRowSearchQuery(e.target.value)}
+              placeholder="🔍 Search rows..."
+              style={{width:'100%',padding:'7px 12px',borderRadius:6,border:'1px solid #CBD5E1',fontSize:'.82rem',background:'white'}}
+            />
+            {rowSearchQuery && (
+              <button onClick={() => setRowSearchQuery('')} style={{position:'absolute',right:8,top:6,background:'none',border:'none',cursor:'pointer',color:'#94A3B8'}}>✕</button>
+            )}
+          </div>
+        </div>
+
+        {/* Data Grid Table */}
+        <div style={{background:'white',borderRadius:10,border:'1px solid #E2E8F0',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',overflow:'hidden'}}>
+          <div style={{overflowX:'auto',maxHeight:'70vh'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.85rem'}}>
+              <thead style={{background:'#F1F5F9',position:'sticky',top:0,zIndex:10}}>
+                <tr>
+                  <th style={{padding:'10px 12px',width:40,textAlign:'center',borderBottom:'2px solid #CBD5E1',color:'#64748B',fontWeight:700}}>#</th>
+                  {table.columns.map((col, cIdx) => (
+                    <th key={col + cIdx} style={{padding:'10px 14px',textAlign:'left',borderBottom:'2px solid #CBD5E1',color:'#1E293B',fontWeight:800,whiteSpace:'nowrap'}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                        <span>{col}</span>
+                        <div style={{display:'flex',gap:4}}>
+                          <button
+                            onClick={() => handleRenameColumn(col)}
+                            title="Rename column"
+                            style={{background:'none',border:'none',cursor:'pointer',fontSize:'.75rem',color:'#64748B',padding:'1px 3px'}}
+                          >
+                            ✏️
+                          </button>
+                          {table.columns.length > 1 && (
+                            <button
+                              onClick={() => deleteColumn(col)}
+                              title="Delete column"
+                              style={{background:'none',border:'none',cursor:'pointer',fontSize:'.9rem',color:'#DC2626',padding:'1px 3px'}}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{padding:'10px 12px',width:60,textAlign:'center',borderBottom:'2px solid #CBD5E1',color:'#64748B',fontWeight:700}}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row, rIdx) => (
+                  <tr key={row.id} style={{borderBottom:'1px solid #F1F5F9',background:rIdx%2===0?'#FFFFFF':'#FAFAFA'}}>
+                    <td style={{padding:'6px 10px',textAlign:'center',color:'#94A3B8',fontSize:'.75rem',fontWeight:600}}>{rIdx + 1}</td>
+                    {table.columns.map(col => (
+                      <td key={col} style={{padding:'5px 8px'}}>
+                        <input
+                          type="text"
+                          value={row[col] || ''}
+                          onChange={e => updateCell(row.id, col, e.target.value)}
+                          placeholder={`Enter ${col}...`}
+                          style={{width:'100%',minWidth:140,padding:'6px 8px',borderRadius:6,border:'1px solid #E2E8F0',fontSize:'.84rem',outline:'none',background:'white'}}
+                          onFocus={e => e.target.style.borderColor = '#3B82F6'}
+                          onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+                        />
+                      </td>
+                    ))}
+                    <td style={{padding:'6px 10px',textAlign:'center'}}>
+                      <button
+                        onClick={() => deleteRow(row.id)}
+                        title="Delete row"
+                        style={{background:'#FEF2F2',border:'1px solid #FECACA',color:'#DC2626',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:'.78rem'}}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+                {table.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={table.columns.length + 2} style={{padding:40,textAlign:'center',color:'#64748B'}}>
+                      <div style={{fontSize:'2rem',marginBottom:8}}>📂</div>
+                      <div style={{fontWeight:700,fontSize:'1rem',color:'#1E293B'}}>No rows in this table yet</div>
+                      <div style={{fontSize:'.82rem',color:'#64748B',marginTop:4,marginBottom:16}}>
+                        Click <strong>"+ Add Row"</strong>, upload an <strong>Excel/CSV</strong> file, or paste spreadsheet rows to populate this table.
+                      </div>
+                      <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                        <button onClick={addRow} style={{background:'#16A34A',color:'white',padding:'8px 16px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem'}}>➕ Add First Row</button>
+                        <label style={{background:'#D97706',color:'white',padding:'8px 16px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.82rem',display:'inline-block'}}>
+                          📁 Upload Excel File
+                          <input type="file" accept=".xlsx, .xls, .csv" onChange={e => handleUploadIntoExistingTable(e, table.id)} style={{display:"none"}}/>
+                        </label>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {table.rows.length > 0 && filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={table.columns.length + 2} style={{padding:24,textAlign:'center',color:'#94A3B8'}}>
+                      No rows match search filter "{rowSearchQuery}".
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Quick add row row */}
+          {table.rows.length > 0 && (
+            <div style={{padding:'10px 16px',background:'#F8FAFC',borderTop:'1px solid #E2E8F0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:'.78rem',color:'#64748B'}}>
+                Showing {filteredRows.length} of {table.rows.length} rows
+              </span>
+              <button
+                onClick={addRow}
+                style={{background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#334155',padding:'5px 12px',borderRadius:6,fontSize:'.78rem',fontWeight:700,cursor:'pointer'}}
+              >
+                ➕ Add Another Row
+              </button>
             </div>
           )}
-          
-          <button onClick={addRow} className="modern-button" style={{background:'#3B82F6',color:'white',padding:'8px 12px',borderRadius:6,border:'none',cursor:'pointer'}}>+ Add Row</button>
-          
-          <label style={{background:'#F59E0B',color:'white',padding:'8px 12px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:600,fontSize:'.85rem'}}>
-            ⬆️ Upload Excel/CSV
-            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleImportExcel} style={{display:"none"}}/>
-          </label>
         </div>
-        
-        <div style={{overflowX:'auto',background:'white',borderRadius:8,border:'1px solid #E2E8F0'}}>
-          <table style={{width:'100%',borderCollapse:'collapse'}}>
-            <thead style={{background:'#F8FAFC'}}>
-              <tr>
-                {table.columns.map(col => (
-                  <th key={col} style={{padding:'12px',textAlign:'left',borderBottom:'1px solid #E2E8F0',fontSize:'.9rem',color:'#475569',whiteSpace:'nowrap'}}>
-                    {col} {table.columns.length > 1 && <span style={{cursor:'pointer',color:'red',marginLeft:8,fontSize:'12px'}} onClick={()=>deleteColumn(col)}>×</span>}
-                  </th>
+
+        {/* Import Preview Modal for Existing Table */}
+        {renderImportPreviewModal()}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // VIEW: MAIN MASTER DATA TABLES DASHBOARD
+  // ══════════════════════════════════════════════════════════════════════════════
+  const filteredTables = tables.filter(t => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return t.name.toLowerCase().includes(q) || (t.columns || []).some(c => c.toLowerCase().includes(q));
+  });
+
+  const totalColumnsCount = tables.reduce((acc, t) => acc + (t.columns?.length || 0), 0);
+  const totalRowsCount = tables.reduce((acc, t) => acc + (t.rows?.length || 0), 0);
+
+  function renderImportPreviewModal() {
+    if (!importPreview) return null;
+    const { mode, tableName, columns, rows } = importPreview;
+
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:640,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #1E293B, #0F172A)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>
+              {mode === 'new' ? '📁 Review & Import New Master Table' : '📁 Import Rows into Table'}
+            </h3>
+            <button onClick={() => setImportPreview(null)} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+          </div>
+
+          <div style={{padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:14}}>
+            {mode === 'new' ? (
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>Table Name *</label>
+                <input
+                  type="text"
+                  value={tableName}
+                  onChange={e => setImportPreview({ ...importPreview, tableName: e.target.value })}
+                  placeholder="e.g. Streams, Colleges, Categories..."
+                  style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".9rem",fontWeight:700}}
+                />
+              </div>
+            ) : (
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:6}}>Import Mode for "{tableName}":</label>
+                <div style={{display:'flex',gap:16}}>
+                  <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:'.84rem',fontWeight:600}}>
+                    <input
+                      type="radio"
+                      name="importMode"
+                      checked={mode === 'append'}
+                      onChange={() => setImportPreview({ ...importPreview, mode: 'append' })}
+                    />
+                    ➕ Append rows to existing data
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:'.84rem',fontWeight:600,color:'#DC2626'}}>
+                    <input
+                      type="radio"
+                      name="importMode"
+                      checked={mode === 'replace'}
+                      onChange={() => setImportPreview({ ...importPreview, mode: 'replace' })}
+                    />
+                    🔄 Replace all existing rows
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Columns detected */}
+            <div>
+              <div style={{fontSize:".75rem",fontWeight:700,color:"#64748B",marginBottom:6}}>
+                Detected Columns ({columns.length}):
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {columns.map(c => (
+                  <span key={c} style={{background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#334155',padding:'3px 9px',borderRadius:12,fontSize:'.75rem',fontWeight:700}}>
+                    {c}
+                  </span>
                 ))}
-                <th style={{padding:'12px',width:'60px',borderBottom:'1px solid #E2E8F0'}}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map(row => (
-                <tr key={row.id} style={{borderBottom:'1px solid #F1F5F9'}}>
-                  {table.columns.map(col => (
-                    <td key={col} style={{padding:'8px 12px'}}>
-                      <input value={row[col] || ''} onChange={(e)=>updateRow(row.id, col, e.target.value)} style={{width:'100%',minWidth:'120px',padding:'6px 8px',borderRadius:4,border:'1px solid #CBD5E1',fontSize:'.85rem'}} />
-                    </td>
-                  ))}
-                  <td style={{padding:'8px 12px',textAlign:'center'}}>
-                    <button onClick={()=>deleteRow(row.id)} style={{background:'#EF4444',color:'white',border:'none',borderRadius:4,padding:'6px 12px',cursor:'pointer'}}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {table.rows.length === 0 && <tr><td colSpan={table.columns.length+1} style={{padding:30,textAlign:'center',color:'#94A3B8'}}>No data yet. Click 'Add Row' or 'Upload Excel' to begin.</td></tr>}
-            </tbody>
-          </table>
+              </div>
+            </div>
+
+            {/* Total rows count */}
+            <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',color:'#166534',padding:'8px 12px',borderRadius:8,fontSize:'.82rem',fontWeight:700}}>
+              📊 {rows.length} rows ready to import
+            </div>
+
+            {/* Sample preview (first 4 rows) */}
+            <div>
+              <div style={{fontSize:".75rem",fontWeight:700,color:"#64748B",marginBottom:6}}>Sample Preview (First 4 rows):</div>
+              <div style={{overflowX:'auto',border:'1px solid #E2E8F0',borderRadius:8}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem'}}>
+                  <thead style={{background:'#F8FAFC'}}>
+                    <tr>
+                      <th style={{padding:'6px 10px',textAlign:'center',borderBottom:'1px solid #CBD5E1'}}>#</th>
+                      {columns.map(c => (
+                        <th key={c} style={{padding:'6px 10px',textAlign:'left',borderBottom:'1px solid #CBD5E1',color:'#1E293B',fontWeight:700}}>{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0, 4).map((r, i) => (
+                      <tr key={i} style={{borderBottom:'1px solid #F1F5F9'}}>
+                        <td style={{padding:'6px 10px',textAlign:'center',color:'#94A3B8'}}>{i + 1}</td>
+                        {columns.map(c => (
+                          <td key={c} style={{padding:'6px 10px',whiteSpace:'nowrap'}}>{r[c] || '-'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal actions */}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+              <button
+                onClick={() => setImportPreview(null)}
+                style={{padding:'8px 16px',borderRadius:8,background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#475569',fontWeight:700,fontSize:'.82rem',cursor:'pointer'}}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmImportPreview}
+                style={{padding:'8px 20px',borderRadius:8,background:'linear-gradient(135deg, #15803D, #166534)',color:'white',border:'none',fontWeight:800,fontSize:'.84rem',cursor:'pointer',boxShadow:'0 2px 6px rgba(22,101,52,0.25)'}}
+              >
+                {mode === 'new' ? '✅ Confirm & Create Table' : '✅ Confirm Import'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{padding:'20px',maxWidth:'800px',margin:'0 auto'}}>
-      <h2 style={{fontSize:'1.5rem',marginBottom:20,color:'#1E293B',fontWeight:700}}>Master Data Tables</h2>
-      <div style={{display:'flex',gap:10,marginBottom:30,background:'#F8FAFC',padding:15,borderRadius:8,border:'1px solid #E2E8F0'}}>
-        <input placeholder="New Table Name" value={newTableName} onChange={e=>setNewTableName(e.target.value)} style={{flex:1,padding:'10px',borderRadius:6,border:'1px solid #CBD5E1',fontSize:'.9rem'}} />
-        <button onClick={addTable} className="modern-button" style={{background:'#1A7A3E',color:'white',padding:'10px 20px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:600}}>Create Table</button>
+    <div style={{padding:'20px',maxWidth:'1100px',margin:'0 auto'}}>
+      {/* Top Banner */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{fontSize:'1.6rem',margin:0,color:'#0F172A',fontWeight:800}}>Master Data Tables</h2>
+          <p style={{margin:'4px 0 0',fontSize:'.84rem',color:'#64748B'}}>
+            Create or import reference tables (e.g. Streams, Colleges, Vibhags, Standards). Column data connects directly to Registration Form dropdowns.
+          </p>
+        </div>
+
+        {/* Cloud Save status indicator */}
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          {saveStatus === 'saving' && (
+            <span style={{background:'#FEF3C7',border:'1px solid #FCD34D',color:'#92400E',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+              ⏳ Saving to cloud...
+            </span>
+          )}
+          {saveStatus === 'saved' && (
+            <span style={{background:'#DCFCE7',border:'1px solid #86EFAC',color:'#166534',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+              ✅ All tables saved to cloud
+            </span>
+          )}
+          {saveStatus === 'error' && (
+            <span style={{background:'#FEE2E2',border:'1px solid #FCA5A5',color:'#991B1B',padding:'4px 10px',borderRadius:6,fontSize:'.75rem',fontWeight:700}}>
+              ⚠️ Save failed
+            </span>
+          )}
+        </div>
       </div>
-      <div style={{display:'grid',gap:15}}>
-        {tables.map(t => (
-          <div key={t.id} style={{background:'white',padding:'15px 20px',borderRadius:8,border:'1px solid #E2E8F0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div><div style={{fontWeight:600}}>{t.name}</div><div style={{fontSize:'.85rem',color:'#64748B'}}>{t.columns.length} columns, {t.rows.length} rows</div></div>
-            <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setEditingTableId(t.id)} className="modern-button" style={{background:'#3B82F6',color:'white',padding:'8px 16px',borderRadius:6,border:'none',cursor:'pointer'}}>Edit Data</button>
-              <button onClick={()=>deleteTable(t.id)} style={{background:'#EF4444',color:'white',border:'none',borderRadius:6,padding:'8px 16px',cursor:'pointer'}}>Delete</button>
+
+      {/* Overview KPI Cards */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12,marginBottom:20}}>
+        <div style={{background:'white',border:'1px solid #E2E8F0',borderRadius:10,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:'.7rem',fontWeight:700,color:'#64748B',textTransform:'uppercase'}}>Total Master Tables</div>
+            <div style={{fontSize:'1.3rem',fontWeight:800,color:'#0F172A',marginTop:2}}>{tables.length} Tables</div>
+          </div>
+          <span style={{fontSize:'1.5rem'}}>🗂️</span>
+        </div>
+
+        <div style={{background:'white',border:'1px solid #E2E8F0',borderRadius:10,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:'.7rem',fontWeight:700,color:'#64748B',textTransform:'uppercase'}}>Total Columns</div>
+            <div style={{fontSize:'1.3rem',fontWeight:800,color:'#2563EB',marginTop:2}}>{totalColumnsCount} Columns</div>
+          </div>
+          <span style={{fontSize:'1.5rem'}}>📊</span>
+        </div>
+
+        <div style={{background:'white',border:'1px solid #E2E8F0',borderRadius:10,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:'.7rem',fontWeight:700,color:'#64748B',textTransform:'uppercase'}}>Total Rows / Options</div>
+            <div style={{fontSize:'1.3rem',fontWeight:800,color:'#16A34A',marginTop:2}}>{totalRowsCount} Rows</div>
+          </div>
+          <span style={{fontSize:'1.5rem'}}>📋</span>
+        </div>
+      </div>
+
+      {/* Action Bar (Create, Import Excel, Paste) */}
+      <div style={{background:'white',border:'1px solid #E2E8F0',borderRadius:12,padding:16,marginBottom:24,boxShadow:'0 1px 3px rgba(0,0,0,0.04)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+          {/* Create Table */}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            style={{background:'linear-gradient(135deg, #15803D, #166534)',color:'white',padding:'9px 18px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'flex',alignItems:'center',gap:6,boxShadow:'0 2px 6px rgba(22,101,52,0.25)'}}
+          >
+            ➕ Create Blank Table
+          </button>
+
+          {/* Import from Excel / CSV */}
+          <label style={{background:'linear-gradient(135deg, #D97706, #B45309)',color:'white',padding:'9px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'flex',alignItems:'center',gap:6,boxShadow:'0 2px 6px rgba(180,83,9,0.25)'}}>
+            📁 Import Table from Excel / CSV
+            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleUploadNewTable} style={{display:"none"}}/>
+          </label>
+
+          {/* Paste Spreadsheet Data */}
+          <button
+            onClick={() => setShowPasteModal(true)}
+            style={{background:'#475569',color:'white',padding:'9px 16px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'flex',alignItems:'center',gap:6}}
+          >
+            📋 Paste Spreadsheet Data
+          </button>
+        </div>
+
+        {/* Filter Tables Search */}
+        <div style={{minWidth:220}}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="🔍 Search tables..."
+            style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #CBD5E1',fontSize:'.84rem'}}
+          />
+        </div>
+      </div>
+
+      {/* Tables Grid */}
+      <div style={{display:'grid',gap:14}}>
+        {filteredTables.map(t => (
+          <div
+            key={t.id}
+            style={{background:'white',padding:'16px 20px',borderRadius:10,border:'1px solid #E2E8F0',boxShadow:'0 1px 3px rgba(0,0,0,0.03)',display:'flex',flexDirection:'column',gap:12}}
+          >
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:'1.2rem'}}>🗂️</span>
+                  <span style={{fontWeight:800,fontSize:'1.05rem',color:'#0F172A'}}>{t.name}</span>
+                  <button onClick={() => handleRenameTable(t.id, t.name)} title="Rename table" style={{background:'none',border:'none',cursor:'pointer',fontSize:'.9rem',color:'#64748B'}}>✏️</button>
+                </div>
+                <div style={{fontSize:'.78rem',color:'#64748B',marginTop:3}}>
+                  <strong style={{color:'#2563EB'}}>{t.columns.length} columns</strong> • <strong style={{color:'#16A34A'}}>{t.rows.length} rows / records</strong>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <button
+                  onClick={() => setEditingTableId(t.id)}
+                  style={{background:'#2563EB',color:'white',padding:'7px 16px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.8rem',display:'flex',alignItems:'center',gap:6}}
+                >
+                  ✏️ View & Edit Data
+                </button>
+
+                <button
+                  onClick={() => handleExportTableExcel(t)}
+                  title="Export to Excel"
+                  style={{background:'#F0FDFA',border:'1px solid #99F6E4',color:'#0D9488',padding:'7px 12px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}
+                >
+                  📥 Export
+                </button>
+
+                <button
+                  onClick={() => handleDeleteTable(t.id, t.name)}
+                  title="Delete Table"
+                  style={{background:'#FEF2F2',border:'1px solid #FECACA',color:'#DC2626',padding:'7px 12px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
+
+            {/* Column badges */}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+              <span style={{fontSize:'.72rem',color:'#64748B',fontWeight:600}}>Columns:</span>
+              {t.columns.map(col => (
+                <span key={col} style={{background:'#F1F5F9',border:'1px solid #E2E8F0',color:'#334155',padding:'2px 8px',borderRadius:10,fontSize:'.72rem',fontWeight:600}}>
+                  {col}
+                </span>
+              ))}
+            </div>
+
+            {/* Mini data preview (first 2 rows) */}
+            {t.rows.length > 0 && (
+              <div style={{background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:6,padding:'6px 10px',overflowX:'auto'}}>
+                <div style={{fontSize:'.68rem',color:'#94A3B8',fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Preview sample:</div>
+                <div style={{display:'flex',gap:16,fontSize:'.76rem',color:'#334155'}}>
+                  {t.rows.slice(0, 2).map((r, i) => (
+                    <div key={i} style={{whiteSpace:'nowrap'}}>
+                      <span style={{color:'#94A3B8',marginRight:4}}>#{i+1}:</span>
+                      {t.columns.map(col => r[col]).filter(Boolean).join(" | ")}
+                    </div>
+                  ))}
+                  {t.rows.length > 2 && (
+                    <span style={{color:'#94A3B8',fontStyle:'italic'}}>+{t.rows.length - 2} more...</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))}
+
+        {filteredTables.length === 0 && (
+          <div style={{background:'white',borderRadius:12,border:'1px solid #E2E8F0',padding:40,textAlign:'center',color:'#64748B'}}>
+            <div style={{fontSize:'2.5rem',marginBottom:10}}>🗂️</div>
+            <div style={{fontWeight:800,fontSize:'1.1rem',color:'#0F172A'}}>No Master Data Tables Found</div>
+            <p style={{fontSize:'.84rem',color:'#64748B',maxWidth:480,margin:'6px auto 18px',lineHeight:1.5}}>
+              Create your first master lookup table (like Streams, Colleges, Standards, Vibhags) or import an existing Excel/CSV sheet.
+            </p>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                style={{background:'#15803D',color:'white',padding:'8px 18px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.84rem'}}
+              >
+                ➕ Create Blank Table
+              </button>
+              <label style={{background:'#D97706',color:'white',padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.84rem',display:'inline-block'}}>
+                📁 Import from Excel
+                <input type="file" accept=".xlsx, .xls, .csv" onChange={handleUploadNewTable} style={{display:"none"}}/>
+              </label>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Modal: Create Blank Table */}
+      {showCreateModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:480,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+            <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #15803D, #166534)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>➕ Create New Master Table</h3>
+              <button onClick={() => setShowCreateModal(false)} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+            </div>
+
+            <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>Table Name *</label>
+                <input
+                  type="text"
+                  value={createTableName}
+                  onChange={e => setCreateTableName(e.target.value)}
+                  placeholder="e.g. Streams, Schools, Categories, Standards..."
+                  style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".88rem",fontWeight:600}}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>
+                  Initial Columns (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={createTableCols}
+                  onChange={e => setCreateTableCols(e.target.value)}
+                  placeholder="e.g. Stream Name, Stream Code, Category"
+                  style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".88rem"}}
+                />
+                <div style={{fontSize:'.72rem',color:'#64748B',marginTop:4}}>
+                  You can always add, rename, or delete columns later inside the table editor.
+                </div>
+              </div>
+
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:6}}>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  style={{padding:'8px 16px',borderRadius:8,background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#475569',fontWeight:700,fontSize:'.82rem',cursor:'pointer'}}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmCreateTable}
+                  style={{padding:'8px 20px',borderRadius:8,background:'#15803D',color:'white',border:'none',fontWeight:800,fontSize:'.84rem',cursor:'pointer'}}
+                >
+                  Create Table
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Paste Spreadsheet Data */}
+      {showPasteModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:560,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+            <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #334155, #1E293B)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>📋 Paste Spreadsheet Rows (Excel / Sheets)</h3>
+              <button onClick={() => setShowPasteModal(false)} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+            </div>
+
+            <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>Table Name *</label>
+                <input
+                  type="text"
+                  value={pasteTableName}
+                  onChange={e => setPasteTableName(e.target.value)}
+                  placeholder="e.g. Colleges, Streams..."
+                  style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".88rem",fontWeight:700}}
+                />
+              </div>
+
+              <div>
+                <label style={{display:"block",fontSize:".78rem",fontWeight:700,color:"#334155",marginBottom:4}}>
+                  Paste Cells (First row should be column headers) *
+                </label>
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  placeholder={"Stream Name\tStream Code\tDuration\nScience\tSCI\t2 Years\nCommerce\tCOM\t2 Years\nArts\tART\t2 Years"}
+                  rows={8}
+                  style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #CBD5E1",fontSize:".82rem",fontFamily:"monospace"}}
+                />
+              </div>
+
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:6}}>
+                <button
+                  onClick={() => setShowPasteModal(false)}
+                  style={{padding:'8px 16px',borderRadius:8,background:'#F1F5F9',border:'1px solid #CBD5E1',color:'#475569',fontWeight:700,fontSize:'.82rem',cursor:'pointer'}}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmPaste}
+                  style={{padding:'8px 20px',borderRadius:8,background:'#2563EB',color:'white',border:'none',fontWeight:800,fontSize:'.84rem',cursor:'pointer'}}
+                >
+                  Review & Import
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Import Preview Modal (New Table) */}
+      {renderImportPreviewModal()}
     </div>
   );
 }
-
 function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const [previewForm, setPreviewForm] = useState(null);
   const [editingForm, setEditingForm] = useState(null);
@@ -14754,7 +15648,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                    ) : field.type === 'dropdown' ? (
                      <select disabled className="modern-input" style={{opacity: 0.8, cursor: "not-allowed"}}>
                        <option value="">-- Select --</option>
-                       {(field.options||"").split(",").map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
+                       {resolveMasterDataOptions(field.options, C?.masterTables).map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
                      </select>
                    ) : field.type === 'gender' ? (
                      <select disabled className="modern-input" style={{opacity: 0.8, cursor: "not-allowed"}}>
@@ -27449,7 +28343,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                               }}
                             >
                               <option value="">-- Select --</option>
-                              {(f.options || "").split(",").map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
+                              {resolveMasterDataOptions(f.options, C?.masterTables).map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
                             </select>
                           </div>
                         );
@@ -49802,7 +50696,7 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
           if (Array.isArray(field.options) && field.options.length > 0) {
             fieldOpts = field.options.map(opt => (typeof opt === "string" ? opt.trim() : (opt?.value || opt?.label || "").trim())).filter(Boolean);
           } else if (typeof field.options === "string" && field.options.trim().length > 0) {
-            fieldOpts = field.options.split(",").map(opt => opt.trim()).filter(Boolean);
+            fieldOpts = resolveMasterDataOptions(field.options, C?.masterTables);
           } else if (isVibhagField) {
             fieldOpts = vibhagList;
           }
