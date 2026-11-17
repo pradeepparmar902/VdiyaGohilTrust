@@ -53427,7 +53427,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   );
 }
 
-function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle, introText, initialData, C, setC, auth, activeUser, onSubmitSuccess }) {
+function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donations", introTitle, introText, initialData, C, setC, auth, activeUser, onSubmitSuccess }) {
   const [nameGu, setNameGu] = useState(initialData?.nameGu || "");
   const [formData, setFormData] = useState(() => {
     const init = {};
@@ -53443,7 +53443,17 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
   const [submittedResult, setSubmittedResult] = useState(null);
 
   const vibhagList = extractVibhagList(C);
-  const fields = Array.isArray(formDef?.fields) && formDef.fields.length > 0 ? formDef.fields : null;
+
+  // 🔄 Real-time Form Synchronization: lookup live form definition directly from C.forms
+  const targetId = attachedFormId || formDef?.id;
+  const targetName = formDef?.name || introTitle;
+  const liveForm = (C?.forms || []).find(f => (
+    (targetId && f.id && String(f.id) === String(targetId)) ||
+    (targetName && f.name && f.name.toLowerCase() === targetName.toLowerCase()) ||
+    (targetId && f.name && f.name.toLowerCase() === String(targetId).toLowerCase())
+  ));
+  const activeFormDef = liveForm || formDef;
+  const fields = Array.isArray(activeFormDef?.fields) && activeFormDef.fields.length > 0 ? activeFormDef.fields : null;
 
   // If no custom fields, render fallback standard fields
   const standardFields = [
@@ -53452,14 +53462,20 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
     { label: "Date", type: "date", required: true, defaultValue: new Date().toISOString().split("T")[0] },
     { label: "Amount", type: "number", required: destination === "donations", placeholder: "e.g. 5000" },
     { label: "Vibhag", type: "select", required: true, options: vibhagList },
-    { label: "Purpose / Event Code", type: "text", placeholder: "e.g. Education Felicitation 2026" },
+    { label: "Purpose", type: "text", placeholder: "Purpose of Donation" },
     { label: "Internal Receipt Number", type: "text", placeholder: "e.g. R-1024" }
   ];
 
   const activeFields = fields || standardFields;
 
-  const handleFieldChange = (key, val) => {
-    setFormData(prev => ({ ...prev, [key]: val }));
+  const handleFieldChange = (key, val, dataKey) => {
+    setFormData(prev => {
+      const next = { ...prev, [key]: val };
+      if (dataKey && dataKey !== key) {
+        next[dataKey] = val;
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -53476,8 +53492,8 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
       if (destination === "donations") {
         const amt = parseFloat(formData["Amount"] || formData["amount"] || 0);
         const receiptNoVal = formData["Internal Receipt Number"] || formData["receiptNo"] || formData["Receipt No"] || "";
-        const purposeVal = formData["Purpose / Event Code"] || formData["Purpose"] || formData["purpose"] || formDef?.name || "Education Felicitation 2026";
-        const eventCodeVal = formData["Event Code"] || formData["eventCode"] || "EDU26";
+        const purposeVal = formData["Purpose of Donation"] || formData["Purpose"] || formData["Purpose / Event Code"] || formData["purpose"] || activeFormDef?.name || "General Donation";
+        const eventCodeVal = formData["Event Code"] || formData["eventCode"] || "GEN";
 
         const customWordDict = C?.gujaratiWordDictionary || {};
         const finalGu = (nameGu && nameGu.trim()) ? nameGu.trim() : transliterateEnglishToGujaratiPhonetic(donorName, customWordDict);
@@ -53498,6 +53514,8 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
           isOffline: true,
           recordedBy: activeUser?.name || "Admin",
           recordedAt: new Date().toISOString(),
+          formId: activeFormDef?.id,
+          formName: activeFormDef?.name,
           ...formData
         };
 
@@ -53508,8 +53526,8 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
         if (onSubmitSuccess) onSubmitSuccess(donRecord);
       } else if (destination === "registrations") {
         const regRecord = {
-          eventId: formDef?.id || "edu_2026",
-          eventTitle: formDef?.name || "Education Felicitation 2026",
+          eventId: activeFormDef?.id || "custom_reg",
+          eventTitle: activeFormDef?.name || "Event Registration",
           submitterMob: userPhone,
           formData: {
             "Full Name": donorName,
@@ -53560,7 +53578,7 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
     <form onSubmit={handleSubmit} style={{background:"#F8FAFC",border:"1.5px solid #CBD5E1",borderRadius:12,padding:14,marginTop:8,display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #E2E8F0",paddingBottom:6}}>
         <div style={{fontSize:".85rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
-          <span>📝</span> {formDef?.name || introTitle || "Interactive Form"}
+          <span>📝</span> {activeFormDef?.name || introTitle || "Interactive Form"}
         </div>
         <span style={{
           background: destination === "donations" ? "#FEF3C7" : "#EFF6FF",
@@ -53586,9 +53604,10 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
           const label = field.label || field.name || ("Field " + (idx + 1));
           const type = (field.type || "text").toLowerCase();
           const isReq = field.required !== false;
-          const val = formData[label] !== undefined ? formData[label] : (field.defaultValue || "");
+          const fieldKey = field.dataKey || field.key || label;
+          const val = formData[label] !== undefined ? formData[label] : (formData[fieldKey] !== undefined ? formData[fieldKey] : (field.defaultValue || ""));
           const isVibhagField = label.toLowerCase().includes("vibhag");
-          const isNameField = (label.toLowerCase().includes("name") || label.toLowerCase().includes("donor")) && !label.toLowerCase().includes("vibhag") && !label.toLowerCase().includes("event") && !label.toLowerCase().includes("father") && !label.toLowerCase().includes("mother");
+          const isNameField = (type === "fullname" || label.toLowerCase().includes("name") || label.toLowerCase().includes("donor")) && !label.toLowerCase().includes("vibhag") && !label.toLowerCase().includes("event") && !label.toLowerCase().includes("father") && !label.toLowerCase().includes("mother");
 
           if (isNameField) {
             return (
@@ -53603,13 +53622,18 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
                     value={val}
                     onChange={e => {
                       const v = e.target.value;
-                      handleFieldChange(label, v);
+                      handleFieldChange(label, v, field.dataKey);
                       const customWordDict = C?.gujaratiWordDictionary || {};
                       setNameGu(transliterateEnglishToGujaratiPhonetic(v, customWordDict));
                     }}
                     required={isReq}
                     style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid #94A3B8",fontSize:".88rem",boxSizing:"border-box",background:"white"}}
                   />
+                  {field.placeholder && (
+                    <div style={{fontSize:".68rem", color:"#15803D", marginTop:3, fontWeight:600, display:"flex", alignItems:"center", gap:3}}>
+                      <span>💡</span> {field.placeholder}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -53641,40 +53665,74 @@ function DynamicChatbotFormCard({ formDef, destination = "donations", introTitle
             fieldOpts = vibhagList;
           }
 
-          if (type === "select" || fieldOpts.length > 0) {
+          if (type === "select" || type === "dropdown" || fieldOpts.length > 0) {
             return (
               <div key={idx} style={{gridColumn: "1/-1"}}>
                 <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>
                   {label} {isReq ? "*" : ""}
                 </label>
                 <select
-                  value={val || fieldOpts[0] || ""}
-                  onChange={e => handleFieldChange(label, e.target.value)}
+                  value={val || (isVibhagField ? (initialData?.defaultVibhag || fieldOpts[0] || "") : "")}
+                  onChange={e => handleFieldChange(label, e.target.value, field.dataKey)}
                   required={isReq}
                   style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".78rem",background:"white",boxSizing:"border-box",fontWeight:600}}
                 >
-                  {!isVibhagField && <option value="">-- Select {label} --</option>}
+                  <option value="">{field.placeholder ? `-- ${field.placeholder} --` : `-- Select ${label} --`}</option>
                   {fieldOpts.map((optVal, oi) => (
                     <option key={oi} value={optVal}>{optVal}</option>
                   ))}
                 </select>
+                {field.placeholder && (
+                  <div style={{fontSize:".68rem", color:"#15803D", marginTop:3, fontWeight:600, display:"flex", alignItems:"center", gap:3}}>
+                    <span>💡</span> {field.placeholder}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          if (type === "address" || type === "textarea") {
+            return (
+              <div key={idx} style={{gridColumn: "1/-1"}}>
+                <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>
+                  {label} {isReq ? "*" : ""}
+                </label>
+                <textarea
+                  rows={2}
+                  value={val}
+                  onChange={e => handleFieldChange(label, e.target.value, field.dataKey)}
+                  placeholder={field.placeholder || ("Enter " + label)}
+                  required={isReq}
+                  style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".78rem",boxSizing:"border-box",background:"white",resize:"vertical"}}
+                />
+                {field.placeholder && (
+                  <div style={{fontSize:".68rem", color:"#15803D", marginTop:3, fontWeight:600, display:"flex", alignItems:"center", gap:3}}>
+                    <span>💡</span> {field.placeholder}
+                  </div>
+                )}
               </div>
             );
           }
 
           return (
-            <div key={idx} style={{gridColumn: (type === "address" || type === "textarea") ? "1/-1" : "auto"}}>
+            <div key={idx} style={{gridColumn: "auto"}}>
               <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>
                 {label} {isReq ? "*" : ""}
               </label>
               <input
-                type={type === "number" ? "number" : type === "date" ? "date" : type === "tel" ? "tel" : type === "email" ? "email" : "text"}
+                type={type === "number" || type === "percentage" ? "number" : type === "date" ? "date" : type === "tel" ? "tel" : type === "email" ? "email" : "text"}
+                step={type === "percentage" ? "any" : undefined}
                 value={val}
-                onChange={e => handleFieldChange(label, e.target.value)}
+                onChange={e => handleFieldChange(label, e.target.value, field.dataKey)}
                 placeholder={field.placeholder || ("Enter " + label)}
                 required={isReq}
                 style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".78rem",boxSizing:"border-box",background:"white"}}
               />
+              {field.placeholder && (
+                <div style={{fontSize:".68rem", color:"#15803D", marginTop:3, fontWeight:600, display:"flex", alignItems:"center", gap:3}}>
+                  <span>💡</span> {field.placeholder}
+                </div>
+              )}
             </div>
           );
         })}
@@ -54495,7 +54553,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             formDef: attachedCustomForm,
             destination: matchedKb?.storageDestination || "donations",
             introTitle: matchedKb?.title || attachedCustomForm.name,
-            introText: matchedKb?.answer
+            introText: matchedKb?.answer,
+            attachedFormId: customFormId
           };
         } else {
           // Standard / Built-in Offline Donation Entry Form
@@ -54504,8 +54563,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           cardData = {
             initialDate: new Date().toISOString().split('T')[0],
             defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
-            defaultPurpose: "Education Felicitation 2026",
-            defaultEventCode: "EDU26"
+            defaultPurpose: "General Donation",
+            defaultEventCode: "GEN"
           };
         }
       }
@@ -54836,6 +54895,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           destination: matchedKb.storageDestination || "donations",
           introTitle: matchedKb.title,
           introText: matchedKb.answer,
+          attachedFormId: matchedKb.attachedFormId,
           attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId
         };
       } else if (matchedKb.attachedWhatsAppTplId) {
@@ -55477,13 +55537,13 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                         {(m.type === "dynamic_form" || m.type === "dynamic_form_card") && m.cardData && (
                           <DynamicChatbotFormCard
                             formDef={m.cardData.formDef || m.cardData.form}
+                            attachedFormId={m.cardData.attachedFormId || m.cardData.formDef?.id || m.cardData.form?.id}
                             destination={m.cardData.destination}
                             introTitle={m.cardData.introTitle}
                             introText={m.cardData.introText}
                             initialData={{
                               defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
-                              defaultPurpose: "Education Felicitation 2026",
-                              defaultEventCode: "EDU26"
+                              attachedFormId: m.cardData.attachedFormId || m.cardData.formDef?.id || m.cardData.form?.id
                             }}
                             C={C}
                             setC={setC}
