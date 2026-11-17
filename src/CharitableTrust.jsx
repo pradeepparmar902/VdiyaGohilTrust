@@ -4470,6 +4470,20 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
       
 
       
+      {showMasterImportModal && (
+        <AdminMasterImportModal
+          isOpen={showMasterImportModal}
+          onClose={() => setShowMasterImportModal(false)}
+          regs={regs}
+          filteredRegs={filteredRegs}
+          selectedIds={selectedIds}
+          masterTables={C?.masterTables || []}
+          auth={auth}
+          allKeys={allKeys}
+          onUpdateRegs={handleApplyMasterImportUpdates}
+        />
+      )}
+
       {previewFile && (
         <div style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",background:"rgba(0,0,0,0.8)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{position:"relative",width:"100%",maxWidth:800,maxHeight:"90vh",background:"white",borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -11963,7 +11977,7 @@ function Overview({ mob, C, setC, auth }) {
     });
   });
   let allKeys = Array.from(allKeysSet);
-  const priority = ["Full Name", "Name", "Mobile Number", "Mobile", "Phone", "Email Address", "Email"];
+  const priority = ["Full Name", "Name", "Mobile Number", "Mobile", "Phone", "Email Address", "Email", "Vibhag", "Zone"];
   allKeys.sort((a, b) => {
     const ia = priority.indexOf(a);
     const ib = priority.indexOf(b);
@@ -35516,6 +35530,597 @@ function WhatsAppApplicantMessengerModal({ reg, onClose, C, auth, onLogSent, all
   );
 }
 
+// ── Master Table Lookup & Import Modal for Registrations ──────────────────────
+function AdminMasterImportModal({
+  isOpen,
+  onClose,
+  regs = [],
+  filteredRegs = [],
+  selectedIds = [],
+  masterTables = [],
+  auth,
+  allKeys = [],
+  onUpdateRegs
+}) {
+  const [scope, setScope] = useState(() => (selectedIds.length > 0 ? "selected" : filteredRegs.length < regs.length ? "filtered" : "all"));
+  
+  // Find default table (prefer table with 'vibhag' if available)
+  const defaultTable = (masterTables || []).find(t => String(t.name || "").toLowerCase().includes("vibhag")) || masterTables[0] || null;
+  const [selectedTableId, setSelectedTableId] = useState(defaultTable?.id || "");
+  
+  const selectedTable = (masterTables || []).find(t => t.id === selectedTableId) || defaultTable;
+  
+  // Available registration columns for matching
+  const regColOptions = useMemo(() => {
+    const cols = new Set(["Vibhag", "Full Name", "Mobile Number", "Stream", "Transaction ID"]);
+    (allKeys || []).forEach(k => cols.add(k));
+    return Array.from(cols).filter(Boolean);
+  }, [allKeys]);
+
+  // Selected registration key column
+  const [regKeyCol, setRegKeyCol] = useState(() => {
+    if (selectedTable && String(selectedTable.name || "").toLowerCase().includes("vibhag")) return "Vibhag";
+    return regColOptions[0] || "Vibhag";
+  });
+
+  // Selected master table key column
+  const [masterKeyCol, setMasterKeyCol] = useState(() => {
+    if (selectedTable?.columns) {
+      const vibCol = selectedTable.columns.find(c => String(c).toLowerCase().includes("vibhag"));
+      if (vibCol) return vibCol;
+      const nameCol = selectedTable.columns.find(c => String(c).toLowerCase().includes("name"));
+      if (nameCol) return nameCol;
+      return selectedTable.columns[0] || "";
+    }
+    return "";
+  });
+
+  // Available master table columns to import
+  const availableImportCols = useMemo(() => {
+    if (!selectedTable?.columns) return [];
+    return selectedTable.columns.filter(c => c !== masterKeyCol && c !== 'id');
+  }, [selectedTable, masterKeyCol]);
+
+  // Selected columns to import (array of master column names)
+  const [importCols, setImportCols] = useState(() => {
+    if (selectedTable?.columns) {
+      const rest = selectedTable.columns.filter(c => c !== masterKeyCol && c !== 'id');
+      return rest.length > 0 ? rest : [];
+    }
+    return [];
+  });
+
+  // Custom target column names: { [masterCol]: targetColName }
+  const [targetColNames, setTargetColNames] = useState({});
+
+  // Options
+  const [smartMatching, setSmartMatching] = useState(true);
+  const [overwriteExisting, setOverwriteExisting] = useState(true);
+
+  // Sync when table changes
+  const handleTableChange = (newTblId) => {
+    setSelectedTableId(newTblId);
+    const tbl = (masterTables || []).find(t => t.id === newTblId);
+    if (tbl?.columns && tbl.columns.length > 0) {
+      const isVib = String(tbl.name || "").toLowerCase().includes("vibhag");
+      let mKey = tbl.columns[0];
+      if (isVib) {
+        const found = tbl.columns.find(c => String(c).toLowerCase().includes("vibhag"));
+        if (found) mKey = found;
+        setRegKeyCol("Vibhag");
+      }
+      setMasterKeyCol(mKey);
+      const rest = tbl.columns.filter(c => c !== mKey && c !== 'id');
+      setImportCols(rest);
+    }
+  };
+
+  // Target registrations list based on scope
+  const targetList = useMemo(() => {
+    if (scope === "selected" && selectedIds.length > 0) {
+      return regs.filter(r => selectedIds.includes(r.id || r['Transaction ID']));
+    }
+    if (scope === "filtered") {
+      return filteredRegs;
+    }
+    return regs;
+  }, [scope, selectedIds, filteredRegs, regs]);
+
+  // Normalization helper
+  const normalizeString = (str) => {
+    if (str === null || str === undefined) return "";
+    return String(str).toLowerCase().replace(/[\s_.-]+/g, " ").trim();
+  };
+
+  // Robust Master Data matching
+  const findMasterMatch = useCallback((regVal, masterRows, keyCol, smart = true) => {
+    if (!regVal || !masterRows || !keyCol) return null;
+    const rawReg = String(regVal).trim();
+    if (!rawReg || rawReg === "-" || rawReg.toLowerCase() === "unspecified" || rawReg.toLowerCase() === "blank") return null;
+
+    // 1. Exact match
+    const exact = masterRows.find(mr => String(mr[keyCol] || "").trim() === rawReg);
+    if (exact) return exact;
+
+    if (!smart) return null;
+
+    // 2. Case-insensitive & normalized match
+    const normReg = normalizeString(rawReg);
+    const caseMatch = masterRows.find(mr => normalizeString(mr[keyCol]) === normReg);
+    if (caseMatch) return caseMatch;
+
+    // 3. Number-prefix match (e.g. "33 NEHRU NAGAR" vs "33 - NEHRU NAGAR")
+    const regNumMatch = rawReg.match(/^(\d+)[\s._-]+(.+)$/);
+    if (regNumMatch) {
+      const regNum = regNumMatch[1];
+      const regRest = normalizeString(regNumMatch[2]);
+      const numMatch = masterRows.find(mr => {
+        const mVal = String(mr[keyCol] || "").trim();
+        const mNumMatch = mVal.match(/^(\d+)[\s._-]+(.+)$/);
+        if (mNumMatch && mNumMatch[1] === regNum) {
+          const mRest = normalizeString(mNumMatch[2]);
+          if (mRest === regRest || mRest.includes(regRest) || regRest.includes(mRest)) return true;
+        }
+        return false;
+      });
+      if (numMatch) return numMatch;
+    }
+
+    // 4. Substring / slash containment
+    if (normReg.length >= 3) {
+      const subMatch = masterRows.find(mr => {
+        const mNorm = normalizeString(mr[keyCol]);
+        if (mNorm.length >= 3) {
+          if (normReg.includes(mNorm) || mNorm.includes(normReg)) return true;
+          const mWords = mNorm.split(" ").filter(w => w.length >= 4);
+          if (mWords.length > 0 && mWords.every(w => normReg.includes(w))) return true;
+        }
+        return false;
+      });
+      if (subMatch) return subMatch;
+    }
+
+    return null;
+  }, []);
+
+  // Compute live preview stats
+  const previewData = useMemo(() => {
+    if (!selectedTable?.rows || !masterKeyCol || targetList.length === 0) {
+      return { total: targetList.length, matched: 0, unmatched: 0, sampleRows: [], unmatchedSamples: [] };
+    }
+
+    let matched = 0;
+    let unmatched = 0;
+    const sampleRows = [];
+    const unmatchedSamples = [];
+
+    targetList.forEach((r, idx) => {
+      const regVal = (regKeyCol === 'Vibhag' || regKeyCol.toLowerCase().includes('vibhag'))
+        ? (typeof getRecordVibhag === 'function' ? getRecordVibhag(r) : r['Vibhag'] || r['Vibhag New'] || r.vibhag)
+        : r[regKeyCol];
+
+      const match = findMasterMatch(regVal, selectedTable.rows, masterKeyCol, smartMatching);
+      if (match) {
+        matched++;
+        if (sampleRows.length < 5) {
+          sampleRows.push({
+            name: String(r['Full Name'] || r.name || r['Transaction ID'] || `Record ${idx + 1}`).replace(/\|/g, ' '),
+            regVal: regVal || "-",
+            matchedVal: match[masterKeyCol],
+            importedValues: importCols.map(col => ({
+              targetCol: (targetColNames[col] || col).trim(),
+              val: match[col] !== undefined ? String(match[col]) : "-"
+            }))
+          });
+        }
+      } else {
+        unmatched++;
+        if (unmatchedSamples.length < 10 && regVal && regVal !== "-" && !unmatchedSamples.includes(regVal)) {
+          unmatchedSamples.push(regVal);
+        }
+      }
+    });
+
+    return { total: targetList.length, matched, unmatched, sampleRows, unmatchedSamples };
+  }, [targetList, selectedTable, regKeyCol, masterKeyCol, importCols, targetColNames, smartMatching, findMasterMatch]);
+
+  // Progress state during execution
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, success: 0, failed: 0, currentName: "" });
+
+  const handleExecuteImport = async () => {
+    if (!selectedTable) return;
+    if (importCols.length === 0) {
+      alert("Please select at least one column to import from the Master Table.");
+      return;
+    }
+    if (targetList.length === 0) {
+      alert("No registrations found in the selected scope.");
+      return;
+    }
+
+    const confirmMsg = `Are you sure you want to map & import column(s) [${importCols.join(', ')}] into ${targetList.length} registrations using [${regKeyCol} ➔ ${masterKeyCol}]?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsProcessing(true);
+    let success = 0;
+    let failed = 0;
+    const updatedRegsMap = new Map();
+
+    for (let i = 0; i < targetList.length; i++) {
+      const r = targetList[i];
+      const rName = String(r['Full Name'] || r.name || r['Transaction ID'] || `Row ${i + 1}`).replace(/\|/g, ' ');
+      setProgress({
+        current: i + 1,
+        total: targetList.length,
+        success,
+        failed,
+        currentName: rName
+      });
+
+      try {
+        const regVal = (regKeyCol === 'Vibhag' || regKeyCol.toLowerCase().includes('vibhag'))
+          ? (typeof getRecordVibhag === 'function' ? getRecordVibhag(r) : r['Vibhag'] || r['Vibhag New'] || r.vibhag)
+          : r[regKeyCol];
+
+        const match = findMasterMatch(regVal, selectedTable.rows, masterKeyCol, smartMatching);
+
+        if (match) {
+          const changes = {};
+          let hasNewData = false;
+          for (const col of importCols) {
+            const targetCol = (targetColNames[col] || col).trim();
+            const masterVal = match[col] !== undefined && match[col] !== null ? String(match[col]).trim() : "";
+            if (masterVal !== "") {
+              if (overwriteExisting || !r[targetCol] || String(r[targetCol]).trim() === "") {
+                changes[targetCol] = masterVal;
+                hasNewData = true;
+              }
+            }
+          }
+
+          if (hasNewData) {
+            const cleanData = { ...r, ...changes };
+            delete cleanData.id;
+            delete cleanData._submittedAt;
+
+            let updated = false;
+            let retries = 3;
+            while (!updated && retries > 0) {
+              try {
+                await fbUpdateRegistration(r.id, cleanData, auth?.idToken);
+                updated = true;
+              } catch (err) {
+                retries--;
+                if (retries > 0) await new Promise(res => setTimeout(res, 200));
+                else throw err;
+              }
+            }
+
+            updatedRegsMap.set(r.id, changes);
+            success++;
+          }
+        }
+
+        if (i % 5 === 0) {
+          await new Promise(res => setTimeout(res, 45));
+        }
+      } catch (err) {
+        console.error(`Error updating registration ${r.id}:`, err);
+        failed++;
+      }
+    }
+
+    setIsProcessing(false);
+    
+    if (updatedRegsMap.size > 0 && onUpdateRegs) {
+      onUpdateRegs(updatedRegsMap);
+    }
+
+    alert(`🎉 Import Complete!\n\nSuccessfully updated ${success} registrations with column(s): ${importCols.join(', ')}.${failed > 0 ? `\nFailed: ${failed} rows.` : ''}`);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.65)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(3px)"}}>
+      <div style={{background:"white",borderRadius:16,width:"100%",maxWidth:740,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 25px 50px -12px rgba(0,0,0,0.25)",border:"1px solid #E2E8F0",overflow:"hidden",position:"relative"}}>
+        
+        {/* Progress Overlay during save */}
+        {isProcessing && (
+          <div style={{position:"absolute",inset:0,background:"rgba(255,255,255,0.96)",zIndex:50,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
+            <div style={{fontSize:"2.5rem",marginBottom:16,animation:"bounce 1s infinite"}}>🔄</div>
+            <h3 style={{fontSize:"1.2rem",fontWeight:800,color:"#1E293B",marginBottom:8}}>Importing Master Data into Registrations</h3>
+            <p style={{fontSize:".85rem",color:"#64748B",marginBottom:20}}>Please wait while database records are being updated safely...</p>
+            
+            <div style={{width:"100%",maxWidth:400,height:12,background:"#E2E8F0",borderRadius:8,overflow:"hidden",marginBottom:12}}>
+              <div style={{width:`${Math.round((progress.current / (progress.total || 1)) * 100)}%`,height:"100%",background:"linear-gradient(90deg, #2563EB, #10B981)",transition:"width 0.2s"}}></div>
+            </div>
+            
+            <div style={{fontSize:".88rem",fontWeight:700,color:"#0F172A",marginBottom:4}}>
+              {progress.current} / {progress.total} processed ({Math.round((progress.current / (progress.total || 1)) * 100)}%)
+            </div>
+            <div style={{fontSize:".78rem",color:"#64748B",fontStyle:"italic"}}>
+              Updating: {progress.currentName || "Student"}
+            </div>
+          </div>
+        )}
+
+        {/* Modal Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#F8FAFC"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:"1.4rem"}}>🔗</span>
+            <div>
+              <h3 style={{margin:0,fontSize:"1.1rem",fontWeight:800,color:"#0F172A"}}>Map & Import Column from Master Data Table</h3>
+              <p style={{margin:0,fontSize:".76rem",color:"#64748B",marginTop:2}}>Lookup and append extra columns (e.g. Zone) into registration records based on a matching key column</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:"#64748B",cursor:"pointer",padding:4}}>✕</button>
+        </div>
+
+        {/* Modal Body */}
+        <div style={{padding:"20px",overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:18}}>
+          
+          {(!masterTables || masterTables.length === 0) ? (
+            <div style={{padding:"24px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:12,textAlign:"center",color:"#92400E"}}>
+              <p style={{fontWeight:700,fontSize:"1rem",marginBottom:6}}>⚠️ No Master Data Tables Available</p>
+              <p style={{fontSize:".85rem",marginBottom:14}}>Please go to the <strong>Master Data</strong> section in the sidebar to create or import a table (e.g. "Vibhag List" with Zone column) first.</p>
+              <button onClick={onClose} className="btn-primary" style={{padding:"8px 16px",fontSize:".85rem"}}>Close</button>
+            </div>
+          ) : (
+            <>
+              {/* Scope Selection */}
+              <div>
+                <label style={{display:"block",fontSize:".8rem",fontWeight:700,color:"#334155",marginBottom:6}}>1. Apply Import To Which Registrations?</label>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button
+                    type="button"
+                    onClick={() => setScope("all")}
+                    style={{padding:"6px 12px",borderRadius:8,fontSize:".8rem",fontWeight:700,cursor:"pointer",border:scope==="all"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="all"?"#EFF6FF":"white",color:scope==="all"?"#1D4ED8":"#475569"}}
+                  >
+                    All Registrations ({regs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope("filtered")}
+                    style={{padding:"6px 12px",borderRadius:8,fontSize:".8rem",fontWeight:700,cursor:"pointer",border:scope==="filtered"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="filtered"?"#EFF6FF":"white",color:scope==="filtered"?"#1D4ED8":"#475569"}}
+                  >
+                    Currently Filtered Rows ({filteredRegs.length})
+                  </button>
+                  {selectedIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setScope("selected")}
+                      style={{padding:"6px 12px",borderRadius:8,fontSize:".8rem",fontWeight:700,cursor:"pointer",border:scope==="selected"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="selected"?"#EFF6FF":"white",color:scope==="selected"?"#1D4ED8":"#475569"}}
+                    >
+                      Selected Only ({selectedIds.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 2: Choose Master Table */}
+              <div>
+                <label style={{display:"block",fontSize:".8rem",fontWeight:700,color:"#334155",marginBottom:6}}>2. Select Master Data Table to Lookup From:</label>
+                <select
+                  value={selectedTableId}
+                  onChange={e => handleTableChange(e.target.value)}
+                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #CBD5E1",fontSize:".9rem",fontWeight:600,color:"#0F172A",background:"white"}}
+                >
+                  {masterTables.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.rows?.length || 0} rows • Columns: {(t.columns || []).join(", ")})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Step 3: Key Mapping */}
+              <div style={{background:"#F1F5F9",padding:"14px",borderRadius:12,border:"1px solid #E2E8F0"}}>
+                <label style={{display:"block",fontSize:".8rem",fontWeight:800,color:"#1E293B",marginBottom:10}}>
+                  3. Key Column Mapping (Match Condition):
+                </label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:12,alignItems:"center"}}>
+                  <div>
+                    <label style={{display:"block",fontSize:".74rem",fontWeight:700,color:"#475569",marginBottom:4}}>Registration Key Column:</label>
+                    <select
+                      value={regKeyCol}
+                      onChange={e => setRegKeyCol(e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".85rem",background:"white",fontWeight:600}}
+                    >
+                      {regColOptions.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div style={{textAlign:"center",paddingTop:18}}>
+                    <span style={{fontSize:"1.3rem",color:"#2563EB"}}>⇄</span>
+                  </div>
+
+                  <div>
+                    <label style={{display:"block",fontSize:".74rem",fontWeight:700,color:"#475569",marginBottom:4}}>Master Table Key Column:</label>
+                    <select
+                      value={masterKeyCol}
+                      onChange={e => handleMasterKeyChange(e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".85rem",background:"white",fontWeight:600}}
+                    >
+                      {(selectedTable?.columns || []).map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10}}>
+                  <input
+                    type="checkbox"
+                    id="smart-matching-chk"
+                    checked={smartMatching}
+                    onChange={e => setSmartMatching(e.target.checked)}
+                    style={{width:16,height:16,accentColor:"#2563EB",cursor:"pointer"}}
+                  />
+                  <label htmlFor="smart-matching-chk" style={{fontSize:".76rem",color:"#475569",cursor:"pointer",fontWeight:500}}>
+                    Enable Smart Matching (tolerates extra spaces, case differences, and number prefixes e.g. <em>"1 Umerkhadi"</em> matches <em>"1 UMERKHADI"</em>)
+                  </label>
+                </div>
+              </div>
+
+              {/* Step 4: Columns to Import */}
+              <div>
+                <label style={{display:"block",fontSize:".8rem",fontWeight:800,color:"#334155",marginBottom:6}}>
+                  4. Select Columns to Import into Registrations:
+                </label>
+                {availableImportCols.length === 0 ? (
+                  <p style={{fontSize:".82rem",color:"#64748B",fontStyle:"italic"}}>This table has no other columns besides the key column. Add more columns to this table in Master Data to import them.</p>
+                ) : (
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {availableImportCols.map(col => {
+                      const isChecked = importCols.includes(col);
+                      const sampleVals = (selectedTable?.rows || []).slice(0, 3).map(r => r[col]).filter(Boolean).join(", ");
+                      return (
+                        <div key={col} style={{display:"flex",alignItems:"center",gap:10,background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 12px"}}>
+                          <input
+                            type="checkbox"
+                            id={`chk-${col}`}
+                            checked={isChecked}
+                            onChange={() => {
+                              setImportCols(prev => isChecked ? prev.filter(c => c !== col) : [...prev, col]);
+                            }}
+                            style={{width:16,height:16,accentColor:"#16A34A",cursor:"pointer"}}
+                          />
+                          <label htmlFor={`chk-${col}`} style={{fontSize:".85rem",fontWeight:700,color:"#1E293B",cursor:"pointer",minWidth:100}}>
+                            {col}
+                          </label>
+                          <span style={{fontSize:".8rem",color:"#94A3B8"}}>➔</span>
+                          <span style={{fontSize:".75rem",color:"#64748B"}}>Save as Column:</span>
+                          <input
+                            type="text"
+                            value={targetColNames[col] !== undefined ? targetColNames[col] : col}
+                            onChange={e => setTargetColNames({ ...targetColNames, [col]: e.target.value })}
+                            placeholder={col}
+                            disabled={!isChecked}
+                            style={{padding:"4px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",width:130,background:isChecked?"white":"#F1F5F9"}}
+                          />
+                          {sampleVals && (
+                            <span style={{fontSize:".72rem",color:"#059669",background:"#ECFDF5",padding:"2px 8px",borderRadius:12,border:"1px solid #A7F3D0",marginLeft:"auto"}}>
+                              Sample: {sampleVals}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10}}>
+                  <input
+                    type="checkbox"
+                    id="overwrite-chk"
+                    checked={overwriteExisting}
+                    onChange={e => setOverwriteExisting(e.target.checked)}
+                    style={{width:16,height:16,accentColor:"#2563EB",cursor:"pointer"}}
+                  />
+                  <label htmlFor="overwrite-chk" style={{fontSize:".76rem",color:"#475569",cursor:"pointer",fontWeight:500}}>
+                    Overwrite existing value in registration if target column already has data
+                  </label>
+                </div>
+              </div>
+
+              {/* Step 5: Live Match Preview */}
+              <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:12,padding:14}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                  <strong style={{fontSize:".82rem",color:"#1E293B",display:"flex",alignItems:"center",gap:6}}>
+                    <span>🎯</span> Live Matching Preview:
+                  </strong>
+                  <div style={{fontSize:".78rem",fontWeight:700,color:previewData.matched > 0 ? "#15803D" : "#B45309",background:previewData.matched > 0 ? "#DCFCE7" : "#FEF3C7",padding:"3px 8px",borderRadius:12}}>
+                    {previewData.matched} of {previewData.total} Matched ({previewData.total > 0 ? Math.round((previewData.matched / previewData.total) * 100) : 0}%)
+                  </div>
+                </div>
+
+                {previewData.sampleRows.length > 0 ? (
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
+                      <thead>
+                        <tr style={{background:"#E2E8F0",color:"#334155"}}>
+                          <th style={{padding:"6px 8px",textAlign:"left"}}>Student Name</th>
+                          <th style={{padding:"6px 8px",textAlign:"left"}}>Registration {regKeyCol}</th>
+                          <th style={{padding:"6px 8px",textAlign:"left"}}>Master Table Match</th>
+                          <th style={{padding:"6px 8px",textAlign:"left"}}>New Column(s) Applied</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.sampleRows.map((sr, sidx) => (
+                          <tr key={sidx} style={{borderBottom:"1px solid #E2E8F0"}}>
+                            <td style={{padding:"6px 8px",fontWeight:600}}>{sr.name}</td>
+                            <td style={{padding:"6px 8px",color:"#475569"}}>{sr.regVal}</td>
+                            <td style={{padding:"6px 8px",color:"#166534",fontWeight:700}}>✅ {sr.matchedVal}</td>
+                            <td style={{padding:"6px 8px"}}>
+                              {sr.importedValues.map((iv, ividx) => (
+                                <span key={ividx} style={{display:"inline-block",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:".72rem",marginRight:4}}>
+                                  {iv.targetCol}: {iv.val}
+                                </span>
+                              ))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p style={{margin:0,fontSize:".76rem",color:"#B45309",fontStyle:"italic"}}>
+                    No matching records found. Please check that the key columns contain matching values.
+                  </p>
+                )}
+
+                {previewData.unmatchedSamples.length > 0 && (
+                  <div style={{marginTop:8,fontSize:".72rem",color:"#64748B"}}>
+                    <strong>Unmatched examples ({previewData.unmatched}):</strong> {previewData.unmatchedSamples.slice(0, 5).join(", ")}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{padding:"14px 20px",borderTop:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:10,background:"#F8FAFC"}}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{padding:"8px 16px",borderRadius:8,border:"1px solid #CBD5E1",background:"white",color:"#475569",fontWeight:600,fontSize:".85rem",cursor:"pointer"}}
+          >
+            Cancel
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleExecuteImport}
+            disabled={isProcessing || !selectedTable || importCols.length === 0 || targetList.length === 0}
+            style={{
+              padding:"8px 18px",
+              borderRadius:8,
+              border:"none",
+              background:"linear-gradient(135deg, #16A34A, #15803D)",
+              color:"white",
+              fontWeight:800,
+              fontSize:".88rem",
+              cursor:(isProcessing || !selectedTable || importCols.length === 0 || targetList.length === 0) ? "not-allowed" : "pointer",
+              boxShadow:"0 2px 8px rgba(22,163,74,0.3)",
+              opacity:(isProcessing || !selectedTable || importCols.length === 0 || targetList.length === 0) ? 0.6 : 1
+            }}
+          >
+            🚀 Confirm & Import Column Data ({previewData.matched} Matched)
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUserPicker }) {
   const [localPreviewUser, setLocalPreviewUser] = useState(null);
   const [localShowUserPicker, setLocalShowUserPicker] = useState(false);
@@ -35545,6 +36150,16 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   const [applyingSerial, setApplyingSerial] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState("");
   const [showBulkTools, setShowBulkTools] = useState(false);
+  const [showMasterImportModal, setShowMasterImportModal] = useState(false);
+
+  const handleApplyMasterImportUpdates = (updatedRegsMap) => {
+    setRegs(prev => prev.map(r => {
+      if (updatedRegsMap.has(r.id)) {
+        return { ...r, ...updatedRegsMap.get(r.id) };
+      }
+      return r;
+    }));
+  };
   const [historyModalReg, setHistoryModalReg] = useState(null);
   const [whatsAppModalReg, setWhatsAppModalReg] = useState(null);
   const [showBulkWhatsAppModal, setShowBulkWhatsAppModal] = useState(false);
@@ -36631,6 +37246,28 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
             >
               <span>🚀</span> Broadcast WhatsApp {selectedIds.length > 0 ? `(${selectedIds.length} Selected)` : `(${filteredRegs.length})`}
             </button>
+            <button 
+              type="button"
+              onClick={() => setShowMasterImportModal(true)} 
+              style={{
+                padding:"6px 12px",
+                borderRadius:8,
+                fontSize:".8rem",
+                fontWeight:700,
+                display:"flex",
+                alignItems:"center",
+                gap:5,
+                background:"linear-gradient(135deg, #1D4ED8, #2563EB)",
+                color:"white",
+                border:"none",
+                cursor:"pointer",
+                whiteSpace:"nowrap",
+                boxShadow:"0 2px 6px rgba(37,99,235,0.25)"
+              }}
+              title="Lookup and import extra columns (e.g. Zone) from Master Data tables into registrations"
+            >
+              <span>🔗</span> Map Master Data
+            </button>
             <button onClick={() => setShowBulkTools(!showBulkTools)} style={{padding:"6px 12px",borderRadius:8,fontSize:".8rem",fontWeight:600,display:"flex",alignItems:"center",gap:4,background:showBulkTools?"#E8650A":"#F5F5F5",color:showBulkTools?"white":"var(--dt)",border:"1px solid var(--bd)",cursor:"pointer",whiteSpace:"nowrap"}}>
               ⚡ Bulk Tools {showBulkTools ? "▲" : "▼"}
             </button>
@@ -36665,6 +37302,14 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
               </button>
               <button onClick={() => setShowSerialModal(true)} style={{padding:"6px 12px",borderRadius:6,fontSize:".8rem",fontWeight:600,display:"flex",alignItems:"center",gap:4,background:"white",border:"1px solid var(--bd)",color:"var(--dt)",cursor:"pointer",whiteSpace:"nowrap"}}>
                 🔢 Generate Serials
+              </button>
+              <button 
+                type="button"
+                onClick={() => setShowMasterImportModal(true)} 
+                style={{padding:"6px 12px",borderRadius:6,fontSize:".8rem",fontWeight:700,display:"flex",alignItems:"center",gap:4,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",cursor:"pointer",whiteSpace:"nowrap"}}
+                title="Map & Import Master Data columns"
+              >
+                🔗 Import Master Table Columns
               </button>
               <button
                 onClick={async () => {
