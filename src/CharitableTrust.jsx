@@ -201,11 +201,116 @@ export const getExcelCol = (row, ...candidateNames) => {
 
 
 
-const SearchableDropdown = ({ value, onChange, options, placeholder, required, isError }) => {
+// ── Master Data Option Resolvers ─────────────────────────────────────────────
+export const resolveMasterDataOptions = (optionsInput, masterTables = []) => {
+  if (!optionsInput) return [];
+
+  // Determine effective masterTables
+  let effectiveTables = Array.isArray(masterTables) && masterTables.length > 0 
+    ? masterTables 
+    : (masterTables?.masterTables && Array.isArray(masterTables.masterTables) && masterTables.masterTables.length > 0)
+      ? masterTables.masterTables
+      : (typeof window !== "undefined" && window.__COMMUNITY_CONFIG?.masterTables) || [];
+
+  if (effectiveTables.length === 0 && typeof localStorage !== "undefined") {
+    try {
+      const cached = localStorage.getItem("trustConfig");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed?.masterTables) && parsed.masterTables.length > 0) {
+          effectiveTables = parsed.masterTables;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 1. If passed an array
+  if (Array.isArray(optionsInput)) {
+    if (optionsInput.length === 1 && typeof optionsInput[0] === 'string' && optionsInput[0].startsWith('@master:')) {
+      return resolveMasterDataOptions(optionsInput[0], effectiveTables);
+    }
+    if (optionsInput.some(it => typeof it === 'string' && it.startsWith('@master:'))) {
+      const flat = [];
+      for (const it of optionsInput) {
+        flat.push(...resolveMasterDataOptions(it, effectiveTables));
+      }
+      return [...new Set(flat)];
+    }
+    return optionsInput.filter(Boolean);
+  }
+
+  // 2. If passed a string starting with @master:
+  if (typeof optionsInput === 'string' && optionsInput.startsWith('@master:')) {
+    const parts = optionsInput.split(':');
+    const tableId = parts[1];
+    const colName = parts.slice(2).join(':');
+    
+    const table = effectiveTables.find(t => 
+      t.id === tableId || 
+      t.name === tableId || 
+      (t.id && tableId && String(t.id).toLowerCase() === String(tableId).toLowerCase()) ||
+      (t.name && tableId && String(t.name).toLowerCase() === String(tableId).toLowerCase())
+    );
+
+    if (table && Array.isArray(table.rows)) {
+      const vals = table.rows.map(r => {
+        if (!r) return null;
+        if (r[colName] !== undefined && r[colName] !== null) return String(r[colName]).trim();
+        const matchingKey = Object.keys(r).find(k => k.trim().toLowerCase() === colName.trim().toLowerCase());
+        if (matchingKey && r[matchingKey] !== undefined && r[matchingKey] !== null) {
+          return String(r[matchingKey]).trim();
+        }
+        return null;
+      }).filter(v => v !== null && v !== "");
+      
+      return [...new Set(vals)];
+    }
+    return [];
+  }
+
+  return String(optionsInput).split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+};
+
+export const getMasterDataAutoPopulate = (optsString, selectedValue, config) => {
+  if (!optsString || typeof optsString !== 'string' || !optsString.startsWith("@master:")) return {};
+  const parts = optsString.split(":");
+  if (parts.length < 3) return {};
+  const tableId = parts[1];
+  const colName = parts.slice(2).join(":");
+  const effectiveTables = config?.masterTables || (Array.isArray(config) ? config : (typeof window !== "undefined" && window.__COMMUNITY_CONFIG?.masterTables) || []);
+  const table = effectiveTables.find(t => 
+    t.id === tableId || 
+    t.name === tableId || 
+    (t.id && tableId && String(t.id).toLowerCase() === String(tableId).toLowerCase()) ||
+    (t.name && tableId && String(t.name).toLowerCase() === String(tableId).toLowerCase())
+  );
+  if (!table || !Array.isArray(table.rows)) return {};
+  
+  const row = table.rows.find(r => {
+    if (!r) return false;
+    const val = r[colName] !== undefined ? r[colName] : Object.entries(r).find(([k]) => k.trim().toLowerCase() === colName.trim().toLowerCase())?.[1];
+    return String(val || "").trim() === String(selectedValue || "").trim();
+  });
+  if (!row) return {};
+  
+  const result = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k !== 'id' && k !== colName && k.trim().toLowerCase() !== colName.trim().toLowerCase()) {
+      result[k] = v;
+    }
+  }
+  return result;
+};
+
+const SearchableDropdown = ({ value, onChange, options, masterTables, placeholder, required, isError }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value || "");
   const wrapperRef = useRef(null);
   
+  const resolvedOptions = useMemo(() => {
+    return resolveMasterDataOptions(options, masterTables);
+  }, [options, masterTables]);
+
   useEffect(() => {
     setSearch(value || "");
   }, [value]);
@@ -214,17 +319,17 @@ const SearchableDropdown = ({ value, onChange, options, placeholder, required, i
     function handleClickOutside(event) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
         setOpen(false);
-        if(!options.includes(search)) {
-          setSearch(value || ""); // reset if invalid
-          if (!options.includes(value||"")) onChange(""); // force valid
+        if (resolvedOptions && resolvedOptions.length > 0 && search && !resolvedOptions.includes(search)) {
+          setSearch(value || "");
+          if (value && !resolvedOptions.includes(value)) onChange("");
         }
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [search, options, value, onChange]);
+  }, [search, resolvedOptions, value, onChange]);
 
-  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (resolvedOptions || []).filter(o => o && String(o).toLowerCase().includes(String(search || "").toLowerCase()));
 
   return (
     <div ref={wrapperRef} style={{position: "relative", width: "100%"}}>
@@ -3487,10 +3592,12 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                         value={formData[fKey]||""} 
                         isError={isError}
                         onChange={val => {
-                          setFormData({...formData, [fKey]:val});
+                          const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
+                          setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
                           if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
                         }} 
-                        options={(f.options||"").split(",").map(o=>o.trim()).filter(Boolean)} 
+                        options={resolveMasterDataOptions(f.options, C?.masterTables)}
+                        masterTables={C?.masterTables}
                         placeholder="-- Search & Select --" 
                       />
                     ) : f.type === 'gender' ? (
@@ -4097,10 +4204,12 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                             value={formData[fKey]||""} 
                             isError={isError}
                             onChange={val => {
-                              setFormData({...formData, [fKey]:val});
-                              if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                            }} 
-                            options={(f.options||"").split(",").map(o=>o.trim()).filter(Boolean)} 
+                          const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
+                          setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
+                          if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                        }} 
+                            options={resolveMasterDataOptions(f.options, C?.masterTables)}
+                            masterTables={C?.masterTables}
                             placeholder="-- Search & Select --" 
                           />
                         ) : f.type === 'gender' ? (
@@ -14118,23 +14227,6 @@ function Donations({ mob, auth, C }) {
 }
 
 
-// ── Helper to resolve Master Data options for Registration Forms ─────────────
-export const resolveMasterDataOptions = (optionsStr, masterTables = []) => {
-  if (!optionsStr) return [];
-  if (Array.isArray(optionsStr)) return optionsStr;
-  if (typeof optionsStr === 'string' && optionsStr.startsWith('@master:')) {
-    const parts = optionsStr.split(':');
-    const tableId = parts[1];
-    const colName = parts[2];
-    const table = (masterTables || []).find(t => t.id === tableId || t.name === tableId);
-    if (table && Array.isArray(table.rows)) {
-      return table.rows.map(r => r[colName]).filter(v => v !== undefined && v !== null && String(v).trim() !== "");
-    }
-    return [];
-  }
-  return String(optionsStr).split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-};
-
 // ── Master Data Tables Management Component ───────────────────────────────────
 function AdminMasterData({ C, setC, auth, saveToFb }) {
   const [tables, setTables] = useState(C.masterTables || []);
@@ -15405,7 +15497,18 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                                 <div style={{display:"flex", gap: 4, alignItems: "center"}}>
                                   
                                   <div style={{flex:1, display:"flex", gap:4}}>
-                                    <input value={field.options||""} onChange={e => { const newF=[...editingForm.fields]; newF[fieldIdx].options=e.target.value; updateCurrentForm({...editingForm, fields:newF}); }} placeholder="Options (csv) or @master:id:col" style={{flex:1, padding:4, border:"1px solid var(--bd)", borderRadius:4, fontSize:".75rem"}}/>
+                                    <div style={{flex:1, display:"flex", flexDirection:"column", gap:2}}>
+                                      <input value={field.options||""} onChange={e => { const newF=[...editingForm.fields]; newF[fieldIdx].options=e.target.value; updateCurrentForm({...editingForm, fields:newF}); }} placeholder="Options (csv) or @master:id:col" style={{width:"100%", padding:4, border:"1px solid var(--bd)", borderRadius:4, fontSize:".75rem"}}/>
+                                      {String(field.options || "").startsWith("@master:") && (() => {
+                                        const p = (field.options || "").split(":");
+                                        const tbl = (C.masterTables || []).find(t => t.id === p[1]);
+                                        return tbl ? (
+                                          <span style={{fontSize:".68rem", color:"#15803D", fontWeight:700}}>
+                                            🔗 Master: {tbl.name} → Column: {p.slice(2).join(":")} ({tbl.rows?.length || 0} options)
+                                          </span>
+                                        ) : null;
+                                      })()}
+                                    </div>
                                     {C.masterTables?.length > 0 && (
                                       <select style={{maxWidth:"100px", padding:4, border:"1px solid var(--bd)", borderRadius:4, fontSize:".75rem", background:"white"}} onChange={e => {
                                         if(e.target.value) {
@@ -28824,7 +28927,7 @@ function VerificationModal({ viewing, setViewing, allRegs, saveVerification, C, 
                                 setEditedReg(p => ({ ...p, [f.key]: val, ...autoPopulate }));
                             }} style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".88rem",background:"white"}}>
                               <option value="">-- Select --</option>
-                              {(f.options || "").split(",").map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
+                              {resolveMasterDataOptions(f.options, C?.masterTables).map((opt, oi) => opt.trim() && <option key={oi} value={opt.trim()}>{opt.trim()}</option>)}
                             </select>
                           </div>
                         );
@@ -53326,6 +53429,7 @@ export default function App() {
     if (C?.trust) {
       try {
         localStorage.setItem("trustConfig", JSON.stringify(C));
+        if (typeof window !== "undefined") window.__COMMUNITY_CONFIG = C;
       } catch (e) {}
     }
   }, [C]);
