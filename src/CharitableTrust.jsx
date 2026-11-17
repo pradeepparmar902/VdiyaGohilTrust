@@ -36099,6 +36099,86 @@ function AdminMasterImportModal({
     return String(str).toLowerCase().replace(/[\s_.-]+/g, " ").trim();
   };
 
+  // Safely extract a column value from any row object, tolerating casing, whitespace, or trailing spaces
+  const getRowVal = (row, key) => {
+    if (!row || !key) return "";
+    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
+      return String(row[key]).trim();
+    }
+    const targetNorm = String(key).trim().toLowerCase().replace(/[\s_.-]+/g, "");
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'id') continue;
+      if (k.trim() === key.trim() || String(k).trim().toLowerCase().replace(/[\s_.-]+/g, "") === targetNorm) {
+        if (v !== undefined && v !== null && String(v).trim() !== "") {
+          return String(v).trim();
+        }
+      }
+    }
+    return "";
+  };
+
+  // Safely extract registration key column value from record or its nested formData
+  const getRegVal = (r, keyCol) => {
+    if (!r || !keyCol) return "";
+    if (keyCol === 'Vibhag' || keyCol.toLowerCase().includes('vibhag')) {
+      return typeof getRecordVibhag === 'function' ? getRecordVibhag(r) : (r['Vibhag'] || r['Vibhag New'] || r.vibhag || r.formData?.['Vibhag New'] || r.formData?.['Vibhag'] || "");
+    }
+    // Check root record
+    let v = getRowVal(r, keyCol);
+    if (v) return v;
+    // Check nested formData if present
+    if (r.formData && typeof r.formData === 'object') {
+      v = getRowVal(r.formData, keyCol);
+      if (v) return v;
+    }
+    // Stream aliases
+    const norm = String(keyCol).trim().toLowerCase().replace(/[\s_.-]+/g, "");
+    if (norm === 'stream' || norm === 'streamclass') {
+      return String(r['Stream'] || r['Stream / Class'] || r.stream || r.formData?.['Stream'] || r.formData?.['Stream / Class'] || r.formData?.stream || r['Class'] || r['Course'] || "").trim();
+    }
+    return "";
+  };
+
+  // Resolve master table column value with intelligent fallback inference for Stream Group if empty
+  const resolveMasterColValue = (matchRow, colName, regVal) => {
+    let val = getRowVal(matchRow, colName);
+    if (val) return val;
+
+    // Smart fallback: If column is "Stream Group" and empty in master table, infer from the Stream name
+    const normCol = String(colName).trim().toLowerCase().replace(/[\s_.-]+/g, "");
+    if (normCol === 'streamgroup') {
+      const rawStream = getRowVal(matchRow, 'Stream') || String(regVal || '').trim();
+      if (rawStream) {
+        const parts = rawStream.split(/[-–—]/);
+        const prefix = parts[0]?.trim();
+        if (prefix && prefix.length >= 2) {
+          const pLower = prefix.toLowerCase();
+          if (pLower.startsWith('eng')) return 'Engineer';
+          if (pLower.startsWith('com')) return 'Commerce';
+          if (pLower.startsWith('art')) return 'Arts';
+          if (pLower.startsWith('sci')) return 'Science';
+          if (pLower.startsWith('med')) return 'Medical';
+          if (pLower.startsWith('law')) return 'Law';
+          if (pLower.startsWith('iti')) return 'ITI';
+          if (pLower.startsWith('des')) return 'Design';
+          if (pLower.startsWith('hot')) return 'Hotel Management';
+          if (pLower.startsWith('arc')) return 'Architecture';
+          if (pLower.startsWith('agr')) return 'Agriculture';
+          if (pLower.startsWith('pha')) return 'Pharmacy';
+          if (pLower.startsWith('tea')) return 'Teaching';
+          if (pLower.startsWith('fin')) return 'Finance';
+          if (pLower.startsWith('res')) return 'Research';
+          if (pLower.startsWith('tou')) return 'Tourism';
+          if (pLower.startsWith('voc')) return 'Vocational';
+          if (pLower.startsWith('ssc')) return 'School / SSC';
+          if (rawStream === 'M.Sc.' || rawStream === 'MCA') return 'Science';
+          return prefix;
+        }
+      }
+    }
+    return "";
+  };
+
   // Robust Master Data matching
   const findMasterMatch = (regVal, masterRows, keyCol, smart = true) => {
     if (!regVal || !masterRows || !keyCol) return null;
@@ -36106,14 +36186,14 @@ function AdminMasterImportModal({
     if (!rawReg || rawReg === "-" || rawReg.toLowerCase() === "unspecified" || rawReg.toLowerCase() === "blank") return null;
 
     // 1. Exact match
-    const exact = masterRows.find(mr => String(mr[keyCol] || "").trim() === rawReg);
+    const exact = masterRows.find(mr => getRowVal(mr, keyCol) === rawReg);
     if (exact) return exact;
 
     if (!smart) return null;
 
-    // 2. Case-insensitive & normalized match
+    // 2. Case-insensitive & normalized exact match
     const normReg = normalizeString(rawReg);
-    const caseMatch = masterRows.find(mr => normalizeString(mr[keyCol]) === normReg);
+    const caseMatch = masterRows.find(mr => normalizeString(getRowVal(mr, keyCol)) === normReg);
     if (caseMatch) return caseMatch;
 
     // 3. Number-prefix match (e.g. "33 NEHRU NAGAR" vs "33 - NEHRU NAGAR")
@@ -36122,7 +36202,7 @@ function AdminMasterImportModal({
       const regNum = regNumMatch[1];
       const regRest = normalizeString(regNumMatch[2]);
       const numMatch = masterRows.find(mr => {
-        const mVal = String(mr[keyCol] || "").trim();
+        const mVal = getRowVal(mr, keyCol);
         const mNumMatch = mVal.match(/^(\d+)[\s._-]+(.+)$/);
         if (mNumMatch && mNumMatch[1] === regNum) {
           const mRest = normalizeString(mNumMatch[2]);
@@ -36133,14 +36213,17 @@ function AdminMasterImportModal({
       if (numMatch) return numMatch;
     }
 
-    // 4. Substring / slash containment
+    // 4. Substring / word containment match
     if (normReg.length >= 3) {
       const subMatch = masterRows.find(mr => {
-        const mNorm = normalizeString(mr[keyCol]);
-        if (mNorm.length >= 3) {
-          if (normReg.includes(mNorm) || mNorm.includes(normReg)) return true;
+        const mVal = getRowVal(mr, keyCol);
+        const mNorm = normalizeString(mVal);
+        if (mNorm.length >= 4) {
+          if (normReg === mNorm) return true;
           const mWords = mNorm.split(" ").filter(w => w.length >= 4);
           if (mWords.length > 0 && mWords.every(w => normReg.includes(w))) return true;
+          const regWords = normReg.split(" ").filter(w => w.length >= 4);
+          if (regWords.length > 0 && regWords.every(w => mNorm.includes(w))) return true;
         }
         return false;
       });
@@ -36162,22 +36245,24 @@ function AdminMasterImportModal({
     const unmatchedSamples = [];
 
     targetList.forEach((r, idx) => {
-      const regVal = (currentRule.regKeyCol === 'Vibhag' || currentRule.regKeyCol.toLowerCase().includes('vibhag'))
-        ? (typeof getRecordVibhag === 'function' ? getRecordVibhag(r) : r['Vibhag'] || r['Vibhag New'] || r.vibhag)
-        : r[currentRule.regKeyCol];
+      const regVal = getRegVal(r, currentRule.regKeyCol);
 
       const match = findMasterMatch(regVal, currentTable.rows, currentRule.masterKeyCol, currentRule.smartMatching !== false);
       if (match) {
         matched++;
         if (sampleRows.length < 5) {
           sampleRows.push({
-            name: String(r['Full Name'] || r.name || r['Transaction ID'] || `Record ${idx + 1}`).replace(/\|/g, ' '),
+            name: String(r['Full Name'] || r.name || r.formData?.['Full Name'] || r['Transaction ID'] || `Record ${idx + 1}`).replace(/\|/g, ' '),
             regVal: regVal || "-",
-            matchedVal: match[currentRule.masterKeyCol],
-            importedValues: (currentRule.importCols || []).map(col => ({
-              targetCol: (currentRule.targetColNames?.[col] || col).trim(),
-              val: match[col] !== undefined ? String(match[col]) : "-"
-            }))
+            matchedVal: getRowVal(match, currentRule.masterKeyCol) || "-",
+            importedValues: (currentRule.importCols || []).map(col => {
+              const targetCol = (currentRule.targetColNames?.[col] || col).trim();
+              const val = resolveMasterColValue(match, col, regVal);
+              return {
+                targetCol,
+                val: val || "(empty in master)"
+              };
+            })
           });
         }
       } else {
@@ -36227,7 +36312,7 @@ function AdminMasterImportModal({
 
     for (let i = 0; i < targetList.length; i++) {
       const r = targetList[i];
-      const rName = String(r['Full Name'] || r.name || r['Transaction ID'] || `Row ${i + 1}`).replace(/\|/g, ' ');
+      const rName = String(r['Full Name'] || r.name || r.formData?.['Full Name'] || r['Transaction ID'] || `Row ${i + 1}`).replace(/\|/g, ' ');
       setProgress({
         current: i + 1,
         total: targetList.length,
@@ -36244,17 +36329,16 @@ function AdminMasterImportModal({
           const tbl = masterTables.find(t => t.id === rule.tableId);
           if (!tbl || !tbl.rows) continue;
 
-          const regVal = (rule.regKeyCol === 'Vibhag' || rule.regKeyCol.toLowerCase().includes('vibhag'))
-            ? (typeof getRecordVibhag === 'function' ? getRecordVibhag(r) : r['Vibhag'] || r['Vibhag New'] || r.vibhag)
-            : r[rule.regKeyCol];
+          const regVal = getRegVal(r, rule.regKeyCol);
 
           const match = findMasterMatch(regVal, tbl.rows, rule.masterKeyCol, rule.smartMatching !== false);
           if (match) {
             for (const col of rule.importCols) {
               const targetCol = (rule.targetColNames?.[col] || col).trim();
-              const masterVal = match[col] !== undefined && match[col] !== null ? String(match[col]).trim() : "";
+              const masterVal = resolveMasterColValue(match, col, regVal);
               if (masterVal !== "") {
-                if (overwriteExisting || !r[targetCol] || String(r[targetCol]).trim() === "") {
+                const existingVal = r[targetCol] || r.formData?.[targetCol];
+                if (overwriteExisting || !existingVal || String(existingVal).trim() === "") {
                   changes[targetCol] = masterVal;
                   hasNewData = true;
                 }
@@ -36267,6 +36351,9 @@ function AdminMasterImportModal({
           const cleanData = { ...r, ...changes };
           delete cleanData.id;
           delete cleanData._submittedAt;
+          if (cleanData.formData && typeof cleanData.formData === 'object') {
+            cleanData.formData = { ...cleanData.formData, ...changes };
+          }
 
           let updated = false;
           let retries = 3;
@@ -37443,17 +37530,22 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   // Inspect all registrations so mapped or newly imported columns are always visible even when filtering
   (regs || []).forEach(r => {
     if(!r) return;
-    Object.keys(r).forEach(k => {
-      if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
-        const cleanK = k.trim();
-        const normK = cleanK.toLowerCase().replace(/[\s_-]+/g, '');
-        if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
-          allKeysSet.add('Vibhag');
-        } else {
-          allKeysSet.add(cleanK);
+    const inspectObj = (obj) => {
+      if (!obj || typeof obj !== 'object') return;
+      Object.keys(obj).forEach(k => {
+        if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
+          const cleanK = k.trim();
+          const normK = cleanK.toLowerCase().replace(/[\s_-]+/g, '');
+          if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
+            allKeysSet.add('Vibhag');
+          } else {
+            allKeysSet.add(cleanK);
+          }
         }
-      }
-    });
+      });
+    };
+    inspectObj(r);
+    if (r.formData) inspectObj(r.formData);
   });
 
   // Also include any target columns configured in masterDataMappings
@@ -38525,7 +38617,9 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                     {allKeys.map(k => {
                       let val = (k === 'Vibhag' || k === 'Vibhag New' || k.toLowerCase().includes('vibhag')) 
                         ? getRecordVibhag(r) 
-                        : (r[k] !== undefined && r[k] !== null && r[k] !== '' ? r[k] : "-");
+                        : (r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== '' 
+                            ? r[k] 
+                            : (r.formData && r.formData[k] !== undefined && r.formData[k] !== null && String(r.formData[k]).trim() !== '' ? r.formData[k] : "-"));
                       if (typeof val === 'string' && val.startsWith('http')) {
                         const isDoc = val.match(/\.(pdf|doc|docx)/i);
                         if (isDoc) {
