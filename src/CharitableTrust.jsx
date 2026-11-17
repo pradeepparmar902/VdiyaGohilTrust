@@ -15686,6 +15686,10 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const [fieldLib, setFieldLib] = useState(C.fieldLibrary || defaultFields);
   const [isAddingLib, setIsAddingLib] = useState(false);
   const [isManagingLib, setIsManagingLib] = useState(false);
+  const [editingLibField, setEditingLibField] = useState(null);
+  const [selectedLibId, setSelectedLibId] = useState("");
+  const [libSearch, setLibSearch] = useState("");
+  const [libFilterType, setLibFilterType] = useState("all");
   const [newLibLabel, setNewLibLabel] = useState("");
   const [newLibType, setNewLibType] = useState("text");
   const [newLibOptions, setNewLibOptions] = useState("");
@@ -15693,6 +15697,100 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const dragOverItem = useRef();
   const [showLogic, setShowLogic] = useState({});
   const [editingFieldId, setEditingFieldId] = useState(null);
+
+  const handleAddFieldToForm = (target) => {
+    if (!target || !editingForm) return;
+    const updated = {
+      ...editingForm,
+      fields: [
+        ...(editingForm.fields || []),
+        {
+          libId: target.id,
+          label: target.label,
+          type: target.type,
+          options: target.options || "",
+          required: false
+        }
+      ]
+    };
+    updateCurrentForm(updated);
+  };
+
+  const handleSaveEditLibField = () => {
+    if (!editingLibField || !editingLibField.label.trim()) {
+      alert("Field label is required");
+      return;
+    }
+    if (editingLibField.type === 'dropdown' && !String(editingLibField.options || "").trim()) {
+      alert("Please provide dropdown options separated by commas or link a Master Data column.");
+      return;
+    }
+
+    const updatedLib = fieldLib.map(fl => {
+      if (fl.id === editingLibField.id) {
+        return {
+          ...fl,
+          label: editingLibField.label.trim(),
+          type: editingLibField.type,
+          options: editingLibField.type === 'dropdown' ? (editingLibField.options || "").trim() : ""
+        };
+      }
+      return fl;
+    });
+
+    saveLib(updatedLib);
+    setEditingLibField(null);
+  };
+
+  const handleDeleteLibField = (fieldId) => {
+    const target = fieldLib.find(fl => fl.id === fieldId);
+    if (!target) return;
+    if (!window.confirm(`Are you sure you want to permanently delete "${target.label}" (${target.type}) from the Standard Field Library?`)) {
+      return;
+    }
+    const updatedLib = fieldLib.filter(fl => fl.id !== fieldId);
+    saveLib(updatedLib);
+    if (selectedLibId === fieldId) {
+      setSelectedLibId("");
+    }
+    if (editingLibField?.id === fieldId) {
+      setEditingLibField(null);
+    }
+  };
+
+  const handleCleanDuplicateLibFields = () => {
+    const seen = new Map();
+    const cleaned = [];
+    let dupsCount = 0;
+
+    fieldLib.forEach(fl => {
+      const key = `${(fl.label || "").trim().toLowerCase()}:::${(fl.type || "").trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        dupsCount++;
+        const existing = seen.get(key);
+        if ((!existing.options || existing.options.length === 0) && fl.options && fl.options.length > 0) {
+          const idx = cleaned.findIndex(x => x.id === existing.id);
+          if (idx !== -1) {
+            cleaned[idx] = fl;
+            seen.set(key, fl);
+          }
+        }
+      } else {
+        seen.set(key, fl);
+        cleaned.push(fl);
+      }
+    });
+
+    if (dupsCount === 0) {
+      alert("No duplicate fields found in the library. All fields are unique!");
+      return;
+    }
+
+    if (window.confirm(`Found ${dupsCount} duplicate field(s) (e.g. repeated labels). Remove duplicates and keep only unique standard fields?`)) {
+      saveLib(cleaned);
+      alert(`Cleaned up ${dupsCount} duplicate field(s) successfully!`);
+    }
+  };
 
   useEffect(() => {
     setForms(normalizeForms(C.forms));
@@ -15757,9 +15855,32 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
 
   return (
     <div style={{marginBottom: 30}}>
-       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",color:"var(--dt)",fontWeight:700}}>Registration Form Templates</h3>
-          <button onClick={createForm} className="bs" style={{padding:"6px 12px",borderRadius:6,fontSize:".8rem",fontWeight:600}}>+ New Form</button>
+       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",color:"var(--dt)",fontWeight:700,margin:0}}>Registration Form Templates</h3>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button 
+              type="button" 
+              onClick={() => setIsManagingLib(true)} 
+              style={{
+                padding:"6px 12px",
+                borderRadius:6,
+                fontSize:".8rem",
+                fontWeight:700,
+                background:"#EFF6FF",
+                color:"#1D4ED8",
+                border:"1px solid #BFDBFE",
+                cursor:"pointer",
+                display:"flex",
+                alignItems:"center",
+                gap:5,
+                boxShadow:"0 1px 3px rgba(37,99,235,0.1)"
+              }}
+              title="Manage, edit, or delete standard field list in library"
+            >
+              📚 Manage Field Library ({fieldLib.length})
+            </button>
+            <button onClick={createForm} className="bs" style={{padding:"6px 12px",borderRadius:6,fontSize:".8rem",fontWeight:600}}>+ New Form</button>
+          </div>
        </div>
 
        {forms.length === 0 && <div style={{color:"var(--mu)",fontSize:".85rem",fontStyle:"italic"}}>No form templates created yet.</div>}
@@ -16026,28 +16147,184 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                  </div>
 
                  {/* ADD FIELD LIBRARY */}
-                 <div style={{background:"#F9F9F9",padding:12,borderRadius:8,border:"1px solid var(--bd)",marginBottom:12}}>
-                    <p style={{fontSize:".8rem",fontWeight:700,marginBottom:8,color:"var(--dt)"}}>Add a Standard Field</p>
-                    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
-                      <select id="sel_form_lib" style={{flex:1,padding:"8px",border:"1px solid var(--bd)",borderRadius:6,fontSize:".85rem"}}>
-                        <option value="">-- Choose from Library --</option>
-                        {fieldLib.map(fl => <option key={fl.id} value={fl.id}>{fl.label} ({fl.type})</option>)}
-                      </select>
-                      <button onClick={() => {
-                        const sel = document.getElementById("sel_form_lib");
-                        if(!sel || !sel.value) return;
-                        const target = fieldLib.find(fl => fl.id === sel.value);
-                        if(target) {
-                          const updated = {...editingForm, fields: [...(editingForm.fields || []), {libId: target.id, label:target.label, type:target.type, options:target.options, required:false}]};
-                          updateCurrentForm(updated);
-                        }
-                        sel.value = "";
-                      }} className="bt" style={{padding:"8px 16px",borderRadius:6,fontSize:".8rem",fontWeight:700}}>Add</button>
+                 <div style={{background:"#F8FAFC",padding:14,borderRadius:10,border:"1.5px solid #E2E8F0",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,0.03)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                      <p style={{fontSize:".84rem",fontWeight:700,margin:0,color:"var(--dt)",display:"flex",alignItems:"center",gap:5}}>
+                        <span>📚</span> Add a Standard Field from Library
+                      </p>
+                      <button 
+                        type="button" 
+                        onClick={() => setIsManagingLib(true)} 
+                        style={{
+                          fontSize:".74rem",
+                          fontWeight:700,
+                          color:"#1D4ED8",
+                          background:"#EFF6FF",
+                          border:"1px solid #BFDBFE",
+                          padding:"3px 8px",
+                          borderRadius:5,
+                          cursor:"pointer",
+                          display:"flex",
+                          alignItems:"center",
+                          gap:4
+                        }}
+                        title="Open library manager to edit or delete fields"
+                      >
+                        ⚙️ Manage / Edit / Delete Library ({fieldLib.length})
+                      </button>
                     </div>
 
+                    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+                      <select 
+                        value={selectedLibId} 
+                        onChange={e => setSelectedLibId(e.target.value)}
+                        style={{flex:1,minWidth:220,padding:"8px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:".85rem",background:"white"}}
+                      >
+                        <option value="">-- Choose from Library ({fieldLib.length} fields) --</option>
+                        {fieldLib.map((fl, flIdx) => {
+                          const isMaster = fl.options && String(fl.options).startsWith("@master:");
+                          return (
+                            <option key={fl.id || flIdx} value={fl.id}>
+                              {fl.label} ({fl.type}){isMaster ? ' 🔗 Master' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if(!selectedLibId) return;
+                          const target = fieldLib.find(fl => fl.id === selectedLibId);
+                          if(target) {
+                            handleAddFieldToForm(target);
+                            setSelectedLibId("");
+                          }
+                        }} 
+                        disabled={!selectedLibId}
+                        className="bt" 
+                        style={{
+                          padding:"8px 16px",
+                          borderRadius:6,
+                          fontSize:".8rem",
+                          fontWeight:700,
+                          opacity: !selectedLibId ? 0.45 : 1,
+                          cursor: !selectedLibId ? "not-allowed" : "pointer"
+                        }}
+                      >
+                        + Add to Form
+                      </button>
+
+                      {/* Quick Edit & Delete for currently selected library field */}
+                      {selectedLibId && (() => {
+                        const target = fieldLib.find(fl => fl.id === selectedLibId);
+                        if (!target) return null;
+                        return (
+                          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                            <button
+                              type="button"
+                              onClick={() => setEditingLibField({...target})}
+                              style={{padding:"7px 10px",borderRadius:6,fontSize:".78rem",fontWeight:700,background:"#FEF3C7",color:"#92400E",border:"1px solid #FCD34D",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
+                              title={`Edit "${target.label}" standard field definition in library`}
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLibField(target.id)}
+                              style={{padding:"7px 10px",borderRadius:6,fontSize:".78rem",fontWeight:700,background:"#FEE2E2",color:"#991B1B",border:"1px solid #FCA5A5",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
+                              title={`Delete "${target.label}" from standard field library`}
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Inline Standard Field Editor */}
+                    {editingLibField && (
+                      <div style={{margin:"10px 0",background:"#FFFBEB",padding:12,borderRadius:8,border:"1.5px solid #FDE68A"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <span style={{fontSize:".82rem",fontWeight:700,color:"#92400E"}}>
+                            ✏️ Editing Standard Field: <u>{editingLibField.label}</u>
+                          </span>
+                          <button onClick={() => setEditingLibField(null)} style={{background:"none",border:"none",color:"#92400E",cursor:"pointer",fontSize:"1.1rem",lineHeight:1}}>✕</button>
+                        </div>
+                        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                          <input 
+                            value={editingLibField.label} 
+                            onChange={e => setEditingLibField({...editingLibField, label: e.target.value})} 
+                            placeholder="Field Label" 
+                            style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                          />
+                          <select 
+                            value={editingLibField.type} 
+                            onChange={e => setEditingLibField({...editingLibField, type: e.target.value})} 
+                            style={{padding:"6px 8px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="email">Email</option>
+                            <option value="tel">Phone</option>
+                            <option value="date">Date</option>
+                            <option value="fullname">Full Name</option>
+                            <option value="address">Address</option>
+                            <option value="gender">Gender</option>
+                            <option value="image">Photo Upload (Image)</option>
+                            <option value="file">Document Upload (PDF/Word)</option>
+                            <option value="dropdown">Dropdown Options</option>
+                            <option value="percentage">Percentage (%) with Decimal</option>
+                          </select>
+
+                          {editingLibField.type === 'dropdown' && (
+                            <div style={{flex:1, minWidth:200, display:"flex", gap:4}}>
+                              <input 
+                                value={editingLibField.options || ""} 
+                                onChange={e => setEditingLibField({...editingLibField, options: e.target.value})} 
+                                placeholder="Options (csv) or @master:id:col" 
+                                style={{flex:1,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                              />
+                              {C.masterTables?.length > 0 && (
+                                <select 
+                                  style={{maxWidth:130, padding:4, border:"1px solid #CBD5E1", borderRadius:4, fontSize:".75rem", background:"white"}} 
+                                  onChange={e => {
+                                    if(e.target.value) setEditingLibField({...editingLibField, options: e.target.value});
+                                  }}
+                                >
+                                  <option value="">Link Master</option>
+                                  {C.masterTables.map(mt => mt.columns.map(col => (
+                                    <option key={`${mt.id}:${col}`} value={`@master:${mt.id}:${col}`}>{mt.name} - {col}</option>
+                                  )))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+
+                          <button 
+                            type="button" 
+                            onClick={handleSaveEditLibField} 
+                            style={{padding:"6px 14px",background:"#1A7A3E",color:"white",border:"none",borderRadius:4,fontSize:".78rem",cursor:"pointer",fontWeight:700}}
+                          >
+                            Save Changes
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => setEditingLibField(null)} 
+                            style={{padding:"6px 10px",background:"#E2E8F0",color:"#334155",border:"none",borderRadius:4,fontSize:".78rem",cursor:"pointer",fontWeight:600}}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {!isAddingLib ? (
-                      <div style={{display:"flex",gap:10,marginTop:4}}>
+                      <div style={{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}}>
                         <button onClick={() => setIsAddingLib(true)} style={{fontSize:".8rem",background:"var(--dt)",color:"white",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontWeight:600}}>+ Create New Standard Field</button>
+                        <button onClick={() => setIsManagingLib(true)} style={{fontSize:".8rem",background:"white",color:"var(--dt)",border:"1px solid var(--bd)",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontWeight:600}}>
+                          ⚙️ Manage Full Field List ({fieldLib.length})
+                        </button>
                       </div>
                     ) : (
                       <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,background:"white",padding:10,borderRadius:6,border:"1px dashed var(--tl)"}}>
@@ -16183,6 +16460,346 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
            }}
          />
        )}
+
+        {/* 📚 STANDARD FIELD LIBRARY MANAGER MODAL 📚 */}
+        {isManagingLib && (
+          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.65)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(3px)"}}>
+            <div style={{background:"white",borderRadius:16,width:"100%",maxWidth:750,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 25px 50px -12px rgba(0,0,0,0.25)",border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              
+              {/* Modal Header */}
+              <div style={{padding:"16px 20px",borderBottom:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F8FAFC"}}>
+                <div>
+                  <h3 style={{margin:0,fontSize:"1.15rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:8}}>
+                    <span>📚</span> Standard Field Library Manager
+                  </h3>
+                  <p style={{margin:"4px 0 0 0",fontSize:".78rem",color:"#64748B"}}>
+                    Edit, delete, clean duplicate fields, or add reusable fields across all registration form templates.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setIsManagingLib(false); setEditingLibField(null); }}
+                  style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:"#64748B",padding:"4px 8px"}}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Action & Filter Strip */}
+              <div style={{padding:"10px 20px",background:"#F1F5F9",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flex:1,minWidth:250}}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Search library field (e.g. Vibhag, Stream)..."
+                    value={libSearch}
+                    onChange={e => setLibSearch(e.target.value)}
+                    style={{flex:1,padding:"6px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",outline:"none",background:"white"}}
+                  />
+                  <select
+                    value={libFilterType}
+                    onChange={e => setLibFilterType(e.target.value)}
+                    style={{padding:"6px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",background:"white"}}
+                  >
+                    <option value="all">All Types</option>
+                    <option value="dropdown">Dropdown Only</option>
+                    <option value="text">Text Only</option>
+                    <option value="number">Number Only</option>
+                    <option value="file">Files & Docs</option>
+                    <option value="image">Photos & Images</option>
+                  </select>
+                </div>
+
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <button
+                    type="button"
+                    onClick={handleCleanDuplicateLibFields}
+                    style={{
+                      padding:"5px 10px",
+                      borderRadius:6,
+                      fontSize:".76rem",
+                      fontWeight:700,
+                      background:"#FEF3C7",
+                      color:"#92400E",
+                      border:"1px solid #FCD34D",
+                      cursor:"pointer",
+                      display:"flex",
+                      alignItems:"center",
+                      gap:4
+                    }}
+                    title="Find and automatically remove redundant duplicate fields in the library"
+                  >
+                    🧹 Clean Duplicates
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingLib(true);
+                      setEditingLibField(null);
+                    }}
+                    style={{
+                      padding:"5px 12px",
+                      borderRadius:6,
+                      fontSize:".76rem",
+                      fontWeight:700,
+                      background:"#1A7A3E",
+                      color:"white",
+                      border:"none",
+                      cursor:"pointer"
+                    }}
+                  >
+                    + New Field
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline Editing Card inside Manager Modal */}
+              {editingLibField && (
+                <div style={{padding:"12px 20px",background:"#FFFBEB",borderBottom:"1px solid #FDE68A"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontSize:".84rem",fontWeight:700,color:"#92400E"}}>
+                      ✏️ Editing Field: <u>{editingLibField.label}</u>
+                    </span>
+                    <button type="button" onClick={() => setEditingLibField(null)} style={{background:"none",border:"none",color:"#92400E",cursor:"pointer",fontSize:"1.1rem",lineHeight:1}}>✕</button>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <input 
+                      value={editingLibField.label} 
+                      onChange={e => setEditingLibField({...editingLibField, label: e.target.value})} 
+                      placeholder="Field Label" 
+                      style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                    />
+                    <select 
+                      value={editingLibField.type} 
+                      onChange={e => setEditingLibField({...editingLibField, type: e.target.value})} 
+                      style={{padding:"6px 8px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                    >
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="email">Email</option>
+                      <option value="tel">Phone</option>
+                      <option value="date">Date</option>
+                      <option value="fullname">Full Name</option>
+                      <option value="address">Address</option>
+                      <option value="gender">Gender</option>
+                      <option value="image">Photo Upload (Image)</option>
+                      <option value="file">Document Upload (PDF/Word)</option>
+                      <option value="dropdown">Dropdown Options</option>
+                      <option value="percentage">Percentage (%) with Decimal</option>
+                    </select>
+
+                    {editingLibField.type === 'dropdown' && (
+                      <div style={{flex:1, minWidth:200, display:"flex", gap:4}}>
+                        <input 
+                          value={editingLibField.options || ""} 
+                          onChange={e => setEditingLibField({...editingLibField, options: e.target.value})} 
+                          placeholder="Options (csv) or @master:id:col" 
+                          style={{flex:1,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                        />
+                        {C.masterTables?.length > 0 && (
+                          <select 
+                            style={{maxWidth:130, padding:4, border:"1px solid #CBD5E1", borderRadius:4, fontSize:".75rem", background:"white"}} 
+                            onChange={e => {
+                              if(e.target.value) setEditingLibField({...editingLibField, options: e.target.value});
+                            }}
+                          >
+                            <option value="">Link Master</option>
+                            {C.masterTables.map(mt => mt.columns.map(col => (
+                              <option key={`${mt.id}:${col}`} value={`@master:${mt.id}:${col}`}>{mt.name} - {col}</option>
+                            )))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+
+                    <button 
+                      type="button" 
+                      onClick={handleSaveEditLibField} 
+                      style={{padding:"6px 14px",background:"#1A7A3E",color:"white",border:"none",borderRadius:4,fontSize:".78rem",cursor:"pointer",fontWeight:700}}
+                    >
+                      Save Changes
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setEditingLibField(null)} 
+                      style={{padding:"6px 10px",background:"#E2E8F0",color:"#334155",border:"none",borderRadius:4,fontSize:".78rem",cursor:"pointer",fontWeight:600}}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Field List */}
+              <div style={{padding:"14px 20px",overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:8}}>
+                {(() => {
+                  const filtered = fieldLib.filter(fl => {
+                    if (libSearch.trim()) {
+                      const q = libSearch.toLowerCase().trim();
+                      const matchLabel = (fl.label || "").toLowerCase().includes(q);
+                      const matchType = (fl.type || "").toLowerCase().includes(q);
+                      const matchOpts = (fl.options || "").toLowerCase().includes(q);
+                      if (!matchLabel && !matchType && !matchOpts) return false;
+                    }
+                    if (libFilterType !== 'all') {
+                      if (libFilterType === 'dropdown' && fl.type !== 'dropdown') return false;
+                      if (libFilterType === 'text' && fl.type !== 'text') return false;
+                      if (libFilterType === 'number' && fl.type !== 'number' && fl.type !== 'percentage') return false;
+                      if (libFilterType === 'file' && fl.type !== 'file') return false;
+                      if (libFilterType === 'image' && fl.type !== 'image') return false;
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div style={{textAlign:"center",padding:40,color:"#64748B",fontSize:".88rem"}}>
+                        No standard fields found matching your search.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((fl, idx) => {
+                    const isMaster = fl.options && String(fl.options).startsWith("@master:");
+                    let masterInfo = null;
+                    if (isMaster) {
+                      const parts = fl.options.split(":");
+                      const tbl = (C.masterTables || []).find(t => t.id === parts[1]);
+                      masterInfo = tbl ? `${tbl.name} → ${parts.slice(2).join(":")} (${tbl.rows?.length || 0} rows)` : fl.options;
+                    }
+
+                    return (
+                      <div
+                        key={fl.id || idx}
+                        style={{
+                          display:"flex",
+                          alignItems:"center",
+                          justifyContent:"space-between",
+                          padding:"9px 14px",
+                          borderRadius:8,
+                          border:"1px solid #E2E8F0",
+                          background:"#FFFFFF",
+                          gap:12,
+                          boxShadow:"0 1px 3px rgba(0,0,0,0.03)"
+                        }}
+                      >
+                        {/* Info */}
+                        <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+                          <span style={{fontSize:".74rem",fontWeight:700,color:"#94A3B8",minWidth:24}}>
+                            #{idx + 1}
+                          </span>
+                          <div>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{fontWeight:700,fontSize:".88rem",color:"#0F172A"}}>
+                                {fl.label}
+                              </span>
+                              <span style={{
+                                fontSize:".7rem",
+                                padding:"2px 7px",
+                                borderRadius:4,
+                                fontWeight:700,
+                                background: fl.type === 'dropdown' ? "#EFF6FF" : fl.type === 'file' || fl.type === 'image' ? "#F0FDF4" : "#F1F5F9",
+                                color: fl.type === 'dropdown' ? "#1D4ED8" : fl.type === 'file' || fl.type === 'image' ? "#166534" : "#475569",
+                                border: `1px solid ${fl.type === 'dropdown' ? '#BFDBFE' : fl.type === 'file' || fl.type === 'image' ? '#BBF7D0' : '#CBD5E1'}`
+                              }}>
+                                {fl.type}
+                              </span>
+                              {isMaster && (
+                                <span style={{fontSize:".68rem",background:"#ECFDF5",color:"#059669",border:"1px solid #A7F3D0",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                  🔗 Master Linked
+                                </span>
+                              )}
+                            </div>
+                            {fl.type === 'dropdown' && (
+                              <div style={{fontSize:".73rem",color:"#64748B",marginTop:2,maxWidth:420,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                {isMaster ? (
+                                  <span style={{color:"#059669",fontWeight:600}}>Linked: {masterInfo}</span>
+                                ) : (
+                                  <span>Options: {fl.options || "None defined"}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          {editingForm && (
+                            <button
+                              type="button"
+                              onClick={() => handleAddFieldToForm(fl)}
+                              style={{
+                                padding:"5px 10px",
+                                borderRadius:5,
+                                fontSize:".75rem",
+                                fontWeight:700,
+                                background:"#F0FDF4",
+                                color:"#166534",
+                                border:"1px solid #BBF7D0",
+                                cursor:"pointer"
+                              }}
+                              title="Add this standard field into the currently editing form"
+                            >
+                              + Add to Form
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setEditingLibField({...fl})}
+                            style={{
+                              padding:"5px 9px",
+                              borderRadius:5,
+                              fontSize:".75rem",
+                              fontWeight:600,
+                              background:"#FEF3C7",
+                              color:"#92400E",
+                              border:"1px solid #FCD34D",
+                              cursor:"pointer"
+                            }}
+                            title="Edit standard field definition"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteLibField(fl.id)}
+                            style={{
+                              padding:"5px 9px",
+                              borderRadius:5,
+                              fontSize:".75rem",
+                              fontWeight:600,
+                              background:"#FEE2E2",
+                              color:"#991B1B",
+                              border:"1px solid #FCA5A5",
+                              cursor:"pointer"
+                            }}
+                            title="Permanently delete from library"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{padding:"12px 20px",borderTop:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F8FAFC"}}>
+                <span style={{fontSize:".78rem",color:"#64748B"}}>
+                  Total: <strong>{fieldLib.length}</strong> standard fields in library
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setIsManagingLib(false); setEditingLibField(null); }}
+                  style={{padding:"7px 18px",borderRadius:8,border:"1px solid #CBD5E1",background:"white",color:"#475569",fontSize:".82rem",fontWeight:700,cursor:"pointer"}}
+                >
+                  Done & Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
     </div>
   );
 }
