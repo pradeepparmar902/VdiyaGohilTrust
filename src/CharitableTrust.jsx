@@ -3570,36 +3570,51 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                       {isError && <span style={{color:"#DC2626", fontSize:".75rem", fontWeight:700, background:"#FEE2E2", padding:"2px 8px", borderRadius:12, border:"1px solid #FCA5A5"}}>⚠️ Required Field Missed</span>}
                     </label>
                     {f.type === 'address' ? (
-                      <textarea 
-                        required={f.required} 
-                        value={formData[fKey]||""} 
-                        onChange={e=>{
-                          setFormData({...formData, [fKey]:e.target.value});
-                          if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                        }} 
-                        className="modern-input" 
-                        style={{
-                          minHeight:100,
-                          resize:"vertical",
-                          border: isError ? "2px solid #EF4444" : undefined,
-                          background: isError ? "#FFF5F5" : undefined,
-                          boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
-                        }}
-                      />
+                      <>
+                        <textarea 
+                          required={f.required} 
+                          value={formData[fKey]||""} 
+                          onChange={e=>{
+                            setFormData({...formData, [fKey]:e.target.value});
+                            if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                          }} 
+                          className="modern-input" 
+                          placeholder={f.placeholder || "Enter complete address (Street, Area, Landmark, City, Pincode)..."}
+                          style={{
+                            minHeight:100,
+                            resize:"vertical",
+                            border: isError ? "2px solid #EF4444" : undefined,
+                            background: isError ? "#FFF5F5" : undefined,
+                            boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
+                          }}
+                        />
+                        {f.placeholder && (
+                          <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                          </div>
+                        )}
+                      </>
                     ) : f.type === 'dropdown' ? (
-                      <SearchableDropdown 
-                        required={f.required} 
-                        value={formData[fKey]||""} 
-                        isError={isError}
-                        onChange={val => {
-                          const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
-                          setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
-                          if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                        }} 
-                        options={resolveMasterDataOptions(f.options, C?.masterTables)}
-                        masterTables={C?.masterTables}
-                        placeholder="-- Search & Select --" 
-                      />
+                      <>
+                        <SearchableDropdown 
+                          required={f.required} 
+                          value={formData[fKey]||""} 
+                          isError={isError}
+                          onChange={val => {
+                            const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
+                            setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
+                            if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                          }} 
+                          options={resolveMasterDataOptions(f.options, C?.masterTables)}
+                          masterTables={C?.masterTables}
+                          placeholder={f.placeholder || "-- Search & Select --"} 
+                        />
+                        {f.placeholder && (
+                          <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                          </div>
+                        )}
+                      </>
                     ) : f.type === 'gender' ? (
                       <select 
                         required={f.required} 
@@ -3615,13 +3630,19 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                           boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
                         }}
                       >
-                        <option value="">-- Select Gender --</option>
+                        <option value="">{f.placeholder || "-- Select Gender --"}</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
                         <option value="Other">Other</option>
                       </select>
                     ) : f.type === 'fullname' ? (
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                      <>
+                        {f.placeholder && (
+                          <div style={{fontSize:".74rem",color:"#64748B",marginBottom:4,display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                          </div>
+                        )}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                         <input 
                           placeholder="First" 
                           required={f.required} 
@@ -3659,7 +3680,8 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                           }}
                         />
                       </div>
-                    ) : f.type === 'image' || f.type === 'file' ? (
+                    </>
+                  ) : f.type === 'image' || f.type === 'file' ? (
                       <div 
                         style={{
                           padding:"16px",
@@ -3734,7 +3756,7 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                           step="0.01" 
                           min="0" 
                           max="100" 
-                          placeholder="e.g. 85.50" 
+                          placeholder={f.placeholder || "e.g. 85.50"} 
                           required={f.required} 
                           value={formData[fKey]||""} 
                           onChange={e=>{
@@ -3798,6 +3820,7 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                                   if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
                                 }} 
                                 className="modern-input" 
+                                placeholder={f.placeholder || "10-digit mobile number"}
                                 style={{
                                   flex:1,
                                   border: isError ? "2px solid #EF4444" : undefined,
@@ -3811,22 +3834,30 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                         })()}
                       </div>
                     ) : (
-                      <input 
-                        type={f.type} 
-                        required={f.required} 
-                        value={formData[fKey]||""} 
-                        onChange={e=>{
-                          setFormData({...formData, [fKey]:e.target.value});
-                          if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                        }} 
-                        className="modern-input" 
-                        style={{
-                          border: isError ? "2px solid #EF4444" : undefined,
-                          background: isError ? "#FFF5F5" : undefined,
-                          boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
-                        }}
-                        autoComplete={f.type === 'email' ? 'email' : 'off'} 
-                      />
+                      <>
+                        <input 
+                          type={f.type} 
+                          required={f.required} 
+                          value={formData[fKey]||""} 
+                          onChange={e=>{
+                            setFormData({...formData, [fKey]:e.target.value});
+                            if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                          }} 
+                          className="modern-input" 
+                          placeholder={f.placeholder || (f.label ? ("Enter " + f.label) : "")}
+                          style={{
+                            border: isError ? "2px solid #EF4444" : undefined,
+                            background: isError ? "#FFF5F5" : undefined,
+                            boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
+                          }}
+                          autoComplete={f.type === 'email' ? 'email' : 'off'} 
+                        />
+                        {f.placeholder && (
+                          <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )})}
@@ -4182,36 +4213,51 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                           {isError && <span style={{color:"#DC2626", fontSize:".75rem", fontWeight:700, background:"#FEE2E2", padding:"2px 8px", borderRadius:12, border:"1px solid #FCA5A5"}}>⚠️ Required Field Missed</span>}
                         </label>
                         {f.type === 'address' ? (
-                          <textarea 
-                            required={f.required} 
-                            value={formData[fKey]||""} 
-                            onChange={e=>{
-                              setFormData({...formData, [fKey]:e.target.value});
-                              if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                            }} 
-                            className="modern-input" 
-                            style={{
-                              minHeight:100,
-                              resize:"vertical",
-                              border: isError ? "2px solid #EF4444" : undefined,
-                              background: isError ? "#FFF5F5" : undefined,
-                              boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
-                            }}
-                          />
+                          <>
+                            <textarea 
+                              required={f.required} 
+                              value={formData[fKey]||""} 
+                              onChange={e=>{
+                                setFormData({...formData, [fKey]:e.target.value});
+                                if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                              }} 
+                              className="modern-input" 
+                              placeholder={f.placeholder || "Enter complete address (Street, Area, Landmark, City, Pincode)..."}
+                              style={{
+                                minHeight:100,
+                                resize:"vertical",
+                                border: isError ? "2px solid #EF4444" : undefined,
+                                background: isError ? "#FFF5F5" : undefined,
+                                boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
+                              }}
+                            />
+                            {f.placeholder && (
+                              <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                                <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                              </div>
+                            )}
+                          </>
                         ) : f.type === 'dropdown' ? (
-                          <SearchableDropdown 
-                            required={f.required} 
-                            value={formData[fKey]||""} 
-                            isError={isError}
-                            onChange={val => {
-                          const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
-                          setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
-                          if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                        }} 
-                            options={resolveMasterDataOptions(f.options, C?.masterTables)}
-                            masterTables={C?.masterTables}
-                            placeholder="-- Search & Select --" 
-                          />
+                          <>
+                            <SearchableDropdown 
+                              required={f.required} 
+                              value={formData[fKey]||""} 
+                              isError={isError}
+                              onChange={val => {
+                            const autoPopulate = getMasterDataAutoPopulate(f.options, val, C) || {};
+                            setFormData(prev => ({...prev, [fKey]: val, ...autoPopulate}));
+                            if (isError && val) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                          }} 
+                              options={resolveMasterDataOptions(f.options, C?.masterTables)}
+                              masterTables={C?.masterTables}
+                              placeholder={f.placeholder || "-- Search & Select --"} 
+                            />
+                            {f.placeholder && (
+                              <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                                <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                              </div>
+                            )}
+                          </>
                         ) : f.type === 'gender' ? (
                           <select 
                             required={f.required} 
@@ -4424,22 +4470,30 @@ function Events({ C, lang, globalAuthToken, globalProfile, onPublicLogin, forceS
                             })()}
                           </div>
                         ) : (
-                          <input 
-                            type={f.type} 
-                            required={f.required} 
-                            value={formData[fKey]||""} 
-                            onChange={e=>{
-                              setFormData({...formData, [fKey]:e.target.value});
-                              if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
-                            }} 
-                            className="modern-input" 
-                            style={{
-                              border: isError ? "2px solid #EF4444" : undefined,
-                              background: isError ? "#FFF5F5" : undefined,
-                              boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
-                            }}
-                            autoComplete={f.type === 'email' ? 'email' : 'off'} 
-                          />
+                          <>
+                            <input 
+                              type={f.type} 
+                              required={f.required} 
+                              value={formData[fKey]||""} 
+                              onChange={e=>{
+                                setFormData({...formData, [fKey]:e.target.value});
+                                if (isError) setValidationErrors(prev => prev.filter(k => k !== fKey));
+                              }} 
+                              className="modern-input" 
+                              placeholder={f.placeholder || (f.label ? ("Enter " + f.label) : "")}
+                              style={{
+                                border: isError ? "2px solid #EF4444" : undefined,
+                                background: isError ? "#FFF5F5" : undefined,
+                                boxShadow: isError ? "0 0 0 3px rgba(239, 68, 68, 0.2)" : undefined
+                              }}
+                              autoComplete={f.type === 'email' ? 'email' : 'off'} 
+                            />
+                            {f.placeholder && (
+                              <div style={{fontSize:".74rem",color:"#64748B",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                                <span style={{color:"#3B82F6"}}>💡</span> {f.placeholder}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )})}
@@ -15693,6 +15747,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const [newLibLabel, setNewLibLabel] = useState("");
   const [newLibType, setNewLibType] = useState("text");
   const [newLibOptions, setNewLibOptions] = useState("");
+  const [newLibPlaceholder, setNewLibPlaceholder] = useState("");
   const dragItem = useRef();
   const dragOverItem = useRef();
   const [showLogic, setShowLogic] = useState({});
@@ -15709,6 +15764,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
           label: target.label,
           type: target.type,
           options: target.options || "",
+          placeholder: target.placeholder || "",
           required: false
         }
       ]
@@ -15732,7 +15788,8 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
           ...fl,
           label: editingLibField.label.trim(),
           type: editingLibField.type,
-          options: editingLibField.type === 'dropdown' ? (editingLibField.options || "").trim() : ""
+          options: editingLibField.type === 'dropdown' ? (editingLibField.options || "").trim() : "",
+          placeholder: (editingLibField.placeholder || "").trim()
         };
       }
       return fl;
@@ -15840,16 +15897,37 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
   const handleCreateStandardField = () => {
     if(!newLibLabel.trim()) return;
     if(newLibType === 'dropdown' && !newLibOptions.trim()) return alert("Please provide options separated by commas");
-    const nf = { id: "fl_"+Date.now(), label: newLibLabel.trim(), type: newLibType, options: newLibType === 'dropdown' ? newLibOptions : "" };
+    const nf = { 
+      id: "fl_"+Date.now(), 
+      label: newLibLabel.trim(), 
+      type: newLibType, 
+      options: newLibType === 'dropdown' ? newLibOptions : "",
+      placeholder: (newLibPlaceholder || "").trim()
+    };
     
     const newLib = [...fieldLib, nf];
     if (editingForm) {
-      const updated = {...editingForm, fields: [...(editingForm.fields || []), { label: nf.label, type: nf.type, options: nf.options, required: false }]};
+      const updated = {
+        ...editingForm, 
+        fields: [
+          ...(editingForm.fields || []), 
+          { 
+            libId: nf.id,
+            label: nf.label, 
+            type: nf.type, 
+            options: nf.options, 
+            placeholder: nf.placeholder,
+            required: false 
+          }
+        ]
+      };
       updateCurrentForm(updated);
     }
     
     saveLib(newLib);
     setNewLibLabel("");
+    setNewLibOptions("");
+    setNewLibPlaceholder("");
     setIsAddingLib(false);
   };
 
@@ -15994,6 +16072,17 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                             <div style={{flex:1, display:"flex", flexDirection:"column", gap: 6}}>
                               <input value={field.label} onChange={e => { const newF=[...editingForm.fields]; newF[fieldIdx].label=e.target.value; updateCurrentForm({...editingForm, fields:newF}); }} style={{padding:4, border:"1px solid var(--bd)", borderRadius:4, fontSize:".85rem", fontWeight:700, width: "100%"}}/>
                               <input value={field.dataKey||""} onChange={e => { const newF=[...editingForm.fields]; newF[fieldIdx].dataKey=e.target.value; updateCurrentForm({...editingForm, fields:newF}); }} placeholder="Data Header / Key (Optional)" style={{padding:4, border:"1px solid var(--bd)", borderRadius:4, fontSize:".75rem", width: "100%", marginTop: 4}} title="If provided, multiple fields with the same Data Header will be merged into one column when exporting data."/>
+                               <input 
+                                 value={field.placeholder||""} 
+                                 onChange={e => { 
+                                   const newF=[...editingForm.fields]; 
+                                   newF[fieldIdx].placeholder=e.target.value; 
+                                   updateCurrentForm({...editingForm, fields:newF}); 
+                                 }} 
+                                 placeholder="💡 Guidance / Placeholder Hint (e.g. Near City Post Office, 10th Standard)" 
+                                 style={{padding:4, border:"1px solid #CBD5E1", borderRadius:4, fontSize:".75rem", width: "100%", marginTop: 4, background:"#F0FDF4", color:"#14532D"}} 
+                                 title="Guidance text displayed inside or below the field to instruct users what to enter"
+                               />
                               {field.type === 'dropdown' && (
                                 <div style={{display:"flex", gap: 4, alignItems: "center"}}>
                                   
@@ -16258,6 +16347,13 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                             placeholder="Field Label" 
                             style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
                           />
+                          <input 
+                            value={editingLibField.placeholder || ""} 
+                            onChange={e => setEditingLibField({...editingLibField, placeholder: e.target.value})} 
+                            placeholder="Guidance / Placeholder Hint (Optional)" 
+                            style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                            title="Guidance placeholder text displayed inside the field"
+                          />
                           <select 
                             value={editingLibField.type} 
                             onChange={e => setEditingLibField({...editingLibField, type: e.target.value})} 
@@ -16328,7 +16424,8 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                       </div>
                     ) : (
                       <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,background:"white",padding:10,borderRadius:6,border:"1px dashed var(--tl)"}}>
-                        <input value={newLibLabel} onChange={e => setNewLibLabel(e.target.value)} placeholder="Field Label (e.g. T-Shirt Size)" style={{flex:1,padding:"6px",fontSize:".8rem",border:"1px solid var(--bd)",borderRadius:4}}/>
+                        <input value={newLibLabel} onChange={e => setNewLibLabel(e.target.value)} placeholder="Field Label (e.g. T-Shirt Size)" style={{flex:1,minWidth:140,padding:"6px",fontSize:".8rem",border:"1px solid var(--bd)",borderRadius:4}}/>
+                        <input value={newLibPlaceholder} onChange={e => setNewLibPlaceholder(e.target.value)} placeholder="Guidance / Placeholder (Optional)" style={{flex:1,minWidth:140,padding:"6px",fontSize:".8rem",border:"1px solid var(--bd)",borderRadius:4}}/>
                         <select value={newLibType} onChange={e => setNewLibType(e.target.value)} style={{padding:"6px",fontSize:".8rem",border:"1px solid var(--bd)",borderRadius:4}}>
                           <option value="text">Text</option>
                           <option value="number">Number</option>
@@ -16413,7 +16510,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                  <div key={idx}>
                    <label className="modern-label">{field.label} {field.required&&<span style={{color:"red"}}>*</span>}</label>
                    {field.type === 'address' ? (
-                     <textarea disabled className="modern-input" style={{minHeight:80, resize:"vertical", opacity: 0.8, cursor: "not-allowed"}}/>
+                     <textarea disabled placeholder={field.placeholder || "Enter complete address..."} className="modern-input" style={{minHeight:80, resize:"vertical", opacity: 0.8, cursor: "not-allowed"}}/>
                    ) : field.type === 'dropdown' ? (
                      <select disabled className="modern-input" style={{opacity: 0.8, cursor: "not-allowed"}}>
                        <option value="">-- Select --</option>
@@ -16434,7 +16531,7 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                        {field.type === 'image' ? '📸 Choose Photo' : '📎 Choose Document'} (File upload preview)
                      </div>
                    ) : (
-                     <input disabled type={field.type==='number'?'number':field.type==='email'?'email':field.type==='date'?'date':'text'} placeholder={field.label} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".9rem",background:"#F9F9F9"}}/>
+                     <input disabled type={field.type==='number'?'number':field.type==='email'?'email':field.type==='date'?'date':'text'} placeholder={field.placeholder || field.label} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".9rem",background:"#F9F9F9"}}/>
                    )}
                  </div>
                ))}
@@ -16568,6 +16665,13 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                       placeholder="Field Label" 
                       style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
                     />
+                    <input 
+                      value={editingLibField.placeholder || ""} 
+                      onChange={e => setEditingLibField({...editingLibField, placeholder: e.target.value})} 
+                      placeholder="Guidance / Placeholder Hint (Optional)" 
+                      style={{flex:1,minWidth:140,padding:"6px 10px",fontSize:".8rem",border:"1px solid #CBD5E1",borderRadius:4,background:"white"}}
+                      title="Guidance placeholder text displayed inside the field"
+                    />
                     <select 
                       value={editingLibField.type} 
                       onChange={e => setEditingLibField({...editingLibField, type: e.target.value})} 
@@ -16692,6 +16796,11 @@ function AdminForms({ C, setC, saveToFb, mob, auth }) {
                               <span style={{fontWeight:700,fontSize:".88rem",color:"#0F172A"}}>
                                 {fl.label}
                               </span>
+                              {fl.placeholder && (
+                                <span style={{fontSize:".7rem",color:"#15803D",background:"#DCFCE7",border:"1px solid #BBF7D0",padding:"1px 6px",borderRadius:4}}>
+                                  💡 "{fl.placeholder}"
+                                </span>
+                              )}
                               <span style={{
                                 fontSize:".7rem",
                                 padding:"2px 7px",
