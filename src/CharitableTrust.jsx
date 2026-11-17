@@ -1,5 +1,5 @@
 import { QRCodeCanvas } from "qrcode.react";
-import { useState, useEffect, useRef, createContext, useContext, useMemo } from "react";
+import { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from "react";
 
 export const OFFICIAL_VIBHAGS = [
   "1 UMERKHADI",
@@ -35621,7 +35621,7 @@ function AdminMasterImportModal({
   };
 
   // Robust Master Data matching
-  const findMasterMatch = useCallback((regVal, masterRows, keyCol, smart = true) => {
+  const findMasterMatch = (regVal, masterRows, keyCol, smart = true) => {
     if (!regVal || !masterRows || !keyCol) return null;
     const rawReg = String(regVal).trim();
     if (!rawReg || rawReg === "-" || rawReg.toLowerCase() === "unspecified" || rawReg.toLowerCase() === "blank") return null;
@@ -35669,7 +35669,7 @@ function AdminMasterImportModal({
     }
 
     return null;
-  }, []);
+  };
 
   // Compute live preview stats
   const previewData = useMemo(() => {
@@ -35710,7 +35710,7 @@ function AdminMasterImportModal({
     });
 
     return { total: targetList.length, matched, unmatched, sampleRows, unmatchedSamples };
-  }, [targetList, selectedTable, regKeyCol, masterKeyCol, importCols, targetColNames, smartMatching, findMasterMatch]);
+  }, [targetList, selectedTable, regKeyCol, masterKeyCol, importCols, targetColNames, smartMatching]);
 
   // Progress state during execution
   const [isProcessing, setIsProcessing] = useState(false);
