@@ -11655,18 +11655,22 @@ function Overview({ mob, C, setC, auth }) {
         let pendingReceipts = 0;
         const progSums = {};
         
-        dons.forEach(d => {
+        // Exclude archived past-event donations from active daily overview metrics
+        const isArchivedDoc = d => Boolean(d?.archived === true || d?.isArchived === true || d?.status === "Archived");
+        const activeDons = dons.filter(d => !isArchivedDoc(d));
+
+        activeDons.forEach(d => {
           if (d.status === "Verified") {
             const amt = Number(d.amount) || 0;
             totalDonations += amt;
-            progSums[d.program || "General"] = (progSums[d.program || "General"] || 0) + amt;
+            progSums[d.program || d.purpose || "General"] = (progSums[d.program || d.purpose || "General"] || 0) + amt;
             if (!d.receiptNo) pendingReceipts++;
           } else {
             pendingReceipts++;
           }
         });
 
-        const recentDonations = dons.sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 4);
+        const recentDonations = activeDons.sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 4);
         const months = {};
         const today = new Date();
         for (let i=5; i>=0; i--) {
@@ -11676,7 +11680,7 @@ function Overview({ mob, C, setC, auth }) {
             total: 0
           };
         }
-        dons.forEach(d => {
+        activeDons.forEach(d => {
           if (d.status !== "Verified") return;
           const dt = new Date(d.date);
           const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
@@ -12968,11 +12972,60 @@ const MultiSelect = ({ options, value, onChange, width = 100 }) => {
 
 function Donations({ mob, auth, C }) {
   const [q,setQ]=useState(""); 
-  const [colF, setColF] = useState({ id: [], donor: [], amountOp: ">=", amountVal: "", program: [], date: [], pan: [], status: [], statusBtns: "All", mode: "All" });
+  const [colF, setColF] = useState({ id: [], donor: [], vibhag: [], amountOp: ">=", amountVal: "", program: [], date: [], pan: [], status: [], statusBtns: "All", mode: "All" });
+  const [archiveTab, setArchiveTab] = useState("active"); // "active" | "archived" | "all"
+  const [showBulkArchiveModal, setShowBulkArchiveModal] = useState(false);
+  const [selectedBulkProgram, setSelectedBulkProgram] = useState("");
   const [data, setData] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddOfflineModal, setShowAddOfflineModal] = useState(false);
+
+  const isRecordArchived = (d) => Boolean(d?.archived === true || d?.isArchived === true || d?.status === "Archived");
+
+  const handleToggleArchive = async (r) => {
+    const willArchive = !isRecordArchived(r);
+    const actionText = willArchive ? "archive (hide from active daily collection)" : "unarchive (restore to active daily collection)";
+    if (!window.confirm(`Are you sure you want to ${actionText} this donation of ₹${r.amount} by "${r.name}"?`)) return;
+    try {
+      setLoading(true);
+      const updated = { ...r, archived: willArchive, isArchived: willArchive };
+      const targetId = r._docId || r.id;
+      await fbUpdateDonation(targetId, updated, auth?.idToken);
+      setData(prev => prev.map(x => (x._docId && x._docId === r._docId) || (!x._docId && x.id === r.id) ? updated : x));
+      alert(`✅ Donation ${willArchive ? "moved to Archive" : "restored to Active Collection"} successfully!`);
+    } catch(err) {
+      alert("Failed to update archive status: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkArchiveProgram = async (programToArchive) => {
+    if (!programToArchive) return;
+    const targetItems = allData.filter(d => (d.program === programToArchive || d.purpose === programToArchive) && !isRecordArchived(d));
+    if (targetItems.length === 0) {
+      alert(`No active donations found under "${programToArchive}". They may already be archived.`);
+      return;
+    }
+    const totalSum = targetItems.reduce((s,x)=>s+(parseFloat(x.amount)||0),0);
+    if (!window.confirm(`Archive all ${targetItems.length} donations under "${programToArchive}" totaling ₹${totalSum.toLocaleString()}?\n\nThey will be safely preserved under the "Archived" tab and will not be counted in day-to-day collection tallies for new events.`)) return;
+
+    setLoading(true);
+    try {
+      for (const r of targetItems) {
+        const updated = { ...r, archived: true, isArchived: true };
+        const targetId = r._docId || r.id;
+        await fbUpdateDonation(targetId, updated, auth?.idToken);
+      }
+      await loadDonations();
+      alert(`✅ Successfully archived ${targetItems.length} donations under "${programToArchive}"!`);
+    } catch(err) {
+      alert("Bulk archive error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadDonations = async () => {
     setLoading(true);
@@ -13131,16 +13184,21 @@ function Donations({ mob, auth, C }) {
   const allData = Array.isArray(data) ? data : [];
   const uniqueIds = [...new Set(allData.map(d => d.id).filter(Boolean))];
   const uniqueDonors = [...new Set(allData.map(d => d.name).filter(Boolean))];
-  const uniquePrograms = [...new Set(allData.map(d => d.program).filter(Boolean))];
+  const uniqueVibhags = [...new Set(allData.map(d => d.vibhag).filter(Boolean))];
+  const uniquePrograms = [...new Set(allData.map(d => d.program || d.purpose).filter(Boolean))];
   const uniqueDates = [...new Set(allData.map(d => d.date).filter(Boolean))];
   const uniquePans = [...new Set(allData.map(d => d.pan).filter(Boolean))];
   const uniqueStatuses = ["Verified", "Pending", "Pending (Payment Link)"];
 
   const rows = allData.filter(d => {
-    const matchQ = d.name?.toLowerCase().includes(q.toLowerCase()) || d.id?.toLowerCase().includes(q.toLowerCase());
+    const matchQ = d.name?.toLowerCase().includes(q.toLowerCase()) || 
+                   d.id?.toLowerCase().includes(q.toLowerCase()) || 
+                   (d.vibhag && d.vibhag.toLowerCase().includes(q.toLowerCase())) || 
+                   (d.receiptNo && d.receiptNo.toLowerCase().includes(q.toLowerCase()));
     
     const matchId = colF.id.length === 0 || colF.id.includes(d.id);
     const matchDonor = colF.donor.length === 0 || colF.donor.includes(d.name);
+    const matchVibhag = !colF.vibhag || colF.vibhag.length === 0 || colF.vibhag.includes(d.vibhag);
     
     let matchAmount = true;
     if (colF.amountVal !== "") {
@@ -13155,7 +13213,7 @@ function Donations({ mob, auth, C }) {
       }
     }
 
-    const matchProgram = colF.program.length === 0 || colF.program.includes(d.program);
+    const matchProgram = colF.program.length === 0 || colF.program.includes(d.program || d.purpose);
     const matchDate = colF.date.length === 0 || colF.date.includes(d.date);
     const matchPan = colF.pan.length === 0 || colF.pan.includes(d.pan);
     
@@ -13165,21 +13223,36 @@ function Donations({ mob, auth, C }) {
     
     const isOff = d.isOffline || d.paymentMode === "Offline" || String(d.paymentMethod || "").toLowerCase().includes("offline");
     const matchMode = colF.mode === "All" || (colF.mode === "Offline" && isOff) || (colF.mode === "Online" && !isOff);
-    return matchQ && matchId && matchDonor && matchAmount && matchProgram && matchDate && matchPan && matchStatus && matchStatusBtn && matchMode;
+
+    const isArch = isRecordArchived(d);
+    const matchArchive = archiveTab === "all" || (archiveTab === "archived" ? isArch : !isArch);
+
+    return matchQ && matchId && matchDonor && matchVibhag && matchAmount && matchProgram && matchDate && matchPan && matchStatus && matchStatusBtn && matchMode && matchArchive;
   });
 
+  // Calculate day-to-day collection metrics based on displayed rows
+  const displayedVerified = rows.filter(r => r.status === "Verified");
+  const totalCollectedSum = displayedVerified.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  const onlineCollectedSum = displayedVerified.filter(r => !r.isOffline && r.paymentMode !== "Offline" && !String(r.paymentMethod || "").toLowerCase().includes("offline")).reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  const offlineCollectedSum = displayedVerified.filter(r => r.isOffline || r.paymentMode === "Offline" || String(r.paymentMethod || "").toLowerCase().includes("offline")).reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+  const totalArchivedCount = allData.filter(d => isRecordArchived(d)).length;
+  const totalActiveCount = allData.filter(d => !isRecordArchived(d)).length;
+
   const downloadCSV = () => {
-    const headers = ["ID", "Donor", "Amount", "Program", "Date", "PAN", "Status", "Receipt_URL"];
+    const headers = ["ID", "Donor", "Vibhag", "Amount", "Program", "Date", "PAN", "Status", "Archived", "Receipt_URL"];
     const csvRows = [headers.join(",")];
     rows.forEach(r => {
       const csvRow = [
         r.id || "",
         `"${(r.name || "").replace(/"/g, '""')}"`,
+        `"${(r.vibhag || "General").replace(/"/g, '""')}"`,
         r.amount || 0,
-        `"${(r.program || "").replace(/"/g, '""')}"`,
+        `"${(r.program || r.purpose || "").replace(/"/g, '""')}"`,
         r.date || "",
         r.pan || "",
         r.status || "Pending",
+        isRecordArchived(r) ? "Yes" : "No",
         r.receiptUrl || ""
       ];
       csvRows.push(csvRow.join(","));
@@ -13188,14 +13261,100 @@ function Donations({ mob, auth, C }) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Donations_Export_${new Date().getTime()}.csv`;
+    a.download = `Donations_Export_${archiveTab}_${new Date().getTime()}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
   return (
     <div>
-      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+      {/* ── Collection Mode / Archive Selector Bar ── */}
+      <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",background:"white",padding:"10px 14px",borderRadius:10,border:"1px solid var(--bd)"}}>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:".75rem",fontWeight:800,color:"#334155",textTransform:"uppercase",letterSpacing:.5}}>Collection View:</span>
+          <div style={{display:"flex",gap:4,background:"#F1F5F9",padding:3,borderRadius:8,border:"1px solid #CBD5E1"}}>
+            <button
+              onClick={()=>setArchiveTab("active")}
+              style={{padding:"5px 12px",borderRadius:6,background:archiveTab==="active"?"#15803D":"transparent",color:archiveTab==="active"?"white":"#475569",border:"none",fontWeight:800,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:5,transition:"all .2s"}}
+            >
+              <span>⚡</span> Active Collection ({totalActiveCount})
+            </button>
+            <button
+              onClick={()=>setArchiveTab("archived")}
+              style={{padding:"5px 12px",borderRadius:6,background:archiveTab==="archived"?"#475569":"transparent",color:archiveTab==="archived"?"white":"#475569",border:"none",fontWeight:800,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:5,transition:"all .2s"}}
+            >
+              <span>📦</span> Archived Records ({totalArchivedCount})
+            </button>
+            <button
+              onClick={()=>setArchiveTab("all")}
+              style={{padding:"5px 12px",borderRadius:6,background:archiveTab==="all"?"var(--dt)":"transparent",color:archiveTab==="all"?"white":"#475569",border:"none",fontWeight:700,fontSize:".76rem",cursor:"pointer",transition:"all .2s"}}
+            >
+              All ({allData.length})
+            </button>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {archiveTab !== "archived" && totalActiveCount > 0 && (
+            <button
+              onClick={() => setShowBulkArchiveModal(true)}
+              style={{padding:"6px 12px",borderRadius:7,background:"#475569",color:"white",border:"none",fontWeight:700,fontSize:".76rem",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.1)",display:"flex",alignItems:"center",gap:5}}
+              title="Move past event donations into Archive so they don't add to new event tallies"
+            >
+              <span>📦</span> Move Past Event to Archive
+            </button>
+          )}
+          <button onClick={downloadCSV} style={{padding:"6px 12px",borderRadius:7,fontWeight:700,fontSize:".76rem",background:"var(--sf)",color:"white",border:"none",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.1)",display:"flex",alignItems:"center",gap:4}}>
+            <span>📥</span> Export CSV
+          </button>
+          <button onClick={()=>setShowAddOfflineModal(true)} style={{padding:"6px 14px",borderRadius:7,background:"#15803D",color:"white",border:"none",fontWeight:800,fontSize:".78rem",cursor:"pointer",boxShadow:"0 2px 4px rgba(21,128,61,0.2)",display:"flex",alignItems:"center",gap:4}}>
+            <span>➕</span> Add Offline
+          </button>
+        </div>
+      </div>
+
+      {/* ── Day-to-Day Collection KPI Summary Banner ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:12,marginBottom:16}}>
+        <div style={{background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:10,padding:"10px 14px",boxShadow:"0 2px 5px rgba(21,128,61,0.06)"}}>
+          <div style={{fontSize:".7rem",fontWeight:800,color:"#166534",textTransform:"uppercase",letterSpacing:.5,display:"flex",alignItems:"center",gap:5}}>
+            <span>{archiveTab === "archived" ? "📦" : "💰"}</span>
+            {archiveTab === "archived" ? "Archived Collection Total" : archiveTab === "all" ? "Total Collection (All Records)" : "Active Daily Collection Total"}
+          </div>
+          <div style={{fontSize:"1.35rem",fontWeight:800,color:"#15803D",marginTop:3}}>
+            ₹{totalCollectedSum.toLocaleString()}
+          </div>
+          <div style={{fontSize:".68rem",color:"#166534",marginTop:2}}>
+            {displayedVerified.length} Verified Entries ({rows.length} total matching)
+          </div>
+        </div>
+
+        <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:10,padding:"10px 14px"}}>
+          <div style={{fontSize:".7rem",fontWeight:800,color:"#1E40AF",textTransform:"uppercase",letterSpacing:.5}}>
+            Online (Gateway)
+          </div>
+          <div style={{fontSize:"1.2rem",fontWeight:800,color:"#1D4ED8",marginTop:3}}>
+            ₹{onlineCollectedSum.toLocaleString()}
+          </div>
+          <div style={{fontSize:".68rem",color:"#60A5FA",marginTop:2}}>
+            Direct Razorpay portal
+          </div>
+        </div>
+
+        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 14px"}}>
+          <div style={{fontSize:".7rem",fontWeight:800,color:"#C2410C",textTransform:"uppercase",letterSpacing:.5}}>
+            Offline (Cash / Direct)
+          </div>
+          <div style={{fontSize:"1.2rem",fontWeight:800,color:"#EA580C",marginTop:3}}>
+            ₹{offlineCollectedSum.toLocaleString()}
+          </div>
+          <div style={{fontSize:".68rem",color:"#FB923C",marginTop:2}}>
+            Recorded offline donations
+          </div>
+        </div>
+      </div>
+
+      {/* ── Search & Filter Controls ── */}
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",gap:8,flex:1,minWidth:220,alignItems:"center"}}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search ID, Donor, Vibhag, Receipt..." style={{padding:"8px 12px",borderRadius:8,border:"1px solid var(--bd)",fontSize:".85rem",fontFamily:"inherit",flex:1}}/>
           <button onClick={loadDonations} disabled={loading} style={{padding:"8px 12px",borderRadius:8,background:"#F1F5F9",border:"1px solid #CBD5E1",color:"#334155",fontWeight:700,fontSize:".8rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4}} title="Reload live donations from database">
@@ -13208,14 +13367,11 @@ function Donations({ mob, auth, C }) {
             {["All","Online","Offline"].map(m=><button key={m} onClick={()=>setColF(p=>({...p, mode: m}))} style={{padding:"4px 8px",borderRadius:6,background:colF.mode===m?(m==="Offline"?"#EA580C":"#1D4ED8"):"transparent",color:colF.mode===m?"white":"#475569",border:"none",cursor:"pointer",fontWeight:700,fontSize:".74rem"}}>{m}</button>)}
           </div>
           <div style={{display:"flex",gap:4}}>{["All","Verified","Pending"].map(v=><button key={v} onClick={()=>setColF(p=>({...p, statusBtns: v}))} style={{padding:"6px 12px",borderRadius:6,background:colF.statusBtns===v?"var(--dt)":"white",color:colF.statusBtns===v?"white":"var(--tm2)",border:`1px solid ${colF.statusBtns===v?"var(--dt)":"var(--bd)"}`,cursor:"pointer",fontWeight:600,fontSize:".76rem"}}>{v}</button>)}</div>
-          <button onClick={downloadCSV} style={{padding:"7px 12px",borderRadius:6,fontWeight:700,fontSize:".78rem", background:"var(--sf)", color:"white", border:"none", cursor:"pointer",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>📥 Export CSV</button>
-          <button onClick={()=>setShowAddOfflineModal(true)} style={{padding:"7px 14px",borderRadius:6,background:"#15803D",color:"white",border:"none",fontWeight:800,fontSize:".78rem",cursor:"pointer",boxShadow:"0 2px 4px rgba(21,128,61,0.2)",display:"flex",alignItems:"center",gap:4}}>
-            <span>➕</span> Add Offline
-          </button>
         </div>
       </div>
+
       <div className="ac" style={{padding:16,overflowX:"auto"}}>
-        <table className="tt" style={{width:"100%",borderCollapse:"collapse",fontSize:".8rem",minWidth:500}}>
+        <table className="tt" style={{width:"100%",borderCollapse:"collapse",fontSize:".8rem",minWidth:650}}>
           <thead>
             <tr>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
@@ -13224,10 +13380,11 @@ function Donations({ mob, auth, C }) {
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
                 <div style={{marginBottom:4}}>DONOR</div>
-                <MultiSelect options={uniqueDonors} value={colF.donor} onChange={v=>setColF({...colF, donor: v})} width={100} />
+                <MultiSelect options={uniqueDonors} value={colF.donor} onChange={v=>setColF({...colF, donor: v})} width={110} />
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
                 <div style={{marginBottom:4}}>VIBHAG</div>
+                <MultiSelect options={uniqueVibhags} value={colF.vibhag} onChange={v=>setColF({...colF, vibhag: v})} width={90} />
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
                 <div style={{marginBottom:4}}>AMOUNT</div>
@@ -13244,7 +13401,7 @@ function Donations({ mob, auth, C }) {
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
                 <div style={{marginBottom:4}}>PROGRAM</div>
-                <MultiSelect options={uniquePrograms} value={colF.program} onChange={v=>setColF({...colF, program: v})} width={100} />
+                <MultiSelect options={uniquePrograms} value={colF.program} onChange={v=>setColF({...colF, program: v})} width={110} />
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
                 <div style={{marginBottom:4}}>DATE</div>
@@ -13258,19 +13415,29 @@ function Donations({ mob, auth, C }) {
                 <div style={{marginBottom:4}}>STATUS</div>
                 <MultiSelect options={uniqueStatuses} value={colF.status} onChange={v=>setColF({...colF, status: v})} width={100} />
               </th>
-              <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>RECEIPT</th>
+              <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>RECEIPT & ACTIONS</th>
             </tr>
           </thead>
           <tbody>{rows.map((r,i)=>(
-            <tr key={i} style={{borderBottom:"1px solid var(--bd)"}}>
+            <tr key={i} style={{borderBottom:"1px solid var(--bd)", background: isRecordArchived(r) ? "#FAFBFD" : "white"}}>
               <td style={{padding:"10px 12px",color:"var(--mu)",fontFamily:"monospace",fontSize:".75rem"}}>
                 <strong style={{color:"var(--dt)"}}>{r.receiptNo || r.id}</strong>
                 {r.receiptNo && <div style={{fontSize:".65rem",color:"#aaa"}}>{r.id}</div>}
                 {r.razorpay_payment_id && <div style={{fontSize:".65rem",color:"var(--sf)"}} title="Razorpay Txn ID">{r.razorpay_payment_id}</div>}
+                {isRecordArchived(r) && (
+                  <div style={{marginTop:3}}>
+                    <span style={{fontSize:".65rem",padding:"2px 6px",borderRadius:4,background:"#F1F5F9",color:"#475569",fontWeight:700}}>📦 Archived</span>
+                  </div>
+                )}
               </td>
               <td style={{padding:"10px 12px",fontWeight:600}}>{r.name}</td>
-              <td style={{padding:"10px 12px",fontWeight:700,color:"var(--sf)"}}>Rs.{r.amount.toLocaleString()}</td>
-              <td style={{padding:"10px 12px"}}><span style={{fontSize:".72rem",padding:"3px 9px",borderRadius:12,background:"var(--tl)",color:"var(--dt)",fontWeight:600}}>{r.program}</span></td>
+              <td style={{padding:"10px 12px"}}>
+                <span style={{fontSize:".74rem",padding:"3px 8px",borderRadius:8,background:"#F1F5F9",color:"#334155",fontWeight:600,display:"inline-block"}}>
+                  {r.vibhag || "General"}
+                </span>
+              </td>
+              <td style={{padding:"10px 12px",fontWeight:700,color:"var(--sf)"}}>Rs.{(parseFloat(r.amount)||0).toLocaleString()}</td>
+              <td style={{padding:"10px 12px"}}><span style={{fontSize:".72rem",padding:"3px 9px",borderRadius:12,background:"var(--tl)",color:"var(--dt)",fontWeight:600}}>{r.program || r.purpose || "General"}</span></td>
               <td style={{padding:"10px 12px",color:"var(--mu)",fontSize:".78rem"}}>{r.date}</td>
               <td style={{padding:"10px 12px"}}>
                 <input type="text" defaultValue={r.pan || ""} onBlur={(e)=>handlePanChange(r, e.target.value)} placeholder="PAN No." style={{fontSize:".75rem", padding:"4px 8px", borderRadius:6, border:"1px solid var(--bd)", width: 100, outline:"none"}} />
@@ -13293,6 +13460,22 @@ function Donations({ mob, auth, C }) {
                   {r.status === "Verified" && (
                     <button onClick={()=>handleRegenerate(r)} style={{padding:"4px 9px",borderRadius:6,background:"#FEECEC",border:"none",color:"#D93025",cursor:"pointer",fontSize:".72rem",fontWeight:600}}>Regenerate</button>
                   )}
+                  <button
+                    onClick={() => handleToggleArchive(r)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: isRecordArchived(r) ? "#FEF3C7" : "#F1F5F9",
+                      border: isRecordArchived(r) ? "1px solid #FCD34D" : "1px solid #CBD5E1",
+                      color: isRecordArchived(r) ? "#B45309" : "#475569",
+                      cursor: "pointer",
+                      fontSize: ".72rem",
+                      fontWeight: 700
+                    }}
+                    title={isRecordArchived(r) ? "Restore to Active Collection" : "Move to Archive (hide from active daily collection)"}
+                  >
+                    {isRecordArchived(r) ? "↩️ Restore" : "📦 Archive"}
+                  </button>
                   <button
                     onClick={async () => {
                       if (!window.confirm(`Are you sure you want to permanently delete donation record "${r.name}" (${r.receiptNo || r.id}) of ₹${r.amount}?`)) return;
@@ -13321,6 +13504,67 @@ function Donations({ mob, auth, C }) {
         {rows.length===0&&<div style={{textAlign:"center",padding:28,color:"var(--mu)"}}>No results found.</div>}
       </div>
 
+      {/* ── Modal: Bulk Move Past Event to Archive ── */}
+      {showBulkArchiveModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:12,width:"100%",maxWidth:480,boxShadow:"0 24px 48px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+            <div style={{padding:"14px 20px",background:"linear-gradient(135deg, #334155, #1E293B)",color:"white",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>📦 Move Past Event to Archive</h3>
+              <button onClick={()=>setShowBulkArchiveModal(false)} style={{background:"none",border:"none",color:"white",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+              <p style={{margin:0,fontSize:".84rem",color:"#475569",lineHeight:1.5}}>
+                Archiving past event donations safely keeps all receipts, donor names, PANs, and PDF files preserved in the <strong>Archived</strong> tab, but <strong>excludes them from day-to-day collection tallies</strong> for your new event.
+              </p>
+              <div>
+                <label style={{display:"block",fontSize:".75rem",fontWeight:700,color:"#334155",marginBottom:4}}>Select Program / Event to Archive:</label>
+                <select
+                  value={selectedBulkProgram}
+                  onChange={e=>setSelectedBulkProgram(e.target.value)}
+                  style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",background:"white"}}
+                >
+                  <option value="">-- Choose Program / Event --</option>
+                  {uniquePrograms.map(p => {
+                    const count = allData.filter(d => (d.program === p || d.purpose === p) && !isRecordArchived(d)).length;
+                    return (
+                      <option key={p} value={p}>
+                        {p} ({count} active {count === 1 ? 'donation' : 'donations'})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {selectedBulkProgram && (
+                <div style={{padding:12,background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,fontSize:".8rem",color:"#334155"}}>
+                  <div>Program: <strong>{selectedBulkProgram}</strong></div>
+                  <div>Active Donations to Archive: <strong>{allData.filter(d => (d.program === selectedBulkProgram || d.purpose === selectedBulkProgram) && !isRecordArchived(d)).length}</strong></div>
+                  <div>Total Sum to Move: <strong>₹{allData.filter(d => (d.program === selectedBulkProgram || d.purpose === selectedBulkProgram) && !isRecordArchived(d)).reduce((s,d)=>s+(parseFloat(d.amount)||0),0).toLocaleString()}</strong></div>
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:6}}>
+                <button
+                  onClick={()=>setShowBulkArchiveModal(false)}
+                  style={{padding:"8px 16px",borderRadius:8,background:"#F1F5F9",border:"1px solid #CBD5E1",color:"#475569",fontWeight:700,fontSize:".82rem",cursor:"pointer"}}
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!selectedBulkProgram || allData.filter(d => (d.program === selectedBulkProgram || d.purpose === selectedBulkProgram) && !isRecordArchived(d)).length === 0}
+                  onClick={async () => {
+                    const prog = selectedBulkProgram;
+                    setShowBulkArchiveModal(false);
+                    await handleBulkArchiveProgram(prog);
+                  }}
+                  style={{padding:"8px 16px",borderRadius:8,background:"#15803D",color:"white",border:"none",fontWeight:800,fontSize:".82rem",cursor:"pointer",opacity:(!selectedBulkProgram || allData.filter(d => (d.program === selectedBulkProgram || d.purpose === selectedBulkProgram) && !isRecordArchived(d)).length === 0)?0.5:1}}
+                >
+                  Confirm & Archive Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal: Add Offline Donation Modal in Admin Panel ── */}
       {showAddOfflineModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -13331,11 +13575,12 @@ function Donations({ mob, auth, C }) {
             </div>
             <div style={{padding:20}}>
               <OfflineDonationEntryCard
+                C={C}
                 initialData={{
                   initialDate: new Date().toISOString().split('T')[0],
-                  defaultPurpose: "Education Felicitation 2026",
-                  defaultVibhag: "10 MAHALAXMI",
-                  defaultEventCode: "EDU26"
+                  defaultPurpose: (Array.isArray(C?.events) && C.events.length > 0) ? (C.events[0].title || C.events[0].name) : "General Donation",
+                  defaultVibhag: extractVibhagList(C)[0] || "10 MAHALAXMI",
+                  defaultEventCode: (Array.isArray(C?.events) && C.events.length > 0) ? (C.events[0].code || "EVT") : "GEN"
                 }}
                 onSubmit={async (formData) => {
                   try {
@@ -13343,10 +13588,10 @@ function Donations({ mob, auth, C }) {
                       name: formData.name.trim(),
                       amount: parseFloat(formData.amount) || 0,
                       date: formData.date,
-                      program: formData.purpose || "Education Felicitation 2026",
-                      purpose: formData.purpose || "Education Felicitation 2026",
+                      program: formData.purpose || "General Donation",
+                      purpose: formData.purpose || "General Donation",
                       vibhag: formData.vibhag || "General",
-                      eventCode: formData.eventCode || "EDU26",
+                      eventCode: formData.eventCode || "GEN",
                       receiptNo: formData.receiptNo || `RCP-${Math.floor(1000 + Math.random() * 9000)}`,
                       internalReceiptNo: formData.receiptNo || `RCP-${Math.floor(1000 + Math.random() * 9000)}`,
                       paymentMode: "Offline",
@@ -13355,10 +13600,12 @@ function Donations({ mob, auth, C }) {
                       isOffline: true,
                       id: `DON-OFF-${Math.floor(100000 + Math.random() * 900000)}`,
                       recordedBy: auth?.email || "Admin",
-                      recordedAt: new Date().toISOString()
+                      recordedAt: new Date().toISOString(),
+                      archived: false,
+                      isArchived: false
                     };
                     await fbSubmitDonation(donRecord, auth?.idToken);
-                    alert("✅ Offline donation recorded successfully!");
+                    alert("✅ Offline donation recorded successfully under " + donRecord.program);
                     setShowAddOfflineModal(false);
                     loadDonations();
                   } catch(err) {
@@ -45517,10 +45764,24 @@ function OfflineDonationEntryCard({ initialData, onSubmit, C }) {
   const [mobile, setMobile] = useState(initialData?.mobile || initialData?.phone || "");
   const [date, setDate] = useState(initialData?.initialDate || new Date().toISOString().split('T')[0]);
   const [amount, setAmount] = useState("");
-  const [purpose, setPurpose] = useState(initialData?.defaultPurpose || "Education Felicitation 2026");
+  
+  // Available events from C.events
+  const eventList = Array.isArray(C?.events) ? C.events.map(e => e.title || e.name).filter(Boolean) : [];
+  const defaultProg = initialData?.defaultPurpose || (eventList.length > 0 ? eventList[0] : "General Donation");
+  const [purpose, setPurpose] = useState(defaultProg);
+  const [customPurpose, setCustomPurpose] = useState("");
+  const [isCustomPurpose, setIsCustomPurpose] = useState(!eventList.includes(defaultProg) && defaultProg !== "General Donation");
+
   const vibhagOptions = extractVibhagList(C);
   const [vibhag, setVibhag] = useState(initialData?.defaultVibhag || vibhagOptions[0] || "10 MAHALAXMI");
-  const [eventCode, setEventCode] = useState(initialData?.defaultEventCode || "EDU26");
+  
+  const deriveCode = (p) => {
+    if (!p || p === "General Donation") return "GEN";
+    const cleaned = String(p).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    return cleaned.slice(0, 5) || "EVT";
+  };
+
+  const [eventCode, setEventCode] = useState(initialData?.defaultEventCode || deriveCode(defaultProg));
   const [receiptNo, setReceiptNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const VIBHAG_OPTIONS_DON = vibhagOptions;
@@ -45564,8 +45825,41 @@ function OfflineDonationEntryCard({ initialData, onSubmit, C }) {
         </div>
 
         <div style={{gridColumn:"1/-1"}}>
-          <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>Purpose</label>
-          <input type="text" placeholder="e.g. Education Felicitation 2026, General Fund" value={purpose} onChange={e=>setPurpose(e.target.value)} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",boxSizing:"border-box",background:"white"}} />
+          <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>Event / Purpose *</label>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <select
+              value={isCustomPurpose ? "__custom__" : purpose}
+              onChange={e => {
+                if (e.target.value === "__custom__") {
+                  setIsCustomPurpose(true);
+                  setPurpose(customPurpose || "");
+                } else {
+                  setIsCustomPurpose(false);
+                  setPurpose(e.target.value);
+                  setEventCode(deriveCode(e.target.value));
+                }
+              }}
+              style={{flex:1,minWidth:170,padding:"7px 9px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",background:"white"}}
+            >
+              {eventList.map(ev => <option key={ev} value={ev}>{ev}</option>)}
+              {!eventList.includes("General Donation") && <option value="General Donation">General Donation</option>}
+              <option value="__custom__">✏️ Custom / Other Event Name...</option>
+            </select>
+            {isCustomPurpose && (
+              <input
+                type="text"
+                placeholder="Type custom event / purpose name"
+                value={customPurpose}
+                onChange={e => {
+                  setCustomPurpose(e.target.value);
+                  setPurpose(e.target.value);
+                  setEventCode(deriveCode(e.target.value));
+                }}
+                required
+                style={{flex:1,minWidth:170,padding:"7px 9px",borderRadius:6,border:"1.5px solid #15803D",fontSize:".82rem",background:"white"}}
+              />
+            )}
+          </div>
         </div>
 
         <div>
@@ -49773,7 +50067,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       } else {
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
-          const allDonations = await fbFetchDonations(token).catch(() => []);
+          const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
+          // Exclude archived past-event donations from live active chatbot summary
+          const allDonations = allDonationsRaw.filter(d => !d.archived && !d.isArchived && d.status !== "Archived");
           
           let totalAmt = 0;
           let onlineAmt = 0, offlineAmt = 0;
@@ -49822,7 +50118,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       } else {
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
-          const allDonations = await fbFetchDonations(token).catch(() => []);
+          const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
+          // Exclude archived past-event donations from live active chatbot donor registry
+          const allDonations = allDonationsRaw.filter(d => !d.archived && !d.isArchived && d.status !== "Archived");
 
           if (allDonations.length === 0) {
             botReply = `📋 **No donation records found in the database.**`;
