@@ -36854,6 +36854,408 @@ function AdminMasterImportModal({
   );
 }
 
+// ⚙️ Column Customizer Modal Component for Registrations Table ⚙️
+function AdminColumnCustomizerModal({
+  isOpen,
+  onClose,
+  allColumns = [],
+  selectedColumns = [],
+  onSaveConfig,
+  onResetDefault,
+  C,
+  saveToFb
+}) {
+  const [tempSelected, setTempSelected] = useState(() => new Set(selectedColumns));
+  const [tempOrder, setTempOrder] = useState(() => [...allColumns]);
+  const [search, setSearch] = useState("");
+  const [cloudSaved, setCloudSaved] = useState(false);
+  const [draggedIdx, setDraggedIdx] = useState(null);
+
+  useEffect(() => {
+    setTempSelected(new Set(selectedColumns));
+  }, [selectedColumns, isOpen]);
+
+  useEffect(() => {
+    // Sync order if allColumns changes
+    setTempOrder(prev => {
+      const merged = [...prev.filter(c => allColumns.includes(c))];
+      allColumns.forEach(c => {
+        if (!merged.includes(c)) merged.push(c);
+      });
+      return merged;
+    });
+  }, [allColumns, isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleToggle = (col) => {
+    setTempSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size <= 1) {
+          alert("At least one column must remain visible.");
+          return prev;
+        }
+        next.delete(col);
+      } else {
+        next.add(col);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    setTempSelected(new Set(tempOrder));
+  };
+
+  const handleClearAll = () => {
+    setTempSelected(new Set(tempOrder.slice(0, 2)));
+  };
+
+  const handlePreset = (presetCols) => {
+    const valid = presetCols.filter(c => tempOrder.includes(c));
+    setTempSelected(new Set(valid));
+    const remaining = tempOrder.filter(c => !valid.includes(c));
+    setTempOrder([...valid, ...remaining]);
+  };
+
+  const handleMove = (idx, direction) => {
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= tempOrder.length) return;
+    const next = [...tempOrder];
+    const item = next[idx];
+    next[idx] = next[targetIdx];
+    next[targetIdx] = item;
+    setTempOrder(next);
+  };
+
+  const handleMoveToTop = (idx) => {
+    if (idx === 0) return;
+    const next = [...tempOrder];
+    const [item] = next.splice(idx, 1);
+    next.unshift(item);
+    setTempOrder(next);
+  };
+
+  const handleMoveToBottom = (idx) => {
+    if (idx === tempOrder.length - 1) return;
+    const next = [...tempOrder];
+    const [item] = next.splice(idx, 1);
+    next.push(item);
+    setTempOrder(next);
+  };
+
+  const handleDragStart = (e, index) => {
+    setDraggedIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === index) return;
+    const next = [...tempOrder];
+    const [dragged] = next.splice(draggedIdx, 1);
+    next.splice(index, 0, dragged);
+    setDraggedIdx(index);
+    setTempOrder(next);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+  };
+
+  const handleApply = (saveToCloud = false) => {
+    const selArray = tempOrder.filter(c => tempSelected.has(c));
+    if (selArray.length === 0) {
+      alert("Please select at least one column to display.");
+      return;
+    }
+    onSaveConfig(selArray, tempOrder, saveToCloud);
+    if (saveToCloud) {
+      setCloudSaved(true);
+      setTimeout(() => {
+        setCloudSaved(false);
+        onClose();
+      }, 1200);
+    } else {
+      onClose();
+    }
+  };
+
+  const filteredOrder = tempOrder.filter(c => {
+    if (!search.trim()) return true;
+    return c.toLowerCase().includes(search.toLowerCase().trim());
+  });
+
+  const getColCategory = (col) => {
+    const cLower = col.toLowerCase();
+    if (["vibhag", "zone", "stream", "stream group"].includes(cLower)) {
+      return { label: "Master Data", bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" };
+    }
+    if (["date", "event", "transaction id", "status", "remarks", "updated by", "unique"].includes(cLower)) {
+      return { label: "System", bg: "#F1F5F9", color: "#475569", border: "#CBD5E1" };
+    }
+    return { label: "Form Field", bg: "#F0FDF4", color: "#166534", border: "#BBF7D0" };
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.65)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(3px)"}}>
+      <div style={{background:"white",borderRadius:16,width:"100%",maxWidth:680,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 25px 50px -12px rgba(0,0,0,0.25)",border:"1px solid #E2E8F0",overflow:"hidden"}}>
+        
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F8FAFC"}}>
+          <div>
+            <h3 style={{margin:0,fontSize:"1.15rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:8}}>
+              <span>⚙️</span> Customize Table Columns
+            </h3>
+            <p style={{margin:"4px 0 0 0",fontSize:".78rem",color:"#64748B"}}>
+              Check columns to show/hide in the table. Use arrows or drag to change their left-to-right display order.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:"#64748B",padding:"4px 8px"}}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Quick Presets Bar */}
+        <div style={{padding:"10px 20px",background:"#F1F5F9",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:".74rem",fontWeight:800,color:"#475569",textTransform:"uppercase"}}>Presets:</span>
+          <button
+            type="button"
+            onClick={() => handlePreset(["Full Name", "Mobile Number", "Vibhag", "Zone", "Stream", "Stream Group", "Status", "Transaction ID"])}
+            style={{padding:"4px 9px",borderRadius:6,border:"1px solid #93C5FD",background:"#EFF6FF",color:"#1D4ED8",fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+            title="Compact essential columns fitting perfectly without horizontal scroll"
+          >
+            ⭐ Recommended (8 Cols)
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(["Full Name", "Mobile Number", "Vibhag", "Zone", "Status"])}
+            style={{padding:"4px 9px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#334155",fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+          >
+            🔍 Minimal (5 Cols)
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(["Full Name", "Stream", "Stream Group", "Obtained Marks", "Out Of Marks", "% Obtained", "Supporting Document", "Status"])}
+            style={{padding:"4px 9px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#334155",fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+          >
+            🎓 Academic
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset(["Full Name", "Mobile Number", "Alternate Mobile Number", "Email Address", "Vibhag", "Zone", "Status"])}
+            style={{padding:"4px 9px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#334155",fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+          >
+            📞 Contacts
+          </button>
+          <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              style={{padding:"3px 8px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#15803D",fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              style={{padding:"3px 8px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#DC2626",fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Search & Counter Strip */}
+        <div style={{padding:"10px 20px",borderBottom:"1px solid #F1F5F9",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+          <input
+            type="text"
+            placeholder="🔍 Search column name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{padding:"6px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",width:240,outline:"none"}}
+          />
+          <div style={{fontSize:".8rem",color:"#475569"}}>
+            <strong>{tempSelected.size}</strong> of <strong>{tempOrder.length}</strong> columns visible in table
+          </div>
+        </div>
+
+        {/* Column Reordering & Visibility List */}
+        <div style={{padding:"12px 20px",overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:6}}>
+          {filteredOrder.map((col) => {
+            const realIdx = tempOrder.indexOf(col);
+            const isVisible = tempSelected.has(col);
+            const cat = getColCategory(col);
+
+            return (
+              <div
+                key={col}
+                draggable
+                onDragStart={(e) => handleDragStart(e, realIdx)}
+                onDragOver={(e) => handleDragOver(e, realIdx)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  display:"flex",
+                  alignItems:"center",
+                  justifyContent:"space-between",
+                  padding:"7px 12px",
+                  borderRadius:8,
+                  border: isVisible ? "1.5px solid #93C5FD" : "1px solid #E2E8F0",
+                  background: isVisible ? "#F0F7FF" : "#FAFAFA",
+                  opacity: isVisible ? 1 : 0.65,
+                  cursor:"grab",
+                  transition:"all 0.15s ease"
+                }}
+              >
+                {/* Left: Drag Handle, Checkbox, Number, Name, Tag */}
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{color:"#94A3B8",fontSize:"1.1rem",cursor:"grab",userSelect:"none"}} title="Drag to reorder">
+                    ⋮⋮
+                  </span>
+                  
+                  <input
+                    type="checkbox"
+                    id={`col-chk-${col}`}
+                    checked={isVisible}
+                    onChange={() => handleToggle(col)}
+                    style={{width:16,height:16,cursor:"pointer",accentColor:"#2563EB"}}
+                  />
+
+                  <span style={{fontSize:".74rem",fontWeight:700,color:"#64748B",minWidth:22}}>
+                    #{realIdx + 1}
+                  </span>
+
+                  <label
+                    htmlFor={`col-chk-${col}`}
+                    style={{
+                      fontSize:".86rem",
+                      fontWeight: isVisible ? 700 : 500,
+                      color: isVisible ? "#0F172A" : "#64748B",
+                      cursor:"pointer"
+                    }}
+                  >
+                    {col === 'Transaction ID' ? 'Txn ID (Transaction ID)' : col}
+                  </label>
+
+                  <span style={{
+                    fontSize:".68rem",
+                    padding:"2px 6px",
+                    borderRadius:4,
+                    background: cat.bg,
+                    color: cat.color,
+                    border: `1px solid ${cat.border}`,
+                    fontWeight: 700
+                  }}>
+                    {cat.label}
+                  </span>
+                </div>
+
+                {/* Right: Reorder Up/Down & Position buttons */}
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveToTop(realIdx)}
+                    disabled={realIdx === 0}
+                    style={{padding:"3px 6px",fontSize:".7rem",borderRadius:4,border:"1px solid #CBD5E1",background:"white",cursor:realIdx===0?"not-allowed":"pointer",opacity:realIdx===0?0.3:1}}
+                    title="Move to First Column (Leftmost in Table)"
+                  >
+                    ⏫ First
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMove(realIdx, 'up')}
+                    disabled={realIdx === 0}
+                    style={{padding:"3px 8px",fontSize:".74rem",borderRadius:4,border:"1px solid #CBD5E1",background:"white",cursor:realIdx===0?"not-allowed":"pointer",opacity:realIdx===0?0.3:1,fontWeight:700}}
+                    title="Move Earlier (Left in Table)"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMove(realIdx, 'down')}
+                    disabled={realIdx === tempOrder.length - 1}
+                    style={{padding:"3px 8px",fontSize:".74rem",borderRadius:4,border:"1px solid #CBD5E1",background:"white",cursor:realIdx===tempOrder.length-1?"not-allowed":"pointer",opacity:realIdx===tempOrder.length-1?0.3:1,fontWeight:700}}
+                    title="Move Later (Right in Table)"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveToBottom(realIdx)}
+                    disabled={realIdx === tempOrder.length - 1}
+                    style={{padding:"3px 6px",fontSize:".7rem",borderRadius:4,border:"1px solid #CBD5E1",background:"white",cursor:realIdx===tempOrder.length-1?"not-allowed":"pointer",opacity:realIdx===tempOrder.length-1?0.3:1}}
+                    title="Move to Last Column (Rightmost in Table)"
+                  >
+                    ⏬ Last
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{padding:"12px 20px",borderTop:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,background:"#F8FAFC"}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Reset all columns to default recommended order and visibility?")) {
+                  onResetDefault();
+                  onClose();
+                }
+              }}
+              style={{padding:"6px 12px",borderRadius:6,border:"1px solid #CBD5E1",background:"white",color:"#475569",fontSize:".78rem",fontWeight:600,cursor:"pointer"}}
+            >
+              ↺ Reset to Default
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApply(true)}
+              style={{padding:"6px 12px",borderRadius:6,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:".78rem",fontWeight:700,cursor:"pointer"}}
+              title="Save this column layout as cloud default for all admins"
+            >
+              {cloudSaved ? "✅ Saved to Cloud!" : "💾 Save as Global Default"}
+            </button>
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{padding:"7px 16px",borderRadius:8,border:"1px solid #CBD5E1",background:"white",color:"#475569",fontSize:".82rem",fontWeight:600,cursor:"pointer"}}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApply(false)}
+              style={{
+                padding:"7px 20px",
+                borderRadius:8,
+                border:"none",
+                background:"linear-gradient(135deg, #2563EB, #1D4ED8)",
+                color:"white",
+                fontSize:".86rem",
+                fontWeight:800,
+                cursor:"pointer",
+                boxShadow:"0 2px 6px rgba(37,99,235,0.3)"
+              }}
+            >
+              Apply ({tempSelected.size} Columns)
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUserPicker }) {
   const [localPreviewUser, setLocalPreviewUser] = useState(null);
   const [localShowUserPicker, setLocalShowUserPicker] = useState(false);
@@ -36884,6 +37286,52 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   const [selectedPreset, setSelectedPreset] = useState("");
   const [showBulkTools, setShowBulkTools] = useState(false);
   const [showMasterImportModal, setShowMasterImportModal] = useState(false);
+  const [showColumnModal, setShowColumnModal] = useState(false);
+
+  // Default visible columns: compact view fitting horizontally without left/right scrolling
+  const defaultVisibleCols = [
+    "Full Name",
+    "Mobile Number",
+    "Vibhag",
+    "Zone",
+    "Stream",
+    "Stream Group",
+    "Status",
+    "Transaction ID"
+  ];
+
+  // Load custom columns config from C or localStorage
+  const [selectedCols, setSelectedCols] = useState(() => {
+    if (Array.isArray(C?.regVisibleColumns) && C.regVisibleColumns.length > 0) {
+      return C.regVisibleColumns;
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem("mmp_reg_visible_columns");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return defaultVisibleCols;
+  });
+
+  const [colOrder, setColOrder] = useState(() => {
+    if (Array.isArray(C?.regColumnOrder) && C.regColumnOrder.length > 0) {
+      return C.regColumnOrder;
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem("mmp_reg_column_order");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return null;
+  });
 
   const handleApplyMasterImportUpdates = async (updatedRegsMap) => {
     setRegs(prev => {
@@ -37571,6 +38019,75 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     return a.localeCompare(b);
   });
 
+  // Master ordered list of all possible table columns (combining standard system columns and dynamic form/master fields)
+  const allMasterCols = useMemo(() => {
+    const systemCols = ["Date", "Event", "Transaction ID", "Unique", "Status", "Remarks", "Updated By"];
+    const priorityList = [
+      "Full Name", "Name", "Mobile Number", "Mobile", "Vibhag", "Zone", "Stream", "Stream Group",
+      "Status", "Date", "Transaction ID", "Obtained Marks", "Out Of Marks", "% Obtained",
+      "Unique", "Remarks", "Updated By", "Event", "Email Address", "Email", "Address",
+      "Gender", "Alternate Mobile Number", "Age_year", "Supporting Document"
+    ];
+    
+    const combinedSet = new Set([...priorityList, ...allKeys, ...systemCols]);
+    const list = Array.from(combinedSet).filter(c => {
+      if (!c) return false;
+      const lower = c.toLowerCase().trim();
+      if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id') return false;
+      return true;
+    });
+
+    if (Array.isArray(colOrder) && colOrder.length > 0) {
+      const ordered = [...colOrder.filter(c => list.includes(c))];
+      list.forEach(c => {
+        if (!ordered.includes(c)) ordered.push(c);
+      });
+      return ordered;
+    }
+
+    return list;
+  }, [allKeys, colOrder]);
+
+  // The active subset of columns to display on screen in the user's customized order
+  const visibleColumns = useMemo(() => {
+    const set = new Set(selectedCols.map(c => c === 'Txn ID' ? 'Transaction ID' : c));
+    const visible = allMasterCols.filter(c => set.has(c));
+    return visible.length > 0 ? visible : ["Full Name", "Mobile Number", "Status"];
+  }, [allMasterCols, selectedCols]);
+
+  const handleSaveColumnConfig = (newSelected, newOrder, saveToCloud = false) => {
+    setSelectedCols(newSelected);
+    if (newOrder) setColOrder(newOrder);
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem("mmp_reg_visible_columns", JSON.stringify(newSelected));
+        if (newOrder) localStorage.setItem("mmp_reg_column_order", JSON.stringify(newOrder));
+      } catch (e) {}
+    }
+
+    if (saveToCloud && setC && typeof saveToFb === 'function') {
+      const updatedC = {
+        ...C,
+        regVisibleColumns: newSelected,
+        regColumnOrder: newOrder || allMasterCols
+      };
+      setC(updatedC);
+      saveToFb(updatedC);
+    }
+  };
+
+  const handleResetColumnConfig = () => {
+    setSelectedCols(defaultVisibleCols);
+    setColOrder(null);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem("mmp_reg_visible_columns");
+        localStorage.removeItem("mmp_reg_column_order");
+      } catch (e) {}
+    }
+  };
+
   const getUniqueValues = (colKey) => {
     const vals = new Set();
     activeRegsList.forEach(r => {
@@ -37578,12 +38095,13 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       let val = "";
       if(colKey === "Date") { try { if(r._submittedAt) val = new Date(r._submittedAt).toLocaleString().split(',')[0].trim(); } catch(e){} }
       else if(colKey === "Event") val = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
-      else if(colKey === "Transaction ID") val = r['Transaction ID'] || "-";
+      else if(colKey === "Transaction ID" || colKey === "Txn ID") val = r['Transaction ID'] || r.transactionId || "-";
       else if(colKey === "Unique") val = getDuplicateInfo(r).isDuplicate ? "Duplicate" : "Unique";
       else if(colKey === "Status") val = r['Status'] || "Pending";
       else if(colKey === "Updated By") val = r['Updated By'] || "-";
+      else if(colKey === "Remarks") val = r['Remarks'] || "-";
       else if(colKey === "Vibhag" || colKey === "Vibhag New" || colKey.toLowerCase().includes("vibhag")) val = getRecordVibhag(r);
-      else val = r[colKey] || "-";
+      else val = r[colKey] !== undefined && r[colKey] !== null && String(r[colKey]).trim() !== '' ? r[colKey] : (r.formData ? r.formData[colKey] : "-");
       
       if (typeof val === 'string' && val.startsWith('http')) return;
       if (typeof val === 'string') val = val.trim();
@@ -37597,28 +38115,33 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
 
   const handleExportCSV = () => {
     if(filteredRegs.length === 0) return;
-    const headers = ["Date", "Event", "Transaction ID", "Unique", "Status", "Remarks", "Updated By", ...allKeys];
+    const headers = visibleColumns;
     const rows = filteredRegs.map(r => {
-      let date = "-";
-      try { if(r._submittedAt) date = new Date(r._submittedAt).toLocaleString(); } catch(e){}
-      const evName = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
-      const dupTag = getDuplicateInfo(r).tagText;
-      
-      const rowData = [
-        `"${date}"`,
-        `"${evName}"`,
-        `"${r['Transaction ID'] || '-'}"`,
-        `"${dupTag}"`,
-        `"${r['Status'] || 'Pending'}"`,
-        `"${r['Remarks'] || ''}"`,
-        `"${r['Updated By'] || '-'}"`,
-        ...allKeys.map(k => {
-          let val = r[k] || "";
-          if (typeof val === 'string') val = val.replace(/"/g, '""');
-          else val = String(val);
-          return `"${val}"`;
-        })
-      ];
+      const rowData = headers.map(k => {
+        let val = "";
+        if (k === "Date") {
+          try { if (r._submittedAt) val = new Date(r._submittedAt).toLocaleString(); } catch(e){}
+        } else if (k === "Event") {
+          val = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
+        } else if (k === "Transaction ID" || k === "Txn ID") {
+          val = r['Transaction ID'] || r.transactionId || "-";
+        } else if (k === "Unique") {
+          val = getDuplicateInfo(r).tagText;
+        } else if (k === "Status") {
+          val = r['Status'] || "Pending";
+        } else if (k === "Remarks") {
+          val = r['Remarks'] || "";
+        } else if (k === "Updated By") {
+          val = r['Updated By'] || "-";
+        } else if (k === "Vibhag" || k === "Vibhag New" || k.toLowerCase().includes("vibhag")) {
+          val = getRecordVibhag(r);
+        } else {
+          val = r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== '' ? r[k] : (r.formData ? r.formData[k] : "");
+        }
+        if (typeof val === 'string') val = val.replace(/"/g, '""').replace(/\|/g, ' ');
+        else val = String(val);
+        return `"${val}"`;
+      });
       return rowData.join(",");
     });
     
@@ -38040,6 +38563,28 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
             >
               <span>🔗</span> Map Master Data
             </button>
+            <button 
+              type="button"
+              onClick={() => setShowColumnModal(true)} 
+              style={{
+                padding:"6px 12px",
+                borderRadius:8,
+                fontSize:".8rem",
+                fontWeight:700,
+                display:"flex",
+                alignItems:"center",
+                gap:5,
+                background: visibleColumns.length < allMasterCols.length ? "#EFF6FF" : "white",
+                color: visibleColumns.length < allMasterCols.length ? "#1D4ED8" : "var(--dt)",
+                border: visibleColumns.length < allMasterCols.length ? "1.5px solid #3B82F6" : "1px solid var(--bd)",
+                cursor:"pointer",
+                whiteSpace:"nowrap",
+                boxShadow:"0 1px 3px rgba(0,0,0,0.06)"
+              }}
+              title="Customize visible columns and reorder table columns"
+            >
+              <span>⚙️</span> Columns ({visibleColumns.length}/{allMasterCols.length})
+            </button>
             <button onClick={() => setShowBulkTools(!showBulkTools)} style={{padding:"6px 12px",borderRadius:8,fontSize:".8rem",fontWeight:600,display:"flex",alignItems:"center",gap:4,background:showBulkTools?"#E8650A":"#F5F5F5",color:showBulkTools?"white":"var(--dt)",border:"1px solid var(--bd)",cursor:"pointer",whiteSpace:"nowrap"}}>
               ⚡ Bulk Tools {showBulkTools ? "▲" : "▼"}
             </button>
@@ -38335,15 +38880,10 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                   />
                 </th>
                 <th style={{padding:"14px 12px",textAlign:"center",whiteSpace:"nowrap"}}>View</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Date</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Event</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Txn ID</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Unique</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Status</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Remarks</th>
-                <th style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>Updated By</th>
-                {allKeys.map(k => (
-                  <th key={k} style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>{k}</th>
+                {visibleColumns.map(k => (
+                  <th key={k} style={{padding:"14px 12px",textAlign:"left",whiteSpace:"nowrap"}}>
+                    {k === "Transaction ID" ? "Txn ID" : k}
+                  </th>
                 ))}
                 <th style={{padding:"14px 12px",textAlign:"left"}}>Delete</th>
               </tr>
@@ -38398,7 +38938,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                   </select>
                 </th>
                 <th></th>
-                {["Date", "Event", "Transaction ID", "Unique", "Status", "Remarks", "Updated By", ...allKeys].map(k => {
+                {visibleColumns.map(k => {
                   const uniqueVals = getUniqueValues(k);
                   return (
                     <th key={`filter-${k}`} style={{padding:"6px 12px", fontWeight:"normal"}}>
@@ -38512,114 +39052,140 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                         </button>
                       </div>
                     </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>{date}</td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
-                      <div>{evName}</div>
-                      {ev?.section && ev.section !== 'Default' && (
-                        <span style={{fontSize:".7rem",background:"var(--tl)",color:"var(--dt)",padding:"2px 6px",borderRadius:4,marginTop:4,display:"inline-block",fontWeight:600}}>
-                          {ev.section}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
-                      <div style={{fontWeight:700,fontFamily:"monospace",color:"#0F172A"}}>{r['Transaction ID'] || "-"}</div>
-                      <div style={{marginTop:3}}>
-                        {(r.passOpenCount && r.passOpenCount > 0) ? (
-                          <span 
-                            style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",padding:"1px 6px",borderRadius:10,fontSize:".68rem",fontWeight:800,display:"inline-flex",alignItems:"center",gap:3}} 
-                            title={`Pass opened ${r.passOpenCount} time${r.passOpenCount > 1 ? 's' : ''}. Last: ${new Date(r.lastPassOpenedAt || r._submittedAt).toLocaleString()}`}
-                          >
-                            <span>👁️</span> {r.passOpenCount} {r.passOpenCount === 1 ? 'Open' : 'Opens'}
-                          </span>
-                        ) : (
-                          <span 
-                            style={{background:"#F8FAFC",color:"#94A3B8",border:"1px solid #E2E8F0",padding:"1px 6px",borderRadius:10,fontSize:".68rem",fontWeight:600}} 
-                            title="Recipient has not clicked/opened their invitation pass link yet"
-                          >
-                            ⚪ Unopened
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap"}}>
-                      {(() => {
+                    {visibleColumns.map(k => {
+                      if (k === 'Date') {
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>{date}</td>
+                        );
+                      }
+                      if (k === 'Event') {
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
+                            <div>{evName}</div>
+                            {ev?.section && ev.section !== 'Default' && (
+                              <span style={{fontSize:".7rem",background:"var(--tl)",color:"var(--dt)",padding:"2px 6px",borderRadius:4,marginTop:4,display:"inline-block",fontWeight:600}}>
+                                {ev.section}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      }
+                      if (k === 'Transaction ID' || k === 'Txn ID') {
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
+                            <div style={{fontWeight:700,fontFamily:"monospace",color:"#0F172A"}}>{r['Transaction ID'] || "-"}</div>
+                            <div style={{marginTop:3}}>
+                              {(r.passOpenCount && r.passOpenCount > 0) ? (
+                                <span 
+                                  style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",padding:"1px 6px",borderRadius:10,fontSize:".68rem",fontWeight:800,display:"inline-flex",alignItems:"center",gap:3}} 
+                                  title={`Pass opened ${r.passOpenCount} time${r.passOpenCount > 1 ? 's' : ''}. Last: ${new Date(r.lastPassOpenedAt || r._submittedAt).toLocaleString()}`}
+                                >
+                                  <span>👁️</span> {r.passOpenCount} {r.passOpenCount === 1 ? 'Open' : 'Opens'}
+                                </span>
+                              ) : (
+                                <span 
+                                  style={{background:"#F8FAFC",color:"#94A3B8",border:"1px solid #E2E8F0",padding:"1px 6px",borderRadius:10,fontSize:".68rem",fontWeight:600}} 
+                                  title="Recipient has not clicked/opened their invitation pass link yet"
+                                >
+                                  ⚪ Unopened
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (k === 'Unique') {
                         const dup = getDuplicateInfo(r);
-                        if (dup.isDuplicate) {
-                          return (
-                            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap"}}>
+                            {dup.isDuplicate ? (
+                              <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                                <span style={{
+                                  background:"#FEF2F2",
+                                  color:"#DC2626",
+                                  border:"1.5px solid #FCA5A5",
+                                  padding:"3px 8px",
+                                  borderRadius:6,
+                                  fontSize:".74rem",
+                                  fontWeight:800,
+                                  display:"inline-flex",
+                                  alignItems:"center",
+                                  gap:4,
+                                  whiteSpace:"nowrap",
+                                  boxShadow:"0 1px 4px rgba(220,38,38,0.15)"
+                                }} title={`Duplicate entry matching ${dup.otherTxnIds.length} other submission(s)`}>
+                                  <span>⚠️</span> Duplicate entry vide number {dup.otherTxnIds.join(", ")}
+                                </span>
+                                <span style={{fontSize:".68rem",color:"#991B1B",fontWeight:600}}>
+                                  ({dup.count} matching submissions with same Name & Mobile)
+                                </span>
+                              </div>
+                            ) : (
                               <span style={{
-                                background:"#FEF2F2",
-                                color:"#DC2626",
-                                border:"1.5px solid #FCA5A5",
+                                background:"#F0FDF4",
+                                color:"#166534",
+                                border:"1px solid #BBF7D0",
                                 padding:"3px 8px",
                                 borderRadius:6,
                                 fontSize:".74rem",
-                                fontWeight:800,
+                                fontWeight:700,
                                 display:"inline-flex",
                                 alignItems:"center",
                                 gap:4,
-                                whiteSpace:"nowrap",
-                                boxShadow:"0 1px 4px rgba(220,38,38,0.15)"
-                              }} title={`Duplicate entry matching ${dup.otherTxnIds.length} other submission(s)`}>
-                                <span>⚠️</span> Duplicate entry vide number {dup.otherTxnIds.join(", ")}
+                                whiteSpace:"nowrap"
+                              }}>
+                                <span>✓</span> Unique
                               </span>
-                              <span style={{fontSize:".68rem",color:"#991B1B",fontWeight:600}}>
-                                ({dup.count} matching submissions with same Name & Mobile)
-                              </span>
-                            </div>
-                          );
-                        }
-                        return (
-                          <span style={{
-                            background:"#F0FDF4",
-                            color:"#166534",
-                            border:"1px solid #BBF7D0",
-                            padding:"3px 8px",
-                            borderRadius:6,
-                            fontSize:".74rem",
-                            fontWeight:700,
-                            display:"inline-flex",
-                            alignItems:"center",
-                            gap:4,
-                            whiteSpace:"nowrap"
-                          }}>
-                            <span>✓</span> Unique
-                          </span>
+                            )}
+                          </td>
                         );
-                      })()}
-                    </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap"}}>
-                      <select 
-                        value={r['Status'] || "Pending"} 
-                        onChange={(e) => handleStatusChange(r, e.target.value)}
-                        style={{
-                          padding:"4px 8px", borderRadius:6, border:"1px solid rgba(0,0,0,0.1)", fontSize:".8rem", outline:"none",
-                          background: (r['Status']==="Approved")?"#E8F5E9":(r['Status']==="Disapproved")?"#FFEBEE":(r['Status']==="Needs Info")?"#FFF3E0":"#F5F5F5",
-                          color: (r['Status']==="Approved")?"#2E7D32":(r['Status']==="Disapproved")?"#C62828":(r['Status']==="Needs Info")?"#EF6C00":"#424242",
-                          fontWeight: 600, fontFamily: "inherit", cursor:"pointer"
-                        }}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Approved">Approved</option>
-                        <option value="Disapproved">Disapproved</option>
-                        <option value="Needs Info">Needs Info</option>
-                      </select>
-                    </td>
-                    <td style={{padding:"12px",maxWidth:200}}>
-                      <div style={{maxHeight:"60px", overflowY:"auto", whiteSpace:"normal", fontSize:".8rem", color:"#111827", display:"flex", alignItems:"flex-start", gap: 6, minWidth:120, paddingRight:4}}>
-                        <span>{r['Remarks'] || "-"}</span>
-                        <button onClick={() => handleEditRemarks(r)} style={{background:"white",border:"1px solid #E0E0E0",borderRadius:4,cursor:"pointer",fontSize:".7rem",padding:"2px 4px",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}} title="Edit Remarks">✏️</button>
-                      </div>
-                    </td>
-                    <td style={{padding:"12px",whiteSpace:"nowrap",fontSize:".8rem",color:"#111827"}}>
-                      {r['Updated By'] || "-"}
-                    </td>
-                    {allKeys.map(k => {
+                      }
+                      if (k === 'Status') {
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap"}}>
+                            <select 
+                              value={r['Status'] || "Pending"} 
+                              onChange={(e) => handleStatusChange(r, e.target.value)}
+                              style={{
+                                padding:"4px 8px", borderRadius:6, border:"1px solid rgba(0,0,0,0.1)", fontSize:".8rem", outline:"none",
+                                background: (r['Status']==="Approved")?"#E8F5E9":(r['Status']==="Disapproved")?"#FFEBEE":(r['Status']==="Needs Info")?"#FFF3E0":"#F5F5F5",
+                                color: (r['Status']==="Approved")?"#2E7D32":(r['Status']==="Disapproved")?"#C62828":(r['Status']==="Needs Info")?"#EF6C00":"#424242",
+                                fontWeight: 600, fontFamily: "inherit", cursor:"pointer"
+                              }}
+                            >
+                              <option value="Pending">Pending</option>
+                              <option value="Approved">Approved</option>
+                              <option value="Disapproved">Disapproved</option>
+                              <option value="Needs Info">Needs Info</option>
+                            </select>
+                          </td>
+                        );
+                      }
+                      if (k === 'Remarks') {
+                        return (
+                          <td key={k} style={{padding:"12px",maxWidth:200}}>
+                            <div style={{maxHeight:"60px", overflowY:"auto", whiteSpace:"normal", fontSize:".8rem", color:"#111827", display:"flex", alignItems:"flex-start", gap: 6, minWidth:120, paddingRight:4}}>
+                              <span>{r['Remarks'] || "-"}</span>
+                              <button onClick={() => handleEditRemarks(r)} style={{background:"white",border:"1px solid #E0E0E0",borderRadius:4,cursor:"pointer",fontSize:".7rem",padding:"2px 4px",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}} title="Edit Remarks">✏️</button>
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (k === 'Updated By') {
+                        return (
+                          <td key={k} style={{padding:"12px",whiteSpace:"nowrap",fontSize:".8rem",color:"#111827"}}>
+                            {r['Updated By'] || "-"}
+                          </td>
+                        );
+                      }
+
+                      // Dynamic fields (Vibhag, Zone, Stream, Stream Group, Custom Questions, Uploads, etc.)
                       let val = (k === 'Vibhag' || k === 'Vibhag New' || k.toLowerCase().includes('vibhag')) 
                         ? getRecordVibhag(r) 
                         : (r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== '' 
                             ? r[k] 
                             : (r.formData && r.formData[k] !== undefined && r.formData[k] !== null && String(r.formData[k]).trim() !== '' ? r.formData[k] : "-"));
+                      
                       if (typeof val === 'string' && val.startsWith('http')) {
                         const isDoc = val.match(/\.(pdf|doc|docx)/i);
                         if (isDoc) {
@@ -38649,7 +39215,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                         }
                       }
                       
-                      else if (typeof val === 'string') val = val.replace(/\|/g, ' ');
+                      if (typeof val === 'string') val = val.replace(/\|/g, ' ');
                       else val = String(val);
                       
                       return (
@@ -38668,7 +39234,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                   </tr>
                 );
               })}
-              {filteredRegs.length === 0 && <tr><td colSpan={allKeys.length + 8} style={{padding:40,textAlign:"center",color:"var(--mu)",fontSize:"1rem"}}>No registrations found matching your search.</td></tr>}
+              {filteredRegs.length === 0 && <tr><td colSpan={visibleColumns.length + 3} style={{padding:40,textAlign:"center",color:"var(--mu)",fontSize:"1rem"}}>No registrations found matching your search.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -38998,6 +39564,19 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           setC={setC}
           saveToFb={saveToFb}
           onUpdateRegs={handleApplyMasterImportUpdates}
+        />
+      )}
+
+      {showColumnModal && (
+        <AdminColumnCustomizerModal
+          isOpen={showColumnModal}
+          onClose={() => setShowColumnModal(false)}
+          allColumns={allMasterCols}
+          selectedColumns={visibleColumns}
+          onSaveConfig={handleSaveColumnConfig}
+          onResetDefault={handleResetColumnConfig}
+          C={C}
+          saveToFb={saveToFb}
         />
       )}
 
