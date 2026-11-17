@@ -35906,9 +35906,13 @@ function AdminMasterImportModal({
   masterTables = [],
   auth,
   allKeys = [],
+  C,
+  setC,
+  saveToFb,
   onUpdateRegs
 }) {
-  const [scope, setScope] = useState(() => (selectedIds.length > 0 ? "selected" : filteredRegs.length < regs.length ? "filtered" : "all"));
+  // Default to "all" so all registrations are mapped unless user explicitly selected specific rows with checkboxes
+  const [scope, setScope] = useState(() => (selectedIds.length > 0 ? "selected" : "all"));
   const [overwriteExisting, setOverwriteExisting] = useState(true);
 
   // Available registration columns for matching
@@ -35946,9 +35950,53 @@ function AdminMasterImportModal({
     };
   };
 
-  // Multiple mapping rules (Tabs)
-  const [rules, setRules] = useState(() => [buildInitialRule('rule_1')]);
-  const [activeRuleId, setActiveRuleId] = useState('rule_1');
+  // Multiple mapping rules (Tabs) - loaded from C.masterDataMappings or localStorage
+  const [rules, setRules] = useState(() => {
+    if (Array.isArray(C?.masterDataMappings) && C.masterDataMappings.length > 0) {
+      return C.masterDataMappings;
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem("masterDataMappings");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [buildInitialRule('rule_1')];
+  });
+  const [activeRuleId, setActiveRuleId] = useState(() => rules[0]?.id || 'rule_1');
+  const [savedNotice, setSavedNotice] = useState(false);
+
+  // Synchronize when C.masterDataMappings updates externally
+  useEffect(() => {
+    if (Array.isArray(C?.masterDataMappings) && C.masterDataMappings.length > 0) {
+      setRules(C.masterDataMappings);
+      if (!C.masterDataMappings.some(r => r.id === activeRuleId)) {
+        setActiveRuleId(C.masterDataMappings[0].id);
+      }
+    }
+  }, [C?.masterDataMappings]);
+
+  // Persist mapping rules permanently to cloud config & localStorage
+  const persistRules = async (newRules) => {
+    setRules(newRules);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem("masterDataMappings", JSON.stringify(newRules)); } catch (e) {}
+    }
+    if (setC && typeof saveToFb === 'function') {
+      try {
+        const updatedC = { ...C, masterDataMappings: newRules };
+        setC(updatedC);
+        await saveToFb(updatedC);
+        setSavedNotice(true);
+        setTimeout(() => setSavedNotice(false), 2500);
+      } catch (err) {
+        console.warn("Error persisting masterDataMappings:", err);
+      }
+    }
+  };
 
   // Currently active rule
   const currentRule = rules.find(r => r.id === activeRuleId) || rules[0] || null;
@@ -35957,7 +36005,11 @@ function AdminMasterImportModal({
 
   // Update current rule helper
   const updateCurrentRule = (changes) => {
-    setRules(prev => prev.map(r => r.id === activeRuleId ? { ...r, ...changes } : r));
+    const updated = rules.map(r => r.id === activeRuleId ? { ...r, ...changes } : r);
+    setRules(updated);
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem("masterDataMappings", JSON.stringify(updated)); } catch (e) {}
+    }
   };
 
   // Add a new mapping rule tab
@@ -35966,7 +36018,8 @@ function AdminMasterImportModal({
     const nextTable = (masterTables || []).find(t => !usedTableIds.has(t.id)) || masterTables[0] || null;
     const newId = 'rule_' + Date.now() + '_' + Math.random().toString(36).substring(7);
     const newRule = buildInitialRule(newId, nextTable);
-    setRules(prev => [...prev, newRule]);
+    const updated = [...rules, newRule];
+    persistRules(updated);
     setActiveRuleId(newId);
   };
 
@@ -35981,7 +36034,8 @@ function AdminMasterImportModal({
       importCols: [...(source.importCols || [])],
       targetColNames: { ...(source.targetColNames || {}) }
     };
-    setRules(prev => [...prev, cloned]);
+    const updated = [...rules, cloned];
+    persistRules(updated);
     setActiveRuleId(newId);
   };
 
@@ -35992,7 +36046,7 @@ function AdminMasterImportModal({
       return;
     }
     const nextRules = rules.filter(r => r.id !== ruleId);
-    setRules(nextRules);
+    persistRules(nextRules);
     if (activeRuleId === ruleId) {
       setActiveRuleId(nextRules[0].id);
     }
@@ -36011,13 +36065,15 @@ function AdminMasterImportModal({
       rKey = "Vibhag";
     }
     const importable = (tbl.columns || []).filter(c => c !== mKey && c !== 'id');
-    updateCurrentRule({
+    const updated = rules.map(r => r.id === activeRuleId ? {
+      ...r,
       tableId: newTblId,
       masterKeyCol: mKey,
       regKeyCol: rKey,
       importCols: importable.length > 0 ? [importable[0]] : [],
       targetColNames: {}
-    });
+    } : r);
+    persistRules(updated);
   };
 
   // Available import columns for current rule's table
@@ -36157,9 +36213,12 @@ function AdminMasterImportModal({
       return `Rule ${i + 1}: [${r.regKeyCol} ⇄ ${tbl?.name || 'Master'}.${r.masterKeyCol}] ➔ Import [${(r.importCols || []).join(', ')}]`;
     });
 
-    const confirmMsg = `Are you sure you want to execute ${validRules.length} mapping rule(s) across ${targetList.length} registrations?\n\n` +
+    const confirmMsg = `Are you sure you want to execute ${validRules.length} mapping rule(s) across ALL ${targetList.length} registrations?\n\n` +
       ruleSummaries.join('\n');
     if (!window.confirm(confirmMsg)) return;
+
+    // Automatically persist the configured rules to cloud before executing
+    await persistRules(rules);
 
     setIsProcessing(true);
     let success = 0;
@@ -36238,7 +36297,7 @@ function AdminMasterImportModal({
     setIsProcessing(false);
 
     if (updatedRegsMap.size > 0 && onUpdateRegs) {
-      onUpdateRegs(updatedRegsMap);
+      await onUpdateRegs(updatedRegsMap);
     }
 
     alert(`🎉 Multi-Mapping Import Complete!\n\nSuccessfully updated ${success} registrations across ${validRules.length} mapping rule(s).${failed > 0 ? `\nFailed: ${failed} rows.` : ''}`);
@@ -36256,7 +36315,7 @@ function AdminMasterImportModal({
           <div style={{position:"absolute",inset:0,background:"rgba(255,255,255,0.96)",zIndex:50,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
             <div style={{fontSize:"2.5rem",marginBottom:16,animation:"bounce 1s infinite"}}>🔄</div>
             <h3 style={{fontSize:"1.2rem",fontWeight:800,color:"#1E293B",marginBottom:8}}>Executing Multi-Mapping on Registrations</h3>
-            <p style={{fontSize:".85rem",color:"#64748B",marginBottom:20}}>Applying {validRules.length} mapping rules across records safely...</p>
+            <p style={{fontSize:".85rem",color:"#64748B",marginBottom:20}}>Applying {validRules.length} mapping rules across {targetList.length} records safely...</p>
             
             <div style={{width:"100%",maxWidth:420,height:12,background:"#E2E8F0",borderRadius:8,overflow:"hidden",marginBottom:12}}>
               <div style={{width:`${Math.round((progress.current / (progress.total || 1)) * 100)}%`,height:"100%",background:"linear-gradient(90deg, #2563EB, #10B981)",transition:"width 0.2s"}}></div>
@@ -36401,6 +36460,27 @@ function AdminMasterImportModal({
                     </div>
 
                     <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                      <button
+                        type="button"
+                        onClick={() => persistRules(rules)}
+                        style={{
+                          background: savedNotice ? '#DCFCE7' : '#EFF6FF',
+                          border: savedNotice ? '1px solid #86EFAC' : '1px solid #BFDBFE',
+                          color: savedNotice ? '#166534' : '#1D4ED8',
+                          fontSize: '.75rem',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        title="Save all mapping rules permanently to cloud database"
+                      >
+                        {savedNotice ? '✅ Saved to Cloud!' : '💾 Save Mapping Rules'}
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleDuplicateRule(currentRule.id)}
@@ -36602,14 +36682,16 @@ function AdminMasterImportModal({
                   <button
                     type="button"
                     onClick={() => setScope("all")}
-                    style={{padding:"5px 10px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="all"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="all"?"#EFF6FF":"white",color:scope==="all"?"#1D4ED8":"#475569"}}
+                    style={{padding:"5px 12px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="all"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="all"?"#EFF6FF":"white",color:scope==="all"?"#1D4ED8":"#475569"}}
+                    title="Apply mapping across all database registrations"
                   >
                     All ({regs.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setScope("filtered")}
-                    style={{padding:"5px 10px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="filtered"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="filtered"?"#EFF6FF":"white",color:scope==="filtered"?"#1D4ED8":"#475569"}}
+                    style={{padding:"5px 12px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="filtered"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="filtered"?"#EFF6FF":"white",color:scope==="filtered"?"#1D4ED8":"#475569"}}
+                    title="Apply mapping only to current filtered subset of rows"
                   >
                     Filtered ({filteredRegs.length})
                   </button>
@@ -36617,7 +36699,8 @@ function AdminMasterImportModal({
                     <button
                       type="button"
                       onClick={() => setScope("selected")}
-                      style={{padding:"5px 10px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="selected"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="selected"?"#EFF6FF":"white",color:scope==="selected"?"#1D4ED8":"#475569"}}
+                      style={{padding:"5px 12px",borderRadius:6,fontSize:".78rem",fontWeight:700,cursor:"pointer",border:scope==="selected"?"2px solid #2563EB":"1px solid #CBD5E1",background:scope==="selected"?"#EFF6FF":"white",color:scope==="selected"?"#1D4ED8":"#475569"}}
+                      title="Apply mapping only to rows checked with checkboxes"
                     >
                       Selected ({selectedIds.length})
                     </button>
@@ -36643,7 +36726,7 @@ function AdminMasterImportModal({
             {/* Modal Footer */}
             <div style={{padding:"12px 20px",borderTop:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:"#F8FAFC"}}>
               <div style={{fontSize:".8rem",color:"#475569"}}>
-                <strong>{validRules.length}</strong> of <strong>{rules.length}</strong> mapping tab(s) ready to execute
+                <strong>{validRules.length}</strong> of <strong>{rules.length}</strong> mapping tab(s) ready to execute on <strong>{targetList.length}</strong> records
               </div>
 
               <div style={{display:'flex',gap:10}}>
@@ -36672,7 +36755,7 @@ function AdminMasterImportModal({
                     opacity:(isProcessing || validRules.length === 0 || targetList.length === 0) ? 0.6 : 1
                   }}
                 >
-                  🚀 Confirm & Execute All Mappings ({validRules.length} Rule{validRules.length !== 1 ? 's' : ''})
+                  🚀 Confirm & Execute All Mappings ({targetList.length} Registrations)
                 </button>
               </div>
             </div>
@@ -36715,13 +36798,35 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   const [showBulkTools, setShowBulkTools] = useState(false);
   const [showMasterImportModal, setShowMasterImportModal] = useState(false);
 
-  const handleApplyMasterImportUpdates = (updatedRegsMap) => {
-    setRegs(prev => prev.map(r => {
-      if (updatedRegsMap.has(r.id)) {
-        return { ...r, ...updatedRegsMap.get(r.id) };
+  const handleApplyMasterImportUpdates = async (updatedRegsMap) => {
+    setRegs(prev => {
+      const updated = prev.map(r => {
+        if (updatedRegsMap.has(r.id)) {
+          return { ...r, ...updatedRegsMap.get(r.id) };
+        }
+        return r;
+      });
+      if (typeof window !== 'undefined') {
+        window.__MMP_REGS_CACHE__ = updated;
+        window.__MMP_ALL_REGS_RAW__ = updated;
       }
-      return r;
-    }));
+      return updated;
+    });
+
+    try {
+      if (typeof fbFetchRegistrations === 'function') {
+        const fresh = await fbFetchRegistrations(auth?.idToken);
+        if (fresh && fresh.length > 0) {
+          setRegs(fresh);
+          if (typeof window !== 'undefined') {
+            window.__MMP_REGS_CACHE__ = fresh;
+            window.__MMP_ALL_REGS_RAW__ = fresh;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Background refresh after master import:", e);
+    }
   };
   const [historyModalReg, setHistoryModalReg] = useState(null);
   const [whatsAppModalReg, setWhatsAppModalReg] = useState(null);
@@ -37335,8 +37440,8 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   const ignoreKeys = ['id', 'eventId', 'eventTitle', 'eventName', '_submittedAt', 'Transaction ID', 'Status', 'Remarks', 'Updated By', 'logHistory', 'status', 'remarks'];
   const allKeysSet = new Set();
   
-  const targetRegsForKeys = (filteredRegs && filteredRegs.length > 0) ? filteredRegs : regs;
-  targetRegsForKeys.forEach(r => {
+  // Inspect all registrations so mapped or newly imported columns are always visible even when filtering
+  (regs || []).forEach(r => {
     if(!r) return;
     Object.keys(r).forEach(k => {
       if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
@@ -37350,9 +37455,21 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       }
     });
   });
+
+  // Also include any target columns configured in masterDataMappings
+  if (Array.isArray(C?.masterDataMappings)) {
+    C.masterDataMappings.forEach(rule => {
+      (rule.importCols || []).forEach(col => {
+        const targetCol = (rule.targetColNames?.[col] || col).trim();
+        if (targetCol && !ignoreKeys.includes(targetCol)) {
+          allKeysSet.add(targetCol);
+        }
+      });
+    });
+  }
   
   let allKeys = Array.from(allKeysSet).filter(k => k !== 'Vibhag New' && k.toLowerCase().replace(/[\s_-]+/g, '') !== 'vibhagnew');
-  const priority = ["Full Name", "Name", "Mobile Number", "Mobile", "Phone", "Email Address", "Email"];
+  const priority = ["Full Name", "Name", "Mobile Number", "Mobile", "Phone", "Email Address", "Email", "Vibhag", "Zone", "Stream", "Stream Group"];
   allKeys.sort((a, b) => {
     const ia = priority.indexOf(a);
     const ib = priority.indexOf(b);
@@ -38783,6 +38900,9 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           masterTables={C?.masterTables || []}
           auth={auth}
           allKeys={allKeys}
+          C={C}
+          setC={setC}
+          saveToFb={saveToFb}
           onUpdateRegs={handleApplyMasterImportUpdates}
         />
       )}
