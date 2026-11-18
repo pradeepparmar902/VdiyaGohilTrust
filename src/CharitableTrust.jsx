@@ -28361,17 +28361,41 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           />
                         </div>
 
-                        {/* Signatory */}
+                        {/* Signatory / Footer Sign-off (Paragraph Format) */}
                         <div>
-                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                            4. Signatory / Footer Sign-off:
-                          </label>
-                          <input
-                            type="text"
-                            value={kbForm.customWaSignatory !== undefined ? kbForm.customWaSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી"}
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46"}}>
+                              4. Signatory / Footer Sign-off (Paragraph format — add multiple names & titles on separate lines):
+                            </label>
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                              <button
+                                type="button"
+                                onClick={() => setKbForm(p => ({
+                                  ...p,
+                                  customWaSignatory: (p.customWaSignatory ? p.customWaSignatory + "\n" : "") + "રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)\nવિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)\nમુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત."
+                                }))}
+                                style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".72rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                              >
+                                + 🏛️ CWC Executives (Multiple Lines)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKbForm(p => ({
+                                  ...p,
+                                  customWaSignatory: (p.customWaSignatory ? p.customWaSignatory + "\n" : "") + "લિ. સેન્ટ્રલ વર્કિંગ કમિટી, મુંબઈ મેઘવાળ પંચાયત"
+                                }))}
+                                style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".72rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                              >
+                                + 📋 CWC Committee
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={kbForm.customWaSignatory !== undefined ? kbForm.customWaSignatory : "રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)\nવિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)\nમુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત."}
                             onChange={e => setKbForm({ ...kbForm, customWaSignatory: e.target.value })}
-                            placeholder="e.g. લિ. સેન્ટ્રલ વર્કિંગ કમિટી"
-                            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #6EE7B7",fontSize:".85rem",fontWeight:700,boxSizing:"border-box",background:"white"}}
+                            placeholder="રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)&#10;વિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)&#10;મુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત..."
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",lineHeight:1.45,fontFamily:"inherit",boxSizing:"border-box",background:"white"}}
                           />
                         </div>
 
@@ -28423,7 +28447,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             )}
                             <div>{kbForm.customWaAppeal || "સુજ્ઞ જ્ઞાતિજનો, આપનું સ્વૈચ્છિક દાન આવકાર્ય છે."}</div>
                             {kbForm.customWaSignatory && (
-                              <div style={{marginTop:8,fontStyle:"italic",color:"#D1D7DB"}}>{kbForm.customWaSignatory}</div>
+                              <div style={{marginTop:8,fontStyle:"italic",color:"#D1D7DB",whiteSpace:"pre-wrap"}}>{kbForm.customWaSignatory}</div>
                             )}
                             {kbForm.customWaIncludeQr !== false && (
                               <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #025143",fontSize:".75rem",color:"#90EE90"}}>
