@@ -27961,116 +27961,32 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         padding: "18px 20px",
                         display: "flex",
                         flexDirection: "column",
-                        gap: 14
+                        gap: 16
                       }}>
-                        <div style={{fontSize:".88rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
-                          <span>💰</span> Donation Section & Collections Setup:
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <div style={{fontSize:".92rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
+                            <span>💰</span> Donation Section & Collections Flow Setup:
+                          </div>
+                          <span style={{fontSize:".72rem",background:"#D1FAE5",color:"#065F46",padding:"3px 8px",borderRadius:6,fontWeight:800}}>
+                            Step 2 of Flow: Specific Event & Output Configuration
+                          </span>
                         </div>
 
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
-                          {/* 1. Select Donation Feature / Mode */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                              1. Select Donation Feature / Mode:
+                        {/* 1. Event Scope Filter (Filter strictly for specific event) */}
+                        <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+                              <span>📌</span> 1. Donation Section Connection (Filter Strictly for Specific Event Only):
                             </label>
-                            <select
-                              value={
-                                kbForm.attachedFormId === "builtin_offline_donation" 
-                                  ? "offline_form" 
-                                  : (kbForm.summaryType === "donor_list" ? "donor_list" : "donation_summary")
-                              }
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (val === "offline_form") {
-                                  setKbForm({
-                                    ...kbForm,
-                                    actionType: "donation",
-                                    attachedFormId: "builtin_offline_donation",
-                                    storageDestination: "donations",
-                                    summaryType: "donation",
-                                    roleAccess: "donation_collector",
-                                    adminOnly: true
-                                  });
-                                } else if (val === "donor_list") {
-                                  setKbForm({
-                                    ...kbForm,
-                                    actionType: "donation",
-                                    attachedFormId: "",
-                                    summaryType: "donor_list",
-                                    storageDestination: "donations",
-                                    roleAccess: "donation_collector",
-                                    adminOnly: true
-                                  });
-                                } else {
-                                  setKbForm({
-                                    ...kbForm,
-                                    actionType: "donation",
-                                    attachedFormId: "",
-                                    summaryType: "donation",
-                                    storageDestination: "donations",
-                                    roleAccess: "donation_collector",
-                                    adminOnly: true
-                                  });
-                                }
-                              }}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#065F46",cursor:"pointer"}}
-                            >
-                              <option value="donation_summary">📊 Vibhag Donation Summary (Online Razorpay vs Offline Cash/Cheque splits)</option>
-                              <option value="donor_list">📋 Person-wise Donor Registry (Numbered list with WhatsApp broadcast)</option>
-                              <option value="offline_form">✍️ Built-in Offline Cash/Cheque Donation Entry Form</option>
-                            </select>
-                          </div>
-
-                          {/* 2. Optional WhatsApp Broadcast Template */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                              2. Optional WhatsApp Broadcast Template (1-click Share & UPI QR):
-                            </label>
-                            <select
-                              value={kbForm.attachedWhatsAppTplId || ""}
-                              onChange={e => {
-                                const tId = e.target.value;
-                                const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
-                                const sel = allTpls.find(t => t.id === tId);
-                                setKbForm({
-                                  ...kbForm,
-                                  attachedWhatsAppTplId: tId,
-                                  customWaHeader: sel ? sel.header : kbForm.customWaHeader,
-                                  customWaAppeal: sel ? sel.appeal : kbForm.customWaAppeal,
-                                  customWaSignatory: sel ? (sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી") : kbForm.customWaSignatory,
-                                  customWaUpiId: sel ? (sel.upiId || "mumba98697331@barodampay") : kbForm.customWaUpiId,
-                                  customWaIncludeQr: sel ? (sel.includeGPay !== false) : kbForm.customWaIncludeQr
-                                });
-                              }}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
-                            >
-                              <option value="">-- No Attached WhatsApp Template --</option>
-                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
-                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
-                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
-                              {(C.whatsappBroadcastTemplates || []).map(t => (
-                                <option key={t.id} value={t.id}>
-                                  📱 {t.name || t.id}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* 3. Event Scope Filter */}
-                        <div>
-                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                            <label style={{fontSize:".76rem",fontWeight:800,color:"#065F46"}}>
-                              3. Event Scope Filter (Filter strictly for a specific event):
-                            </label>
-                            <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
+                            <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
                               {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) 
                                 ? "🌐 Showing All Events Combined" 
                                 : `📌 Scoped to: ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
                             </span>
                           </div>
+
                           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #059669" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#065F46" : "#475569"}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#D1FAE5" : "white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #059669" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#065F46" : "#475569"}}>
                               <input
                                 type="checkbox"
                                 checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
@@ -28104,16 +28020,135 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               );
                             })}
                           </div>
-                          <div style={{fontSize:".73rem",color:"#047857",marginTop:6}}>
+                          <div style={{fontSize:".73rem",color:"#047857",marginTop:8,lineHeight:1.4}}>
                             💡 <em>When an event (e.g. <strong>6th Dec Mahaparinirvan Diwas</strong>) is selected, the chatbot calculates totals, donor lists, or sets form purpose strictly for that event, excluding other events and general donations.</em>
                           </div>
                         </div>
 
-                        {/* Optional WhatsApp customized fields if template selected */}
-                        {kbForm.attachedWhatsAppTplId && (
-                          <div style={{background:"white",border:"1px solid #A7F3D0",borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:10}}>
-                            <div style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
-                              <span>✏️</span> Customize Broadcast Appeal for this Donation Flow:
+                        {/* 2. Allow to Attach QR Code Template */}
+                        <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+                            <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                              <input
+                                type="checkbox"
+                                checked={kbForm.customWaIncludeQr !== false}
+                                onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
+                                style={{cursor:"pointer",accentColor:"#059669",width:16,height:16}}
+                              />
+                              <span>💳 2. Allow to Attach QR Code Template (Bank of Baroda UPI QR & Pay Link):</span>
+                            </label>
+                            <span style={{fontSize:".7rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
+                              mmp-cwc.com/donate/
+                            </span>
+                          </div>
+
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:12,alignItems:"center"}}>
+                            <div>
+                              <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                                Official UPI ID for Direct Pay:
+                              </label>
+                              <input
+                                type="text"
+                                value={kbForm.customWaUpiId || "mumba98697331@barodampay"}
+                                onChange={e => setKbForm({ ...kbForm, customWaUpiId: e.target.value })}
+                                placeholder="mumba98697331@barodampay"
+                                style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"monospace",fontWeight:700,boxSizing:"border-box"}}
+                              />
+                              <div style={{fontSize:".71rem",color:"#64748B",marginTop:4}}>
+                                Links with direct 1-tap Google Pay / PhonePe / Paytm URL.
+                              </div>
+                            </div>
+
+                            {kbForm.customWaIncludeQr !== false && (
+                              <div style={{display:"flex",alignItems:"center",gap:10,background:"#F0FDF4",border:"1px dashed #86EFAC",borderRadius:8,padding:"8px 12px"}}>
+                                <img
+                                  src="https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/main/docs/assets/mmp-qr-standee.jpg"
+                                  alt="Bank of Baroda BHIM UPI QR Standee"
+                                  style={{width:42,height:52,borderRadius:4,objectFit:"cover",border:"1px solid #CBD5E1",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}
+                                  onError={e => { e.currentTarget.style.display = 'none'; }}
+                                />
+                                <div style={{fontSize:".74rem",color:"#065F46",lineHeight:1.35}}>
+                                  <strong>Bank of Baroda BHIM UPI Scanner</strong><br/>
+                                  Will display with 1-click payment link in chatbot & broadcast.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 3. WhatsApp Template & Custom Broadcast Message */}
+                        <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                            <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+                              <span>📱</span> 3. WhatsApp Template & Custom Broadcast Message:
+                            </label>
+                            <span style={{fontSize:".7rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
+                              Live 1-Click Share & Copy
+                            </span>
+                          </div>
+
+                          <div>
+                            <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                              Select Broadcast Template Preset:
+                            </label>
+                            <select
+                              value={kbForm.attachedWhatsAppTplId || "tpl_donor_summary"}
+                              onChange={e => {
+                                const tId = e.target.value;
+                                const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
+                                const sel = allTpls.find(t => t.id === tId) || DEFAULT_WA_TEMPLATES[1];
+                                setKbForm({
+                                  ...kbForm,
+                                  attachedWhatsAppTplId: tId,
+                                  customWaHeader: sel.header,
+                                  customWaAppeal: sel.appeal,
+                                  customWaSignatory: sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
+                                  customWaUpiId: sel.upiId || "mumba98697331@barodampay",
+                                  customWaIncludeQr: sel.includeGPay !== false
+                                });
+                              }}
+                              style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #6EE7B7",fontSize:".83rem",fontWeight:700,background:"#F0FDF4",boxSizing:"border-box",color:"#065F46",cursor:"pointer"}}
+                            >
+                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary (with live totals & vibhag breakdown)</option>
+                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)</option>
+                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
+                              {(C.whatsappBroadcastTemplates || []).map(t => (
+                                <option key={t.id} value={t.id}>
+                                  📱 {t.name || t.id} (Custom Template)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Appeal / Body Textarea */}
+                          <div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46"}}>
+                                Main Appeal / Body Message (Gujarati or English):
+                              </label>
+                              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો." }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 🎓 Edu Appeal
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "વિભાગ વાર આવેલ દાન ની લાઈવ વિગત નીચે મુજબ છે:" }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 📊 Donation Summary
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "સંસ્થા ના વિવિધ સામાજિક તથા વિકાસ કાર્યો માટે આપનું સ્વૈચ્છિક દાન આવકાર્ય છે." }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 💰 General Appeal
+                                </button>
+                              </div>
                             </div>
                             <textarea
                               rows={3}
@@ -28122,25 +28157,171 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               placeholder="Enter custom appeal message to accompany the live totals..."
                               style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"inherit",boxSizing:"border-box"}}
                             />
-                            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",fontSize:".74rem",color:"#475569"}}>
-                              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontWeight:700}}>
-                                <input
-                                  type="checkbox"
-                                  checked={kbForm.customWaIncludeQr !== false}
-                                  onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
-                                  style={{cursor:"pointer",accentColor:"#059669"}}
-                                />
-                                Include Bank QR & Pay Link
+                          </div>
+
+                          {/* Signatory / Footer Sign-off (Paragraph Format) */}
+                          <div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46"}}>
+                                Signatory / Footer Sign-off (Paragraph format — multiple names & designations on separate lines):
                               </label>
-                              <span style={{color:"#64748B"}}>UPI: <strong>{kbForm.customWaUpiId || "mumba98697331@barodampay"}</strong></span>
+                              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({
+                                    ...p,
+                                    customWaSignatory: (p.customWaSignatory ? p.customWaSignatory + "\n" : "") + "રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)\nવિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)\nમુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત."
+                                  }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 🏛️ CWC Executives (Multiple Lines)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({
+                                    ...p,
+                                    customWaSignatory: (p.customWaSignatory ? p.customWaSignatory + "\n" : "") + "લિ. સેન્ટ્રલ વર્કિંગ કમિટી, મુંબઈ મેઘવાળ પંચાયત"
+                                  }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 📋 CWC Committee
+                                </button>
+                              </div>
+                            </div>
+                            <textarea
+                              rows={3}
+                              value={kbForm.customWaSignatory !== undefined ? kbForm.customWaSignatory : "રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)\nવિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)\nમુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત."}
+                              onChange={e => setKbForm({ ...kbForm, customWaSignatory: e.target.value })}
+                              placeholder="રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)&#10;વિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)&#10;મુંબઈ મેઘવાળ પંચાયત..."
+                              style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                            />
+                          </div>
+
+                          {/* Real-Time WhatsApp Message Preview Box */}
+                          <div style={{background:"#064E3B",color:"#ECFDF5",borderRadius:8,padding:"10px 14px",fontSize:".76rem",fontFamily:"monospace",lineHeight:1.45,border:"1px solid #047857",boxShadow:"inset 0 1px 3px rgba(0,0,0,0.2)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,borderBottom:"1px solid rgba(255,255,255,0.15)",paddingBottom:4}}>
+                              <span style={{fontWeight:800,color:"#6EE7B7",display:"flex",alignItems:"center",gap:6}}>
+                                <span>💬</span> Real-Time WhatsApp Message Preview:
+                              </span>
+                              <span style={{fontSize:".68rem",color:"#A7F3D0"}}>Trigger: {kbForm.cmd || "/don_summ"}</span>
+                            </div>
+                            <div style={{whiteSpace:"pre-wrap"}}>
+                              {kbForm.customWaIncludeQr !== false && `💳 *દાન QR સ્કેનર:* https://mmp-cwc.com/donate/\n`}
+                              {kbForm.customWaHeader ? `${kbForm.customWaHeader}\n` : ""}
+                              {kbForm.customWaAppeal ? `${kbForm.customWaAppeal}\n` : ""}
+                              {`━━━━━━━━━━━━━━━━━━━━━\n`}
+                              {`💰 *Total Collections:* ₹1,25,000 (Sample Scoped)\n`}
+                              {`👥 *Total Donors:* 42 Donors\n`}
+                              {`🟢 *Online Razorpay:* ₹75,000 | 🟠 *Offline:* ₹50,000\n`}
+                              {`📍 *10 MAHALAXMI:* ₹35,000\n`}
+                              {`━━━━━━━━━━━━━━━━━━━━━\n`}
+                              {kbForm.customWaSignatory ? `${kbForm.customWaSignatory}\n` : ""}
+                              {`📲 *UPI ID:* ${kbForm.customWaUpiId || "mumba98697331@barodampay"}\n`}
+                              {`🌐 *Live Portal:* https://mmp-cwc.com`}
                             </div>
                           </div>
-                        )}
+                        </div>
+
+                        {/* 4. Select Donation Output Feature (Donation Summary / Donor Registry / Offline Form) */}
+                        <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
+                          <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"block",marginBottom:8}}>
+                            4. Select Donation Output (What should the Chatbot display when clicked?):
+                          </label>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10}}>
+                            {[
+                              {
+                                id: "donation_summary",
+                                icon: "📊",
+                                title: "Vibhag Donation Summary",
+                                desc: "Live breakdown of Online Razorpay vs Offline Cash collections, Vibhag table, and 1-click WhatsApp broadcast."
+                              },
+                              {
+                                id: "donor_list",
+                                icon: "📋",
+                                title: "Person-wise Donor Registry",
+                                desc: "Numbered list of individual donors with amounts, dates, and Vibhags with 1-click WhatsApp share."
+                              },
+                              {
+                                id: "offline_form",
+                                icon: "✍️",
+                                title: "Offline Donation Entry Form",
+                                desc: "Interactive cash/cheque collection entry form for authorized collectors to record donations directly into database."
+                              }
+                            ].map(opt => {
+                              const isSelected = opt.id === "offline_form"
+                                ? (kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form")
+                                : (opt.id === "donor_list" ? kbForm.summaryType === "donor_list" : (kbForm.summaryType === "donation" && kbForm.attachedFormId !== "builtin_offline_donation"));
+                              return (
+                                <div
+                                  key={opt.id}
+                                  onClick={() => {
+                                    if (opt.id === "offline_form") {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "builtin_offline_donation",
+                                        storageDestination: "donations",
+                                        summaryType: "offline_form",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    } else if (opt.id === "donor_list") {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "",
+                                        summaryType: "donor_list",
+                                        storageDestination: "donations",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    } else {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "",
+                                        summaryType: "donation",
+                                        storageDestination: "donations",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    }
+                                  }}
+                                  style={{
+                                    background: isSelected ? "#D1FAE5" : "#F8FAFC",
+                                    border: isSelected ? "2px solid #059669" : "1px solid #CBD5E1",
+                                    borderRadius: 8,
+                                    padding: 12,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease"
+                                  }}
+                                >
+                                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:800,fontSize:".84rem",color: isSelected ? "#065F46" : "#1E293B"}}>
+                                      <span>{opt.icon}</span>
+                                      <span>{opt.title}</span>
+                                    </div>
+                                    <input
+                                      type="radio"
+                                      name="donationModeSelector"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      style={{accentColor:"#059669",cursor:"pointer"}}
+                                    />
+                                  </div>
+                                  <p style={{fontSize:".74rem",color:"#475569",margin:0,lineHeight:1.35}}>
+                                    {opt.desc}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
 
                         {/* Answer / Intro text */}
                         <div>
                           <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                            4. Custom Header / Guidance (Optional):
+                            5. Custom Header / Guidance (Optional):
                           </label>
                           <input
                             type="text"
@@ -29008,11 +29189,37 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             <span style={{fontSize:".8rem",fontWeight:800,color:"#0F172A"}}>Mumbai Meghwal Panchayat Assistant</span>
                           </div>
                           <div style={{fontSize:".8rem",color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.4}}>
-                            {kbForm.answer || `✍️ **${kbForm.title || "Question Title"}**\n\nAttached Action: ${kbForm.actionType}`}
+                            {kbForm.answer || (
+                              kbForm.actionType === "donation"
+                                ? `💰 **${kbForm.title || "Donation Action"}**\n\n${
+                                    kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form"
+                                      ? "✍️ Record offline cash/cheque contributions into the official database."
+                                      : (kbForm.summaryType === "donor_list"
+                                          ? "📋 Displaying real-time person-wise donor registry list."
+                                          : "📊 Displaying live Vibhag collection totals, online/offline splits, and breakdown table.")
+                                  }`
+                                : `✍️ **${kbForm.title || "Question Title"}**\n\nAttached Action: ${kbForm.actionType}`
+                            )}
                           </div>
 
                           {/* Action Preview Pill */}
-                          <div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:6,background:"#EFF6FF",color:"#1D4ED8",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:800,border:"1px solid #BFDBFE"}}>
+                          <div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:6,background: kbForm.actionType === "donation" ? "#ECFDF5" : "#EFF6FF",color: kbForm.actionType === "donation" ? "#065F46" : "#1D4ED8",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:800,border: kbForm.actionType === "donation" ? "1px solid #6EE7B7" : "1px solid #BFDBFE"}}>
+                            {kbForm.actionType === "donation" && (
+                              <span>
+                                💰 Donation Mode:{" "}
+                                <strong>
+                                  {kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form"
+                                    ? "✍️ Offline Donation Entry Form"
+                                    : (kbForm.summaryType === "donor_list" ? "📋 Person-wise Donor Registry" : "📊 Vibhag Donation Summary")}
+                                </strong>
+                                {" ➔ "}
+                                <span>
+                                  {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all'))
+                                    ? "🌐 All Events Combined"
+                                    : `📌 ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
+                                </span>
+                              </span>
+                            )}
                             {kbForm.actionType === "form" && `📝 Attached Form: ${kbForm.attachedFormId || "Offline Donation"} ➔ ${kbForm.storageDestination}`}
                             {kbForm.actionType === "summary" && `📊 Attached Metric: ${kbForm.summaryType} ➔ Scoped Stats`}
                             {kbForm.actionType === "workspace" && `💌 Workspace Dispatcher: ${kbForm.connectedSubWorkspaceName || "Connected Workspace"}`}
@@ -30223,6 +30430,27 @@ function ChatbotAccessManager({ C, setC, auth }) {
                       Rich formatted Markdown guidance with quick insertion buttons for YouTube video buttons, website links, or dynamic live registration counter tokens.
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Highlight: Donation Section Flow */}
+              <div style={{
+                background: "#ECFDF5",
+                border: "1.5px solid #6EE7B7",
+                borderRadius: 12,
+                padding: "16px 18px"
+              }}>
+                <div style={{fontSize:".88rem",fontWeight:800,color:"#065F46",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                  <span>💰</span> COMPLETE GUIDE: CREATING A DONATION SHORTCUT & SUMMARY
+                </div>
+                <div style={{fontSize:".82rem",color:"#047857",lineHeight:1.55}}>
+                  Follow these 6 simple steps to set up event-scoped donation shortcuts (e.g. <code>/don_summ_6thdec</code>):<br/>
+                  <strong>1. Shortcut Code</strong>: Enter your trigger (e.g. <code>don_summ_6thdec</code>) and button label (e.g. <em>Donation summary 6th Dec</em>).<br/>
+                  <strong>2. Capability</strong>: Select <strong>💰 Donation Section & Collections</strong>.<br/>
+                  <strong>3. Event Scope Connection</strong>: Check <strong>📌 6th Dec Mahaparinirvan Diwas</strong> (or specific event) so totals are filtered strictly for this event.<br/>
+                  <strong>4. QR Code Template</strong>: Keep the Bank of Baroda UPI QR standee attached for instant QR payment links.<br/>
+                  <strong>5. WhatsApp Template</strong>: Choose template, edit appeal, and use multiline paragraph format for signatories.<br/>
+                  <strong>6. Output Type & Security</strong>: Select <strong>📊 Vibhag Donation Summary</strong> (or Donor Registry) and set Role to <strong>Donation Collector</strong>. Click <strong>Publish Question</strong>!
                 </div>
               </div>
 
@@ -56278,76 +56506,56 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return false;
     });
 
-    // ── Command 1: /don_entry & Offline Donation Form ──
-    const isDonEntryTrigger = (
-      qLower === "/don_entry" || qLower === "don_entry" || qLower === "/don entry" ||
-      qLower === "/donation update" || qLower === "donation update" ||
-      qLower === "/donner" || qLower === "donner" || qLower === "/donor" || qLower === "donor" ||
-      qLower === "/offline donation" || qLower === "offline donation" ||
-      qLower.startsWith("/donation update") || qLower.startsWith("/don_entry") ||
-      (matchedKb && (
-        matchedKb.attachedFormId === "builtin_offline_donation" ||
-        matchedKb.cmd === "/don_entry" ||
-        (matchedKb.actionType === "donation" && matchedKb.attachedFormId === "builtin_offline_donation") ||
-        (matchedKb.storageDestination === "donations" && matchedKb.roleAccess === "donation_collector" && (matchedKb.actionType === "form" || matchedKb.actionType === "donation")) ||
-        (matchedKb.title && matchedKb.title.toLowerCase().includes("offline donation"))
-      ))
-    );
-
-    if (isDonEntryTrigger) {
-      if (!isDonationCollector) {
-        botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nRecording offline donations is strictly restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• ℹ️ **Your Access**: Regular registration/vibhag committee members are not authorized for payment collections.\n• 👉 Please connect with Super Admin (+91 9820785209) to assign you the **Donation Collector** role.`;
-      } else {
-        const customFormId = matchedKb?.attachedFormId;
-        const attachedCustomForm = (customFormId && customFormId !== "builtin_offline_donation")
-          ? (C?.forms || []).find(f => (f.id === customFormId || f.name === customFormId || (f.name && customFormId && f.name.toLowerCase() === customFormId.toLowerCase())))
-          : null;
-
-        if (attachedCustomForm) {
-          botType = "dynamic_form";
-          botReply = matchedKb?.answer || `✍️ **${attachedCustomForm.name}**\n\nPlease complete the interactive form below:`;
-          cardData = {
-            formDef: attachedCustomForm,
-            destination: matchedKb?.storageDestination || "donations",
-            introTitle: matchedKb?.title || attachedCustomForm.name,
-            introText: matchedKb?.answer,
-            attachedFormId: customFormId
-          };
-        } else {
-          // Standard / Built-in Offline Donation Entry Form (with scoped event defaults)
-          const scopedEvents = matchedKb?.targetEventIds || ["all"];
-          let defaultPurpose = "General Donation";
-          let defaultEventCode = "GEN";
-          let defaultEventId = "";
-          if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
-            defaultPurpose = formatEventTitle(scopedEvents[0]);
-            defaultEventId = scopedEvents[0];
-            const cleanT = defaultPurpose.toLowerCase();
-            defaultEventCode = (cleanT.includes("6th") || cleanT.includes("dec")) ? "6THDEC" : (cleanT.includes("edu") ? "EDU26" : "EVT");
-          }
-
-          botType = "offline_donation_form";
-          botReply = matchedKb?.answer || `✍️ **Offline Donation Entry Form${defaultPurpose !== "General Donation" ? ` (${defaultPurpose})` : ""}**\n\nPlease enter the offline donation details below. All fields will be stored directly into the official Donations database:`;
-          cardData = {
-            initialDate: new Date().toISOString().split('T')[0],
-            defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
-            defaultPurpose: defaultPurpose,
-            defaultEventCode: defaultEventCode,
-            eventId: defaultEventId,
-            eventTitle: defaultPurpose
-          };
-        }
-      }
-    } else if (
-      qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" || qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" || qLower === "/donationsummary" || qLower === "/donationsumary" ||
+    // ── Command 1: Live Vibhag Donation Summary (Online vs Offline splits) ──
+    const isDonSummary = (
+      qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" ||
+      qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" ||
+      qLower === "/donationsummary" || qLower === "/donationsumary" ||
+      qLower.startsWith("/don_summ") || qLower.startsWith("/don_summary") ||
       (matchedKb && (
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
-        (matchedKb.actionType === "donation" && (!matchedKb.summaryType || matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.attachedFormId !== "builtin_offline_donation") ||
-        (matchedKb.actionType === "summary" && (!matchedKb.summaryType || matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations")) ||
+        (matchedKb.actionType === "donation" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations" || !matchedKb.summaryType) && matchedKb.attachedFormId !== "builtin_offline_donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "offline_form") ||
+        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations")) ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary"))
       ))
-    ) {
+    );
+
+    // ── Command 2: Person-wise Donor Registry ──
+    const isDonorList = (
+      !isDonSummary && (
+        qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" ||
+        qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" ||
+        qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" ||
+        qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
+        qLower.startsWith("/don_list") || qLower.startsWith("/donorlist") ||
+        (matchedKb && (
+          matchedKb.id === "kb_donerlist" ||
+          (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
+          (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
+          (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
+        ))
+      )
+    );
+
+    // ── Command 3: Offline Donation Entry Form ──
+    const isDonEntryTrigger = (
+      !isDonSummary && !isDonorList && (
+        qLower === "/don_entry" || qLower === "don_entry" || qLower === "/don entry" ||
+        qLower === "/donation update" || qLower === "donation update" ||
+        qLower === "/donner" || qLower === "donner" || qLower === "/donor" || qLower === "donor" ||
+        qLower === "/offline donation" || qLower === "offline donation" ||
+        qLower.startsWith("/donation update") || qLower.startsWith("/don_entry") ||
+        (matchedKb && (
+          matchedKb.cmd === "/don_entry" ||
+          matchedKb.attachedFormId === "builtin_offline_donation" ||
+          (matchedKb.actionType === "donation" && (matchedKb.attachedFormId === "builtin_offline_donation" || matchedKb.summaryType === "offline_form")) ||
+          (matchedKb.title && matchedKb.title.toLowerCase().includes("offline donation"))
+        ))
+      )
+    );
+
+    if (isDonSummary) {
       if (!isDonationCollector) {
         botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonation summaries and financial metrics are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
       } else {
@@ -56404,15 +56612,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           botReply = `❌ **Failed to fetch donation summary**: ${err.message}`;
         }
       }
-    } else if (
-      qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" || qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" || qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" || qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
-      (matchedKb && (
-        matchedKb.id === "kb_donerlist" ||
-        (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
-        (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
-        (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
-      ))
-    ) {
+    } else if (isDonorList) {
       if (!isDonationCollector) {
         botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonor registries and person-wise collections are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
       } else {
@@ -56441,6 +56641,50 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           }
         } catch (err) {
           botReply = `❌ **Failed to fetch donor list**: ${err.message}`;
+        }
+      }
+    } else if (isDonEntryTrigger) {
+      if (!isDonationCollector) {
+        botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nRecording offline donations is strictly restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• ℹ️ **Your Access**: Regular registration/vibhag committee members are not authorized for payment collections.\n• 👉 Please connect with Super Admin (+91 9820785209) to assign you the **Donation Collector** role.`;
+      } else {
+        const customFormId = matchedKb?.attachedFormId;
+        const attachedCustomForm = (customFormId && customFormId !== "builtin_offline_donation")
+          ? (C?.forms || []).find(f => (f.id === customFormId || f.name === customFormId || (f.name && customFormId && f.name.toLowerCase() === customFormId.toLowerCase())))
+          : null;
+
+        if (attachedCustomForm) {
+          botType = "dynamic_form";
+          botReply = matchedKb?.answer || `✍️ **${attachedCustomForm.name}**\n\nPlease complete the interactive form below:`;
+          cardData = {
+            formDef: attachedCustomForm,
+            destination: matchedKb?.storageDestination || "donations",
+            introTitle: matchedKb?.title || attachedCustomForm.name,
+            introText: matchedKb?.answer,
+            attachedFormId: customFormId
+          };
+        } else {
+          // Standard / Built-in Offline Donation Entry Form (with scoped event defaults)
+          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          let defaultPurpose = "General Donation";
+          let defaultEventCode = "GEN";
+          let defaultEventId = "";
+          if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
+            defaultPurpose = formatEventTitle(scopedEvents[0]);
+            defaultEventId = scopedEvents[0];
+            const cleanT = defaultPurpose.toLowerCase();
+            defaultEventCode = (cleanT.includes("6th") || cleanT.includes("dec")) ? "6THDEC" : (cleanT.includes("edu") ? "EDU26" : "EVT");
+          }
+
+          botType = "offline_donation_form";
+          botReply = matchedKb?.answer || `✍️ **Offline Donation Entry Form${defaultPurpose !== "General Donation" ? ` (${defaultPurpose})` : ""}**\n\nPlease enter the offline donation details below. All fields will be stored directly into the official Donations database:`;
+          cardData = {
+            initialDate: new Date().toISOString().split('T')[0],
+            defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
+            defaultPurpose: defaultPurpose,
+            defaultEventCode: defaultEventCode,
+            eventId: defaultEventId,
+            eventTitle: defaultPurpose
+          };
         }
       }
     } else     if (qLower === "/check" || qLower === "check" || qLower === "my status" || qLower === "check status" || qLower === "check my application status" || qLower.includes("application status") || qLower.includes("check application")) {
