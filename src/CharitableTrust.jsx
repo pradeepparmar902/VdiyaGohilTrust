@@ -25593,6 +25593,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [isStudioOpen, setIsStudioOpen] = useState(true);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   // Default Knowledge Base entries
   const DEFAULT_KB = [
@@ -26339,11 +26340,34 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:16}}>
         <div>
-          <h2 className="sh" style={{fontSize:"1.4rem",color:"var(--dt)",marginBottom:4,display:"flex",alignItems:"center",gap:8}}>
-            <span>⚙️</span> Chatbot Configuration & Access Console
-          </h2>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4,flexWrap:"wrap"}}>
+            <h2 className="sh" style={{fontSize:"1.4rem",color:"var(--dt)",margin:0,display:"flex",alignItems:"center",gap:8}}>
+              <span>⚙️</span> Chatbot Configuration & Access Console
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "#EFF6FF",
+                color: "#1D4ED8",
+                border: "1.5px solid #93C5FD",
+                borderRadius: 20,
+                padding: "4px 12px",
+                fontSize: ".78rem",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(37,99,235,0.15)"
+              }}
+              title="Click to view step-by-step user guide & process notes"
+            >
+              <span>📖</span> Guide & Process Notes
+            </button>
+          </div>
           <p style={{fontSize:".85rem",color:"var(--mu)",margin:0}}>
-            Configure <strong>Header Branding</strong>, <strong>User Access Scopes</strong> and dynamic <strong>Slash Commands</strong> in real-time.
+            Configure <strong>Question & Action Studio</strong>, <strong>User Access Scopes</strong>, <strong>WhatsApp Templates</strong>, and <strong>Header Branding</strong>.
           </p>
         </div>
 
@@ -27380,6 +27404,27 @@ function ChatbotAccessManager({ C, setC, auth }) {
               </div>
 
               <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                <button
+                  type="button"
+                  onClick={() => setShowGuideModal(true)}
+                  style={{
+                    padding: "10px 16px",
+                    background: "linear-gradient(135deg, #0284C7, #0369A1)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: ".86rem",
+                    cursor: "pointer",
+                    boxShadow: "0 3px 10px rgba(2,132,199,0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}
+                  title="Click to view detailed process notes and instructions"
+                >
+                  <span>📖</span> Guide & Process Notes
+                </button>
                 <button
                   type="button"
                   onClick={() => handleStartNewItem("/ss")}
@@ -29488,6 +29533,258 @@ function ChatbotAccessManager({ C, setC, auth }) {
           </div>
         );
       })()}
+
+      {/* ── Process Notes & User Guide Modal ── */}
+      {showGuideModal && (
+        <div 
+          onClick={() => setShowGuideModal(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(15,23,42,0.75)",
+            backdropFilter: "blur(4px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            boxSizing: "border-box"
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 16,
+              width: "100%",
+              maxWidth: 920,
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.35)",
+              overflow: "hidden",
+              animation: "fadeIn .2s ease"
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              background: "linear-gradient(135deg, #1E293B, #0F172A)",
+              color: "white",
+              padding: "18px 24px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottom: "1.5px solid #334155"
+            }}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:"1.6rem"}}>📘</span>
+                <div>
+                  <h3 style={{margin:0,fontSize:"1.18rem",fontWeight:800,letterSpacing:"-0.01em"}}>
+                    Chatbot Studio: Admin Guide & Process Notes
+                  </h3>
+                  <p style={{margin:"2px 0 0 0",fontSize:".82rem",color:"#94A3B8"}}>
+                    How to configure questions, slash commands, and connect forms, summaries & passes in 1 unified flow.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
+                style={{
+                  background: "rgba(255,255,255,0.15)",
+                  border: "none",
+                  color: "white",
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  fontSize: "1.1rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 800
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{padding:"24px 28px",overflowY:"auto",display:"flex",flexDirection:"column",gap:20}}>
+              
+              {/* 4-Step Diagram Banner */}
+              <div style={{
+                background: "linear-gradient(135deg, #EFF6FF, #DBEAFE)",
+                border: "1.5px solid #93C5FD",
+                borderRadius: 12,
+                padding: "14px 18px"
+              }}>
+                <div style={{fontSize:".82rem",fontWeight:800,color:"#1E40AF",marginBottom:8}}>
+                  ⚡ THE 4-STEP SINGLE-FLOW PROCESS:
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:".8rem",fontWeight:800}}>
+                  <span style={{background:"#2563EB",color:"white",padding:"4px 10px",borderRadius:6}}>
+                    Step 1: Trigger & Label (/ss)
+                  </span>
+                  <span style={{color:"#1D4ED8"}}>➔</span>
+                  <span style={{background:"#2563EB",color:"white",padding:"4px 10px",borderRadius:6}}>
+                    Step 2: Choose Capability
+                  </span>
+                  <span style={{color:"#1D4ED8"}}>➔</span>
+                  <span style={{background:"#2563EB",color:"white",padding:"4px 10px",borderRadius:6}}>
+                    Step 3: Action Details
+                  </span>
+                  <span style={{color:"#1D4ED8"}}>➔</span>
+                  <span style={{background:"#16A34A",color:"white",padding:"4px 10px",borderRadius:6}}>
+                    Step 4: Access & Publish 💾
+                  </span>
+                </div>
+              </div>
+
+              {/* Step 1 details */}
+              <div>
+                <h4 style={{fontSize:".95rem",fontWeight:800,color:"#0F172A",margin:"0 0 10px 0",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:"#2563EB",color:"white",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:".75rem"}}>1</span>
+                  Step 1: Question Trigger & Button Label
+                </h4>
+                <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:14,fontSize:".84rem",color:"#334155",lineHeight:1.5}}>
+                  • <strong>Command Trigger (/)</strong>: Type your command shortcut (e.g. <code>ss</code> or <code>6th</code> or <code>don_summary</code>). The leading slash <code>/</code> is automatically added.<br/>
+                  • <strong>Question / Button Label</strong>: The title shown on the clickable button in the chatbot menu (e.g. <em>Special Scheme Application</em> or <em>6th Dec Passes</em>).<br/>
+                  • <strong># Order Priority</strong>: Number for ordering on the button grid (<code>1</code> = First, <code>2</code> = Second, etc.).<br/>
+                  • <strong>Icon Emoji</strong>: Pick from 1-click emojis (🎓, 💰, 📝, 📊, 💌, 🎟️, 🏛️, 📞, 🔍, ✍️) or type any custom icon.<br/>
+                  • <strong>Visibility</strong>: Keep as <strong>👁️ Active in Menu & Buttons</strong> so users can click it with 1 tap, or select <strong>🙈 Hidden (Slash-only Trigger)</strong> for backend admin commands.
+                </div>
+              </div>
+
+              {/* Step 2 Capability Cheat Sheet */}
+              <div>
+                <h4 style={{fontSize:".95rem",fontWeight:800,color:"#0F172A",margin:"0 0 10px 0",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:"#2563EB",color:"white",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:".75rem"}}>2</span>
+                  Step 2: The 6 Attached Capabilities Explained
+                </h4>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:10}}>
+                  <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#166534",fontSize:".85rem",marginBottom:4}}>
+                      📝 Interactive Form
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#15803D",lineHeight:1.4}}>
+                      Opens an interactive form directly in the chat. Form submissions save automatically into <strong>Donations</strong>, <strong>Registrations</strong>, or <strong>Volunteers</strong>.
+                    </div>
+                  </div>
+
+                  <div style={{background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#1D4ED8",fontSize:".85rem",marginBottom:4}}>
+                      📊 Live Analytics & Summary
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#1E40AF",lineHeight:1.4}}>
+                      Computes real-time metrics on the fly: Vibhag donation totals (Cash vs Online), donor registry, or student registration counts with scoped event filter.
+                    </div>
+                  </div>
+
+                  <div style={{background:"#FDF2F8",border:"1px solid #F472B6",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#9D174D",fontSize:".85rem",marginBottom:4}}>
+                      💌 Workspace & Passes Dispatcher
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#BE185D",lineHeight:1.4}}>
+                      Connects directly to any workspace (e.g. <em>6th Dec</em>, <em>Education 2026</em>) to view contact lists and dispatch personalized WhatsApp passes with 1-tap!
+                    </div>
+                  </div>
+
+                  <div style={{background:"#ECFDF5",border:"1px solid #6EE7B7",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#065F46",fontSize:".85rem",marginBottom:4}}>
+                      📱 WhatsApp Broadcast & QR
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#047857",lineHeight:1.4}}>
+                      Formats an official WhatsApp appeal/notice with instant <strong>📋 Copy for WhatsApp</strong>, <strong>🟢 Share on WhatsApp</strong>, and Bank of Baroda UPI QR standee.
+                    </div>
+                  </div>
+
+                  <div style={{background:"#FFFBEB",border:"1px solid #FCD34D",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#92400E",fontSize:".85rem",marginBottom:4}}>
+                      🏛️ Committee Directory & Contacts
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#B45309",lineHeight:1.4}}>
+                      Renders verified CWC leadership, Vibhag Heads, and Trust office helpline numbers with 1-click direct phone calling and WhatsApp links.
+                    </div>
+                  </div>
+
+                  <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#334155",fontSize:".85rem",marginBottom:4}}>
+                      💬 Custom Answer & Web Links
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#475569",lineHeight:1.4}}>
+                      Rich formatted Markdown guidance with quick insertion buttons for YouTube video buttons, website links, or dynamic live registration counter tokens.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3 & 4 */}
+              <div>
+                <h4 style={{fontSize:".95rem",fontWeight:800,color:"#0F172A",margin:"0 0 10px 0",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:"#2563EB",color:"white",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:".75rem"}}>3</span>
+                  Step 3 & 4: Action Setup & Role Access Rules
+                </h4>
+                <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:14,fontSize:".84rem",color:"#334155",lineHeight:1.5}}>
+                  • <strong>Context-Sensitive Settings</strong>: Step 3 automatically shows only the settings required for your chosen capability (no clutter!).<br/>
+                  • <strong>Role Access Control</strong>:
+                    <ul style={{margin:"6px 0 0 0",paddingLeft:20}}>
+                      <li><strong>🌐 Public</strong>: Accessible to every website visitor and applicant.</li>
+                      <li><strong>💰 Donation Collector Only</strong>: Unlocks only for assigned collectors (used for offline cash recording & donor registries).</li>
+                      <li><strong>📍 Vibhag Admin Only</strong>: Unlocks for verified Vibhag committee leaders.</li>
+                      <li><strong>🛡️ Super Admin Only</strong>: Restricted strictly to trust master admins.</li>
+                    </ul>
+                </div>
+              </div>
+
+              {/* Testing & Managing */}
+              <div>
+                <h4 style={{fontSize:".95rem",fontWeight:800,color:"#0F172A",margin:"0 0 10px 0",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:"#22C55E",color:"white",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:".75rem"}}>✓</span>
+                  Testing & Managing from the Table
+                </h4>
+                <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:14,fontSize:".84rem",color:"#166534",lineHeight:1.5}}>
+                  • <strong>Instant Testing</strong>: Open the floating <strong>Trust Assistant 🤖</strong> at bottom right, switch to <strong>Buttons</strong>, and click your new button or type <code>/your_cmd</code>.<br/>
+                  • <strong>1-Click Edit</strong>: In the table below the studio, click <strong>Edit</strong> on any question to load it back into the 4-step wizard.<br/>
+                  • <strong>Reorder On The Fly</strong>: Use <strong>▲</strong> and <strong>▼</strong> or change the order number to position buttons in the chatbot.<br/>
+                  • <strong>Category Filter Pills</strong>: Click <code>📝 Forms</code>, <code>📊 Summaries</code>, <code>💌 Workspaces</code>, or <code>📱 WhatsApp</code> to filter instantly.
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: "14px 24px",
+              background: "#F8FAFC",
+              borderTop: "1px solid #E2E8F0",
+              display: "flex",
+              justifyContent: "flex-end"
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
+                style={{
+                  padding: "9px 24px",
+                  background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 800,
+                  fontSize: ".86rem",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(37,99,235,0.3)"
+                }}
+              >
+                Got It, Close Guide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
