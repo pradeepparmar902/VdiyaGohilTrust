@@ -1384,6 +1384,16 @@ const fbSave = async (content, idToken) => {
   return true;
 };
 
+const formatEventTitle = (evIdOrTitle, eventsList = []) => {
+  if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
+  if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
+  if (Array.isArray(eventsList)) {
+    const evObj = eventsList.find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase())));
+    if (evObj && evObj.title) return evObj.title;
+  }
+  return String(evIdOrTitle);
+};
+
 const generateNextTxnId = async (idToken, preferredPrefix = null, targetEventId = null) => {
   try {
     const rawExisting = await fbFetchRegistrations(idToken);
@@ -25594,6 +25604,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [isStudioOpen, setIsStudioOpen] = useState(true);
   const [showGuideModal, setShowGuideModal] = useState(false);
+
+  const formatEventTitle = (evIdOrTitle) => {
+    if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
+    if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
+    const evObj = (C?.events || []).find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase())));
+    if (evObj && evObj.title) return evObj.title;
+    return String(evIdOrTitle);
+  };
 
   // Default Knowledge Base entries
   const DEFAULT_KB = [
@@ -56089,6 +56107,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
     if (evObj && evObj.title) return evObj.title;
     return evIdOrTitle;
   };
+  const formatEventTitle = resolveEventTitle;
 
   const filterRegsByKbTargetEvents = (regsList, targetEventIds) => {
     if (!Array.isArray(regsList) || regsList.length === 0) return [];
