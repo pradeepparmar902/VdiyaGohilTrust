@@ -25816,6 +25816,45 @@ function ChatbotAccessManager({ C, setC, auth }) {
     return "registrations";
   };
 
+  const DEFAULT_WA_TEMPLATES = [
+    {
+      id: "tpl_edu_appeal",
+      name: "🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)",
+      header: ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸",
+      appeal: "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે.",
+      signatory: "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી",
+      upiId: "mumba98697331@barodampay",
+      includeGPay: true
+    },
+    {
+      id: "tpl_donor_summary",
+      name: "📊 Live Vibhag Donation Collection Summary (for /don_summary)",
+      header: ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸",
+      appeal: "વિભાગ વાર આવેલ દાન ની લાઈવ વિગત નીચે મુજબ છે:",
+      signatory: "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી",
+      upiId: "mumba98697331@barodampay",
+      includeGPay: true
+    },
+    {
+      id: "tpl_general_donation",
+      name: "💰 General Community Donation & QR Pay",
+      header: ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸",
+      appeal: "જય ભીમ / નમસ્તે જ્ઞાતિજનો, સંસ્થા ના વિવિધ સામાજિક તથા વિકાસ કાર્યો માટે આપનું સ્વૈચ્છિક દાન આવકાર્ય છે.",
+      signatory: "સેન્ટ્રલ વર્કિંગ કમિટી, મુંબઈ મેઘવાળ પંચાયત",
+      upiId: "mumba98697331@barodampay",
+      includeGPay: true
+    },
+    {
+      id: "tpl_meeting_notice",
+      name: "📢 CWC Committee Meeting Notice",
+      header: ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸",
+      appeal: "સર્વે હોદ્દેદારો તથા કારોબારી સભ્યો ને જણાવવાનું કે આગામી મિટિંગ નું આયોજન કરેલ છે. આપની ઉપસ્થિતિ અનિવાર્ય છે.",
+      signatory: "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
+      upiId: "mumba98697331@barodampay",
+      includeGPay: false
+    }
+  ];
+
   const filteredKbList = kbList.filter(item => {
     const action = inferActionType(item);
     if (categoryFilter !== "all") {
@@ -25872,6 +25911,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
     storageDestination: "donations",
     roleAccess: "public",
     attachedWhatsAppTplId: "",
+    customWaHeader: "",
+    customWaAppeal: "",
+    customWaSignatory: "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
+    customWaUpiId: "mumba98697331@barodampay",
+    customWaIncludeQr: true,
     connectedEventId: "",
     connectedSubWorkspaceId: "",
     connectedSubWorkspaceName: "",
@@ -26170,6 +26214,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
       roleAccess: kbForm.roleAccess || "public",
       adminOnly: kbForm.roleAccess !== "public",
       attachedWhatsAppTplId: kbForm.attachedWhatsAppTplId || "",
+      customWaHeader: kbForm.customWaHeader || "",
+      customWaAppeal: kbForm.customWaAppeal || "",
+      customWaSignatory: kbForm.customWaSignatory || "",
+      customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
+      customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
       attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "builtin_offline_donation") : (kbForm.attachedFormId || ""),
       storageDestination: kbForm.storageDestination || "donations",
       connectedEventId: kbForm.connectedEventId || "",
@@ -26208,6 +26257,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
       storageDestination: "donations",
       roleAccess: "public",
       attachedWhatsAppTplId: "",
+      customWaHeader: "",
+      customWaAppeal: "",
+      customWaSignatory: "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
+      customWaUpiId: "mumba98697331@barodampay",
+      customWaIncludeQr: true,
       connectedEventId: "",
       connectedSubWorkspaceId: "",
       connectedSubWorkspaceName: "",
@@ -26367,7 +26421,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
             </button>
           </div>
           <p style={{fontSize:".85rem",color:"var(--mu)",margin:0}}>
-            Configure <strong>Question & Action Studio</strong>, <strong>User Access Scopes</strong>, <strong>WhatsApp Templates</strong>, and <strong>Header Branding</strong>.
+            Unified <strong>1-Flow Question & Action Studio</strong>, <strong>User Access Scopes</strong>, and <strong>Chatbot Branding</strong>.
           </p>
         </div>
 
@@ -26406,58 +26460,26 @@ function ChatbotAccessManager({ C, setC, auth }) {
             👥 User Access & Scopes ({allRegisteredUsers.length})
           </button>
           <button
-            onClick={() => setActiveTab("whatsapp")}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: ".82rem",
-              fontWeight: 800,
-              background: activeTab === "whatsapp" ? "#166534" : "transparent",
-              color: activeTab === "whatsapp" ? "white" : "#166534",
-              border: activeTab === "whatsapp" ? "1px solid #166534" : "1px solid #86EFAC",
-              cursor: "pointer",
-              boxShadow: activeTab === "whatsapp" ? "0 2px 8px rgba(22,101,52,0.3)" : "none"
-            }}
-          >
-            📱 WhatsApp Templates & QR
-          </button>
-          <button
             onClick={() => setActiveTab("branding")}
             style={{
               padding: "8px 14px",
               borderRadius: 8,
               fontSize: ".82rem",
               fontWeight: 800,
-              background: activeTab === "branding" ? "white" : "transparent",
-              color: activeTab === "branding" ? "#0F172A" : "#475569",
-              border: activeTab === "branding" ? "1px solid #CBD5E1" : "1px solid transparent",
+              background: (activeTab === "branding" || activeTab === "rules") ? "white" : "transparent",
+              color: (activeTab === "branding" || activeTab === "rules") ? "#0F172A" : "#475569",
+              border: (activeTab === "branding" || activeTab === "rules") ? "1px solid #CBD5E1" : "1px solid transparent",
               cursor: "pointer",
-              boxShadow: activeTab === "branding" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
+              boxShadow: (activeTab === "branding" || activeTab === "rules") ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
             }}
           >
-            🎨 Header & Branding
-          </button>
-          <button
-            onClick={() => setActiveTab("rules")}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: ".82rem",
-              fontWeight: 800,
-              background: activeTab === "rules" ? "#15803D" : "#DCFCE7",
-              color: activeTab === "rules" ? "white" : "#166534",
-              border: "1px solid #86EFAC",
-              cursor: "pointer",
-              boxShadow: activeTab === "rules" ? "0 2px 8px rgba(21,128,61,0.3)" : "none"
-            }}
-          >
-            🛡️ Restricted Messages & Rules
+            ⚙️ Bot Branding & Security Rules
           </button>
         </div>
       </div>
 
-      {activeTab === "branding" && (
-        <div style={{animation:"fadeIn .2s ease"}}>
+      {(activeTab === "branding" || activeTab === "rules") && (
+        <div style={{animation:"fadeIn .2s ease",display:"flex",flexDirection:"column",gap:20}}>
           <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"24px 26px",marginBottom:24,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
             <div style={{fontSize:"1.05rem",fontWeight:800,color:"#0F172A",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
               <span>🎨</span> Custom Chatbot Header, Titles & Greeting Configuration:
@@ -26640,14 +26662,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      
-      {/* DEDICATED SUB-TAB: 🛡️ Restricted Messages & Rules */}
-      {activeTab === "rules" && (
-        <div style={{animation:"fadeIn .2s ease"}}>
-          <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"24px 26px",marginBottom:24,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        {/* SECTION 2: 🛡️ Restricted Messages & Security Rules */}
+        <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"24px 26px",marginBottom:24,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:12}}>
               <div>
                 <div style={{fontSize:"1.15rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
@@ -27334,6 +27351,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
           setEditingKbId(item.id);
           const act = inferActionType(item);
           const sum = inferSummaryType(item);
+          const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
+          const matchedTpl = allTpls.find(t => t.id === item.attachedWhatsAppTplId) || (act === "whatsapp" ? DEFAULT_WA_TEMPLATES[0] : null);
           setKbForm({
             ...item,
             actionType: act,
@@ -27341,7 +27360,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
             order: item.order || 1,
             roleAccess: item.roleAccess || (item.adminOnly ? "vibhag_admin" : "public"),
             storageDestination: item.storageDestination || "donations",
-            targetEventIds: Array.isArray(item.targetEventIds) && item.targetEventIds.length > 0 ? item.targetEventIds : ["all"]
+            targetEventIds: Array.isArray(item.targetEventIds) && item.targetEventIds.length > 0 ? item.targetEventIds : ["all"],
+            attachedWhatsAppTplId: item.attachedWhatsAppTplId || (act === "whatsapp" ? "tpl_edu_appeal" : ""),
+            customWaHeader: item.customWaHeader !== undefined ? item.customWaHeader : (matchedTpl?.header || ""),
+            customWaAppeal: item.customWaAppeal !== undefined ? item.customWaAppeal : (matchedTpl?.appeal || item.answer || ""),
+            customWaSignatory: item.customWaSignatory !== undefined ? item.customWaSignatory : (matchedTpl?.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી"),
+            customWaUpiId: item.customWaUpiId || matchedTpl?.upiId || "mumba98697331@barodampay",
+            customWaIncludeQr: item.customWaIncludeQr !== undefined ? item.customWaIncludeQr : (matchedTpl?.includeGPay !== false)
           });
           setIsStudioOpen(true);
           window.scrollTo({ top: 120, behavior: "smooth" });
@@ -27349,6 +27374,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
         const handleStartNewItem = (customCmd = "/ss") => {
           setEditingKbId(null);
+          const defaultTpl = DEFAULT_WA_TEMPLATES[0];
           setKbForm({
             cmd: customCmd,
             icon: "❓",
@@ -27358,10 +27384,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
             summaryType: "donation",
             enabled: true,
             adminOnly: false,
-            attachedFormId: "",
+            attachedFormId: "builtin_offline_donation",
             storageDestination: "donations",
             roleAccess: "public",
-            attachedWhatsAppTplId: "",
+            attachedWhatsAppTplId: "tpl_edu_appeal",
+            customWaHeader: defaultTpl.header,
+            customWaAppeal: defaultTpl.appeal,
+            customWaSignatory: defaultTpl.signatory,
+            customWaUpiId: defaultTpl.upiId,
+            customWaIncludeQr: true,
             connectedEventId: "",
             connectedSubWorkspaceId: "",
             connectedSubWorkspaceName: "",
@@ -27995,15 +28026,28 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           {/* 2. WhatsApp Template for Broadcast (if donation summary or donor list) */}
                           <div>
                             <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
-                              2. Optional WhatsApp Broadcast Template:
+                              2. Optional WhatsApp Broadcast Template (1-click Share & QR):
                             </label>
                             <select
                               value={kbForm.attachedWhatsAppTplId || ""}
-                              onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
+                              onChange={e => {
+                                const tId = e.target.value;
+                                const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
+                                const sel = allTpls.find(t => t.id === tId);
+                                setKbForm({
+                                  ...kbForm,
+                                  attachedWhatsAppTplId: tId,
+                                  customWaHeader: sel ? sel.header : kbForm.customWaHeader,
+                                  customWaAppeal: sel ? sel.appeal : kbForm.customWaAppeal,
+                                  customWaSignatory: sel ? (sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી") : kbForm.customWaSignatory,
+                                  customWaUpiId: sel ? (sel.upiId || "mumba98697331@barodampay") : kbForm.customWaUpiId,
+                                  customWaIncludeQr: sel ? (sel.includeGPay !== false) : kbForm.customWaIncludeQr
+                                });
+                              }}
                               style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #93C5FD",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
                             >
                               <option value="">-- No Attached WhatsApp Template --</option>
-                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
+                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary (for /don_summary)</option>
                               <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
                               <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
                               {(C.whatsappBroadcastTemplates || []).map(t => (
@@ -28014,6 +28058,34 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </select>
                           </div>
                         </div>
+
+                        {/* Inline WhatsApp Message Customizer if Template Attached */}
+                        {kbForm.attachedWhatsAppTplId && (
+                          <div style={{background:"white",border:"1px solid #93C5FD",borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:10}}>
+                            <div style={{fontSize:".78rem",fontWeight:800,color:"#1D4ED8",display:"flex",alignItems:"center",gap:6}}>
+                              <span>✏️</span> Customize Broadcast Message for this Summary:
+                            </div>
+                            <textarea
+                              rows={3}
+                              value={kbForm.customWaAppeal !== undefined ? kbForm.customWaAppeal : ""}
+                              onChange={e => setKbForm({ ...kbForm, customWaAppeal: e.target.value })}
+                              placeholder="Enter custom appeal message to accompany the live totals..."
+                              style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                            />
+                            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",fontSize:".74rem",color:"#475569"}}>
+                              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontWeight:700}}>
+                                <input
+                                  type="checkbox"
+                                  checked={kbForm.customWaIncludeQr !== false}
+                                  onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
+                                  style={{cursor:"pointer",accentColor:"#2563EB"}}
+                                />
+                                Include Bank QR & Pay Link
+                              </label>
+                              <span style={{color:"#64748B"}}>UPI: <strong>{kbForm.customWaUpiId || "mumba98697331@barodampay"}</strong></span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* 3. Event Scope Filter */}
                         <div>
@@ -28192,23 +28264,42 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         flexDirection: "column",
                         gap: 14
                       }}>
-                        <div style={{fontSize:".86rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
-                          <span>📱</span> WhatsApp Broadcast Template & QR Standee Settings:
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <div style={{fontSize:".88rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
+                            <span>📱</span> WhatsApp Broadcast Message & Bank UPI QR Designer:
+                          </div>
+                          <span style={{fontSize:".72rem",background:"#D1FAE5",color:"#065F46",padding:"3px 8px",borderRadius:6,fontWeight:800}}>
+                            Live 1-Flow Editor
+                          </span>
                         </div>
 
-                        <div>
-                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                            Select Broadcast Template:
+                        {/* Template Preset Selector */}
+                        <div style={{background:"white",border:"1px solid #A7F3D0",borderRadius:8,padding:12}}>
+                          <label style={{fontSize:".75rem",fontWeight:800,color:"#065F46",display:"block",marginBottom:6}}>
+                            1. Select Message Preset / Template (or Customize freely below):
                           </label>
                           <select
                             value={kbForm.attachedWhatsAppTplId || "tpl_edu_appeal"}
-                            onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
-                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            onChange={e => {
+                              const tId = e.target.value;
+                              const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
+                              const sel = allTpls.find(t => t.id === tId) || DEFAULT_WA_TEMPLATES[0];
+                              setKbForm({
+                                ...kbForm,
+                                attachedWhatsAppTplId: tId,
+                                customWaHeader: sel.header,
+                                customWaAppeal: sel.appeal,
+                                customWaSignatory: sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
+                                customWaUpiId: sel.upiId || "mumba98697331@barodampay",
+                                customWaIncludeQr: sel.includeGPay !== false
+                              });
+                            }}
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:800,background:"#F0FDF4",boxSizing:"border-box",color:"#065F46",cursor:"pointer"}}
                           >
                             <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)</option>
+                            <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary (for /don_summary)</option>
                             <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
                             <option value="tpl_meeting_notice">📢 CWC Committee Meeting & Gathering Notice</option>
-                            <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
                             {(C.whatsappBroadcastTemplates || []).map(t => (
                               <option key={t.id} value={t.id}>
                                 📱 {t.name || t.id} (Custom Template)
@@ -28217,22 +28308,143 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </select>
                         </div>
 
-                        {/* Answer text */}
+                        {/* Editable Header Banner */}
                         <div>
                           <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
-                            Intro Message (Shown above the WhatsApp buttons in chat):
+                            2. Top Header Banner (Gujarati / Community Title):
                           </label>
                           <textarea
-                            rows={3}
-                            value={kbForm.answer || ""}
-                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
-                            placeholder="Enter intro message..."
-                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #6EE7B7",fontSize:".85rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                            rows={2}
+                            value={kbForm.customWaHeader !== undefined ? kbForm.customWaHeader : DEFAULT_WA_TEMPLATES[0].header}
+                            onChange={e => setKbForm({ ...kbForm, customWaHeader: e.target.value })}
+                            placeholder=".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷..."
+                            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #6EE7B7",fontSize:".82rem",fontFamily:"monospace",boxSizing:"border-box",background:"white"}}
                           />
                         </div>
 
-                        <div style={{fontSize:".74rem",color:"#047857",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #A7F3D0"}}>
-                          ℹ️ When users trigger <strong>{kbForm.cmd || "/ss"}</strong>, the chatbot response will include <strong>📋 Copy for WhatsApp</strong> and <strong>🟢 Share on WhatsApp</strong> buttons formatted with this template and the Bank of Baroda UPI scanner.
+                        {/* Editable Appeal / Message Body */}
+                        <div>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46"}}>
+                              3. Main Appeal / Body Message (Gujarati or English):
+                            </label>
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                              <button
+                                type="button"
+                                onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો." }))}
+                                style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".72rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                              >
+                                + 🎓 Edu Appeal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "સંસ્થા ના વિવિધ સામાજિક તથા વિકાસ કાર્યો માટે આપનું સ્વૈચ્છિક દાન આવકાર્ય છે." }))}
+                                style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".72rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                              >
+                                + 💰 Donation Appeal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "સર્વે હોદ્દેદારો તથા કારોબારી સભ્યો ને જણાવવાનું કે આગામી મિટિંગ નું આયોજન કરેલ છે. આપની ઉપસ્થિતિ અનિવાર્ય છે." }))}
+                                style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".72rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                              >
+                                + 📢 Meeting Notice
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            rows={4}
+                            value={kbForm.customWaAppeal !== undefined ? kbForm.customWaAppeal : DEFAULT_WA_TEMPLATES[0].appeal}
+                            onChange={e => setKbForm({ ...kbForm, customWaAppeal: e.target.value })}
+                            placeholder="Enter Gujarati or English broadcast message..."
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",lineHeight:1.45,fontFamily:"inherit",boxSizing:"border-box",background:"white"}}
+                          />
+                        </div>
+
+                        {/* Signatory */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                            4. Signatory / Footer Sign-off:
+                          </label>
+                          <input
+                            type="text"
+                            value={kbForm.customWaSignatory !== undefined ? kbForm.customWaSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી"}
+                            onChange={e => setKbForm({ ...kbForm, customWaSignatory: e.target.value })}
+                            placeholder="e.g. લિ. સેન્ટ્રલ વર્કિંગ કમિટી"
+                            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #6EE7B7",fontSize:".85rem",fontWeight:700,boxSizing:"border-box",background:"white"}}
+                          />
+                        </div>
+
+                        {/* Bank of Baroda UPI QR Scanner & Donate URL */}
+                        <div style={{background:"white",border:"1px solid #A7F3D0",borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+                          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:".8rem",fontWeight:800,color:"#065F46",cursor:"pointer"}}>
+                            <input
+                              type="checkbox"
+                              checked={kbForm.customWaIncludeQr !== false}
+                              onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
+                              style={{cursor:"pointer",accentColor:"#059669",width:16,height:16}}
+                            />
+                            <span>💳 Attach Bank of Baroda UPI QR Standee & Direct Pay URL (https://mmp-cwc.com/donate/)</span>
+                          </label>
+                          {kbForm.customWaIncludeQr !== false && (
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10,marginTop:4}}>
+                              <div>
+                                <span style={{fontSize:".72rem",fontWeight:700,color:"#475569",display:"block",marginBottom:2}}>UPI ID:</span>
+                                <input
+                                  type="text"
+                                  value={kbForm.customWaUpiId || "mumba98697331@barodampay"}
+                                  onChange={e => setKbForm({ ...kbForm, customWaUpiId: e.target.value })}
+                                  style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".8rem",fontWeight:700,boxSizing:"border-box"}}
+                                />
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <img src="./mmp_bhim_qr.png" alt="Bank of Baroda QR" style={{width:40,height:40,objectFit:"contain",borderRadius:4,border:"1px solid #CBD5E1"}} onError={(e)=>{e.target.style.display='none';}} />
+                                <span style={{fontSize:".72rem",color:"#065F46",fontWeight:600}}>Bank of Baroda BHIM UPI Scanner will display with 1-click payment link.</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Real-Time WhatsApp Live Message Bubble Preview */}
+                        <div style={{background:"#0B141A",borderRadius:10,padding:14,color:"#E9EDEF",boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:6,borderBottom:"1px solid #202C33"}}>
+                            <span style={{fontSize:".76rem",fontWeight:800,color:"#25D366",display:"flex",alignItems:"center",gap:6}}>
+                              <span>🟢</span> Real-Time WhatsApp Message Preview (Exact text copied / shared)
+                            </span>
+                            <span style={{fontSize:".68rem",color:"#8696A0"}}>Chatbot Trigger: <strong>{kbForm.cmd || "/ss"}</strong></span>
+                          </div>
+
+                          <div style={{background:"#005C4B",padding:"10px 14px",borderRadius:"8px 8px 8px 0",fontSize:".8rem",lineHeight:1.5,whiteSpace:"pre-wrap",fontFamily:"inherit",color:"#E9EDEF"}}>
+                            {kbForm.customWaIncludeQr !== false && (
+                              <div style={{color:"#FFD700",fontWeight:700,marginBottom:6}}>💳 *દાન QR સ્કેનર:* https://mmp-cwc.com/donate/</div>
+                            )}
+                            {kbForm.customWaHeader && (
+                              <div style={{fontWeight:700,marginBottom:6,color:"#E9EDEF"}}>{kbForm.customWaHeader}</div>
+                            )}
+                            <div>{kbForm.customWaAppeal || "સુજ્ઞ જ્ઞાતિજનો, આપનું સ્વૈચ્છિક દાન આવકાર્ય છે."}</div>
+                            {kbForm.customWaSignatory && (
+                              <div style={{marginTop:8,fontStyle:"italic",color:"#D1D7DB"}}>{kbForm.customWaSignatory}</div>
+                            )}
+                            {kbForm.customWaIncludeQr !== false && (
+                              <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #025143",fontSize:".75rem",color:"#90EE90"}}>
+                                💳 *Bank of Baroda BHIM UPI / GPay સ્કેનર:*{'\n'}🔗 https://mmp-cwc.com/donate/{'\n'}📲 UPI ID: {kbForm.customWaUpiId || "mumba98697331@barodampay"}
+                              </div>
+                            )}
+                            <div style={{fontSize:".7rem",color:"#8696A0",marginTop:6}}>🌐 પોર્ટલ: https://mmp-cwc.com</div>
+                          </div>
+
+                          <div style={{display:"flex",gap:8,marginTop:10}}>
+                            <div style={{flex:1,background:"#202C33",color:"#25D366",padding:"6px 10px",borderRadius:6,fontSize:".75rem",fontWeight:700,textAlign:"center"}}>
+                              📋 Copy for WhatsApp
+                            </div>
+                            <div style={{flex:1,background:"#25D366",color:"#111B21",padding:"6px 10px",borderRadius:6,fontSize:".75rem",fontWeight:800,textAlign:"center"}}>
+                              🟢 Share on WhatsApp
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{fontSize:".75rem",color:"#047857",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #A7F3D0"}}>
+                          ℹ️ <strong>1-Flow Save</strong>: When users trigger <strong>{kbForm.cmd || "/ss"}</strong> or click this button in chatbot, the bot will display this exact customized message with 1-tap Copy & Share buttons and the Bank of Baroda UPI QR standee.
                         </div>
                       </div>
                     )}
@@ -52922,26 +53134,33 @@ function WhatsAppBroadcastCard({ cardData, C }) {
       : "https://mmp-cwc.com";
 
     const targetDonateUrl = foundTpl?.donateLink || tpls.donateLink || donateUrl;
-    const upi = foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
-    const header = foundTpl?.header || tpls.gujaratiHeader || ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸";
-    const appeal = foundTpl?.appeal || cardData.answer || tpls.gujaratiAppeal || "";
-    const signatory = foundTpl?.signatory || tpls.gujaratiSignatory || "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી";
+    const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
+    const header = (cardData.customWaHeader !== undefined && cardData.customWaHeader !== "") 
+      ? cardData.customWaHeader 
+      : (foundTpl?.header || tpls.gujaratiHeader || ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸");
+    const appeal = (cardData.customWaAppeal !== undefined && cardData.customWaAppeal !== "") 
+      ? cardData.customWaAppeal 
+      : (foundTpl?.appeal || cardData.answer || tpls.gujaratiAppeal || "");
+    const signatory = (cardData.customWaSignatory !== undefined && cardData.customWaSignatory !== "") 
+      ? cardData.customWaSignatory 
+      : (foundTpl?.signatory || tpls.gujaratiSignatory || "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી");
     const qrHeader = foundTpl?.qrHeader || tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
+    const includeQr = cardData.customWaIncludeQr !== undefined ? cardData.customWaIncludeQr : (foundTpl?.includeGPay !== false);
 
     const parts = [];
-    if (foundTpl?.includeGPay === true) {
+    if (includeQr) {
       parts.push(`💳 *દાન QR સ્કેનર:* ${targetDonateUrl}`);
     }
-    if (foundTpl?.includeHeader !== false && header.trim()) {
+    if (foundTpl?.includeHeader !== false && header && header.trim()) {
       parts.push(header.trim());
     }
-    if (foundTpl?.includeAppeal !== false && appeal.trim()) {
+    if (foundTpl?.includeAppeal !== false && appeal && appeal.trim()) {
       parts.push(appeal.trim());
     }
-    if (foundTpl?.includeFooter !== false && signatory.trim()) {
+    if (foundTpl?.includeFooter !== false && signatory && signatory.trim()) {
       parts.push(signatory.trim());
     }
-    if (foundTpl?.includeGPay === true) {
+    if (includeQr) {
       parts.push(qrHeader + "\n" + `🔗 ${targetDonateUrl}\n` + `📲 UPI ID: ${upi}`);
     }
     parts.push(`🌐 પોર્ટલ: ${portalUrl}`);
@@ -52959,52 +53178,71 @@ function WhatsAppBroadcastCard({ cardData, C }) {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  return (
-    <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #E2E8F0",display:"flex",gap:6,alignItems:"center"}}>
-      <button
-        onClick={handleCopy}
-        style={{
-          flex: 1,
-          padding: "7px 10px",
-          background: copied ? "#DCFCE7" : "white",
-          color: copied ? "#15803D" : "#334155",
-          border: `1px solid ${copied ? "#86EFAC" : "#CBD5E1"}`,
-          borderRadius: 6,
-          fontSize: ".75rem",
-          fontWeight: 700,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 4
-        }}
-      >
-        <span>{copied ? "✅" : "📋"}</span>
-        <span>{copied ? "Copied!" : "Copy for WhatsApp"}</span>
-      </button>
+  const targetDonateUrl = foundTpl?.donateLink || tpls.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/");
+  const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
+  const includeQr = cardData.customWaIncludeQr !== undefined ? cardData.customWaIncludeQr : (foundTpl?.includeGPay !== false);
 
-      <button
-        onClick={handleShare}
-        style={{
-          flex: 1,
-          padding: "7px 12px",
-          background: "#25D366",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          fontSize: ".75rem",
-          fontWeight: 700,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 4,
-          boxShadow: "0 2px 6px rgba(37,211,102,0.25)"
-        }}
-      >
-        <span>🟢</span>
-        <span>Share on WhatsApp</span>
-      </button>
+  return (
+    <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #E2E8F0",display:"flex",flexDirection:"column",gap:8}}>
+      {includeQr && (
+        <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"8px 10px",display:"flex",alignItems:"center",gap:10}}>
+          <img src="./mmp_bhim_qr.png" alt="Bank of Baroda QR" style={{width:44,height:44,objectFit:"contain",borderRadius:6,border:"1px solid #CBD5E1",background:"white"}} onError={(e)=>{e.target.style.display='none';}} />
+          <div style={{flex:1}}>
+            <div style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>💳 Bank of Baroda BHIM UPI / GPay</div>
+            <div style={{fontSize:".68rem",color:"#15803D",fontFamily:"monospace"}}>UPI: {upi}</div>
+          </div>
+          <a href={targetDonateUrl} target="_blank" rel="noreferrer" style={{background:"#166534",color:"white",padding:"4px 8px",borderRadius:5,fontSize:".68rem",fontWeight:700,textDecoration:"none"}}>
+            Direct Pay ↗
+          </a>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <button
+          onClick={handleCopy}
+          style={{
+            flex: 1,
+            padding: "7px 10px",
+            background: copied ? "#DCFCE7" : "white",
+            color: copied ? "#15803D" : "#334155",
+            border: `1px solid ${copied ? "#86EFAC" : "#CBD5E1"}`,
+            borderRadius: 6,
+            fontSize: ".75rem",
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 4
+          }}
+        >
+          <span>{copied ? "✅" : "📋"}</span>
+          <span>{copied ? "Copied!" : "Copy for WhatsApp"}</span>
+        </button>
+
+        <button
+          onClick={handleShare}
+          style={{
+            flex: 1,
+            padding: "7px 12px",
+            background: "#25D366",
+            color: "white",
+            border: "none",
+            borderRadius: 6,
+            fontSize: ".75rem",
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 4,
+            boxShadow: "0 2px 6px rgba(37,211,102,0.25)"
+          }}
+        >
+          <span>🟢</span>
+          <span>Share on WhatsApp</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -56100,13 +56338,18 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           attachedFormId: matchedKb.attachedFormId,
           attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId
         };
-      } else if (matchedKb.attachedWhatsAppTplId) {
+      } else if (matchedKb.attachedWhatsAppTplId || matchedKb.actionType === "whatsapp") {
         botType = "whatsapp_broadcast_card";
-        botReply = matchedKb.answer;
+        botReply = matchedKb.answer || "Official WhatsApp Broadcast Message:";
         cardData = {
           tplId: matchedKb.attachedWhatsAppTplId,
           title: matchedKb.title,
-          answer: matchedKb.answer
+          answer: matchedKb.answer,
+          customWaHeader: matchedKb.customWaHeader,
+          customWaAppeal: matchedKb.customWaAppeal,
+          customWaSignatory: matchedKb.customWaSignatory,
+          customWaUpiId: matchedKb.customWaUpiId,
+          customWaIncludeQr: matchedKb.customWaIncludeQr
         };
       } else {
         const kbTargetEvents = (Array.isArray(matchedKb.targetEventIds) && matchedKb.targetEventIds.length > 0)
