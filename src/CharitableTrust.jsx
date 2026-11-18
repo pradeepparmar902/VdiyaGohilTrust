@@ -25034,11 +25034,21 @@ export const getSubworkspaceContactsList = ({ eventId, subWorkspaceId = "invite"
     const evTitleClean = String(ev.title || '').trim().toLowerCase();
     const evIdClean = (ev.id && ev.id !== "undefined") ? String(ev.id).trim().toLowerCase() : "";
 
-    const matchesEvent = !eventId ||
-      (evTitleClean && (evName === evTitleClean || evName.includes(evTitleClean) || evTitleClean.includes(evName))) ||
-      (evIdClean && (rEvId === evIdClean || evName === evIdClean)) ||
-      (r.targetTemplateId && (r.targetTemplateId === activeDocId || (activeTplObj?.name && r.targetTemplateId === activeTplObj.name))) ||
-      (Array.isArray(r.assignedDocTypes) && (r.assignedDocTypes.includes(activeDocId) || (activeTplObj?.name && r.assignedDocTypes.includes(activeTplObj.name))));
+    const isDirectIdMatch = Boolean(evIdClean && (rEvId === evIdClean || evName === evIdClean));
+    const isDirectTitleMatch = Boolean(
+      (evTitleClean && (evName === evTitleClean || rEvId === evTitleClean)) ||
+      (ev.titleGu && (evName === String(ev.titleGu).trim().toLowerCase() || rEvId === String(ev.titleGu).trim().toLowerCase()))
+    );
+    const isAssignedToWorkspace = Boolean(
+      (Array.isArray(r.assignedWorkspaceIds) && r.assignedWorkspaceIds.map(String).includes(String(ev.id))) ||
+      (r.workspaceId && String(r.workspaceId) === String(ev.id))
+    );
+    let isEduLooseMatch = false;
+    if (evTitleClean.includes('education') && (evName.includes('education') || rEvId.includes('education') || rEvId.includes('1785425112515'))) {
+      isEduLooseMatch = true;
+    }
+
+    const matchesEvent = !eventId || isDirectIdMatch || isDirectTitleMatch || isAssignedToWorkspace || isEduLooseMatch;
     if (!matchesEvent) return false;
 
     // ── Template / Sub-Workspace Contact Isolation ──
@@ -43542,25 +43552,33 @@ function AdminInviteLetters({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       targetEventScope && targetEventScope !== 'current' && isEventMatchingScope(r, targetEventScope)
     );
 
-    const isExplicitlyAssigned = (r.targetTemplateId === currentDocTpl?.id) || (Array.isArray(r.assignedDocTypes) && r.assignedDocTypes.includes(currentDocTpl?.id));
-    const isAssignedToWorkspace = (Array.isArray(r.assignedWorkspaceIds) && r.assignedWorkspaceIds.includes(ev.id)) || r.workspaceId === ev.id;
-    
-    // Add loose matching mirroring the overview form filter logic
-    let isLooseMatch = false;
-    const rEventStr = String(r.eventName || r.eventTitle || r.eventId || r.formId || "").toLowerCase().trim();
-    
-    const evTitleLower = String(ev.title || "").toLowerCase();
-    if (evTitleLower && evTitleLower !== 'all') {
-       if (rEventStr.includes(evTitleLower) || evTitleLower.includes(rEventStr)) isLooseMatch = true;
-       if (!isLooseMatch && evTitleLower.includes('education') && rEventStr.includes('education')) isLooseMatch = true;
-    }
-    const evIdLower = String(ev.id || "").toLowerCase();
-    if (!isLooseMatch && evIdLower) {
-       if (rEventStr.includes(evIdLower) || evIdLower.includes(rEventStr)) isLooseMatch = true;
-       if (!isLooseMatch && evIdLower.includes('education') && rEventStr.includes('education')) isLooseMatch = true;
+    // 1. Direct Event ID match
+    const evIdLower = (ev.id && ev.id !== "undefined") ? String(ev.id).trim().toLowerCase() : "";
+    const evTitleLower = String(ev.title || "").trim().toLowerCase();
+    const evTitleGuLower = String(ev.titleGu || "").trim().toLowerCase();
+    const rEvId = String(r.eventId || '').trim().toLowerCase();
+    const rEvName = String(r.eventName || r.eventTitle || '').trim().toLowerCase();
+
+    const isDirectIdMatch = Boolean(evIdLower && (rEvId === evIdLower || rEvName === evIdLower));
+    const isDirectTitleMatch = Boolean(
+      (evTitleLower && (rEvName === evTitleLower || rEvId === evTitleLower)) ||
+      (evTitleGuLower && (rEvName === evTitleGuLower || rEvId === evTitleGuLower))
+    );
+
+    // 2. Explicit workspace assignment (when a contact or guest was imported/assigned to this workspace)
+    const isAssignedToWorkspace = Boolean(
+      (Array.isArray(r.assignedWorkspaceIds) && r.assignedWorkspaceIds.map(String).includes(String(ev.id))) ||
+      (r.workspaceId && String(r.workspaceId) === String(ev.id))
+    );
+
+    // 3. Education loose match ONLY IF current workspace title is education
+    let isEduLooseMatch = false;
+    if (evTitleLower.includes('education') && (rEvName.includes('education') || rEvId.includes('education') || rEvId.includes('1785425112515'))) {
+      isEduLooseMatch = true;
     }
 
-    const matchesEvent = matchesTargetEvent || r.eventId === ev.id || evName === ev.title || evName === ev.titleGu || isExplicitlyAssigned || isAssignedToWorkspace || isLooseMatch;
+    // Workspace membership condition: record MUST belong to this event / workspace
+    const matchesEvent = matchesTargetEvent || isDirectIdMatch || isDirectTitleMatch || isAssignedToWorkspace || isEduLooseMatch;
     
     if (!matchesEvent) return false;
 
@@ -43587,15 +43605,6 @@ function AdminInviteLetters({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
         if (rGroups.some(g => String(g).trim().toLowerCase() === String(targetGroupName).trim().toLowerCase())) return true;
       }
       return false;
-    }
-
-    // If viewing default "Official Invite Letter", show entries assigned to default or not specifically isolated to other custom templates
-    if (activeDocId === "invite") {
-      if (r.targetTemplateId && r.targetTemplateId !== "invite" && r.targetTemplateId !== "cert") {
-        if (!Array.isArray(r.assignedDocTypes) || !r.assignedDocTypes.includes("invite")) {
-          return false;
-        }
-      }
     }
 
     // If viewing default "Official Invite Letter", show entries assigned to default or not specifically isolated to other custom templates
@@ -47912,7 +47921,19 @@ This cannot be undone.`)) return;
                     </tr>
                   );
                 })}
-                {filteredRegs.length === 0 && <tr><td colSpan={7} style={{padding:40,textAlign:"center",color:"var(--mu)"}}>No inviteLetters found to manage.</td></tr>}
+                {filteredRegs.length === 0 && (
+                  <tr>
+                    <td colSpan={visibleExtraCols.length + 8} style={{padding:"48px 20px",textAlign:"center",color:"#64748B",background:"#F8FAFC"}}>
+                      <div style={{fontSize:"2.2rem",marginBottom:8}}>📂</div>
+                      <div style={{fontSize:"1rem",fontWeight:700,color:"#1E293B",marginBottom:4}}>
+                        This workspace is currently blank & ready
+                      </div>
+                      <div style={{fontSize:".82rem",color:"#64748B",maxWidth:480,margin:"0 auto",lineHeight:1.5}}>
+                        No attendees or passes have been added to <strong>{activeEvent?.title || "this workspace"}</strong> yet. Use <strong>+ Single Guest</strong>, <strong>Import Contact Group</strong>, <strong>Import Donors</strong>, or <strong>Connect Existing Template</strong> to add participants.
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
