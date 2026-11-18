@@ -25792,12 +25792,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const uniqueTitles = Array.from(new Set(kbList.map(k => (k.title || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   const inferActionType = (item) => {
-    if (!item) return "form";
+    if (!item) return "donation";
+    if (item.actionType === "donation") return "donation";
+    if (item.attachedFormId === "builtin_offline_donation" || item.cmd === "/don_entry" || (item.title && item.title.toLowerCase().includes("offline donation"))) return "donation";
+    if (item.cmd === "/don_summary" || item.id === "kb_donationsummary" || (item.title && item.title.toLowerCase().includes("donation summary"))) return "donation";
+    if (item.cmd === "/don_list" || item.id === "kb_donerlist" || (item.title && (item.title.toLowerCase().includes("donor registry") || item.title.toLowerCase().includes("donor list")))) return "donation";
     if (item.actionType) return item.actionType;
     if (item.connectedSubWorkspaceId) return "workspace";
     if (item.attachedFormId) return "form";
-    if (item.cmd === "/don_summary" || item.id === "kb_donationsummary" || (item.title && item.title.toLowerCase().includes("donation summary"))) return "summary";
-    if (item.cmd === "/don_list" || item.id === "kb_donerlist" || (item.title && item.title.toLowerCase().includes("donor registry"))) return "summary";
     if (item.cmd === "/all" || item.cmd === "/Edu_all" || item.id === "kb_all" || (item.title && item.title.toLowerCase().includes("summary of all"))) return "summary";
     if (item.cmd === "/pending" || item.cmd === "/Edu_pending" || item.id === "kb_pending") return "summary";
     if (item.cmd === "/approved" || item.cmd === "/Edu_approved" || item.id === "kb_approved") return "summary";
@@ -25858,6 +25860,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const filteredKbList = kbList.filter(item => {
     const action = inferActionType(item);
     if (categoryFilter !== "all") {
+      if (categoryFilter === "donation" && action !== "donation") return false;
       if (categoryFilter === "form" && action !== "form") return false;
       if (categoryFilter === "summary" && action !== "summary") return false;
       if (categoryFilter === "workspace" && action !== "workspace") return false;
@@ -26184,7 +26187,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
     // Generate intelligent default answer based on chosen capability if empty
     let finalAnswer = (kbForm.answer || "").trim();
     if (!finalAnswer) {
-      if (kbForm.actionType === "form") {
+      if (kbForm.actionType === "donation") {
+        if (kbForm.attachedFormId === "builtin_offline_donation") {
+          finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease enter the offline donation details below:`;
+        } else if (kbForm.summaryType === "donor_list") {
+          finalAnswer = `📋 **${kbForm.title.trim()}**\n\nPerson-wise Donor Registry:`;
+        } else {
+          finalAnswer = `💰 **${kbForm.title.trim()}**\n\nReal-time Vibhag-wise Donation Summary:`;
+        }
+      } else if (kbForm.actionType === "form") {
         finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease complete the interactive form below:`;
       } else if (kbForm.actionType === "summary") {
         finalAnswer = `📊 **${kbForm.title.trim()}**\n\nLive real-time summary metrics dashboard.`;
@@ -26203,23 +26214,25 @@ function ChatbotAccessManager({ C, setC, auth }) {
       ? Number(kbForm.order) 
       : (editingKbId ? (kbList.find(k => k.id === editingKbId)?.order || 1) : (kbList.length + 1));
 
+    const defaultRole = kbForm.actionType === "donation" ? "donation_collector" : "public";
+
     const payload = {
       ...kbForm,
       cmd: cleanCmd,
       title: kbForm.title.trim(),
       answer: finalAnswer,
-      actionType: kbForm.actionType || "form",
+      actionType: kbForm.actionType || "donation",
       summaryType: kbForm.summaryType || "donation",
       order: itemOrder,
-      roleAccess: kbForm.roleAccess || "public",
-      adminOnly: kbForm.roleAccess !== "public",
+      roleAccess: kbForm.roleAccess || defaultRole,
+      adminOnly: (kbForm.roleAccess || defaultRole) !== "public",
       attachedWhatsAppTplId: kbForm.attachedWhatsAppTplId || "",
       customWaHeader: kbForm.customWaHeader || "",
       customWaAppeal: kbForm.customWaAppeal || "",
       customWaSignatory: kbForm.customWaSignatory || "",
       customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
       customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
-      attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "builtin_offline_donation") : (kbForm.attachedFormId || ""),
+      attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
       storageDestination: kbForm.storageDestination || "donations",
       connectedEventId: kbForm.connectedEventId || "",
       connectedSubWorkspaceId: kbForm.connectedSubWorkspaceId || "",
@@ -27338,6 +27351,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
       )}
 
       {(activeTab === "kb" || activeTab === "studio") && (() => {
+        const countDonations = kbList.filter(k => inferActionType(k) === "donation").length;
         const countForms = kbList.filter(k => inferActionType(k) === "form").length;
         const countSummaries = kbList.filter(k => inferActionType(k) === "summary").length;
         const countWorkspaces = kbList.filter(k => inferActionType(k) === "workspace").length;
@@ -27375,19 +27389,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
         const handleStartNewItem = (customCmd = "/ss") => {
           setEditingKbId(null);
           const defaultTpl = DEFAULT_WA_TEMPLATES[0];
+          const isDonCmd = customCmd.startsWith("/don");
           setKbForm({
             cmd: customCmd,
-            icon: "❓",
+            icon: isDonCmd ? "💰" : "❓",
             title: "",
             answer: "",
-            actionType: "form",
+            actionType: "donation",
             summaryType: "donation",
             enabled: true,
-            adminOnly: false,
-            attachedFormId: "builtin_offline_donation",
+            adminOnly: true,
+            attachedFormId: "",
             storageDestination: "donations",
-            roleAccess: "public",
-            attachedWhatsAppTplId: "tpl_edu_appeal",
+            roleAccess: "donation_collector",
+            attachedWhatsAppTplId: "tpl_donor_summary",
             customWaHeader: defaultTpl.header,
             customWaAppeal: defaultTpl.appeal,
             customWaSignatory: defaultTpl.signatory,
@@ -27776,10 +27791,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
                     }}>
                       {[
                         {
+                          type: "donation",
+                          icon: "💰",
+                          title: "Donation Section & Collections",
+                          desc: "Live Vibhag donation summaries, person-wise donor registry list, or offline cash/cheque donation entry form",
+                          color: "#059669",
+                          bg: "#ECFDF5",
+                          border: "#6EE7B7"
+                        },
+                        {
                           type: "form",
                           icon: "📝",
-                          title: "Interactive Form",
-                          desc: "Display custom Event Form from Form Builder or Offline Donation Form & save submissions directly into database",
+                          title: "Interactive Form (Event & Custom)",
+                          desc: "Display custom Form Builder forms or student registration application & save directly into database",
                           color: "#16A34A",
                           bg: "#F0FDF4",
                           border: "#86EFAC"
@@ -27787,8 +27811,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         {
                           type: "summary",
                           icon: "📊",
-                          title: "Live Analytics & Summary",
-                          desc: "Calculate & display real-time Vibhag donation totals, student registration counts, or verified lists",
+                          title: "Registrations Analytics & Counts",
+                          desc: "Calculate & display real-time total student counts, pending document verification, or approved lists",
                           color: "#2563EB",
                           bg: "#EFF6FF",
                           border: "#93C5FD"
@@ -27805,11 +27829,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         {
                           type: "whatsapp",
                           icon: "📱",
-                          title: "WhatsApp Broadcast & QR",
+                          title: "WhatsApp Broadcast & UPI QR",
                           desc: "Generate templated WhatsApp donation appeal or notice with 1-click Share, Copy & GPay QR standee",
-                          color: "#059669",
-                          bg: "#ECFDF5",
-                          border: "#6EE7B7"
+                          color: "#0D9488",
+                          bg: "#F0FDFA",
+                          border: "#5EEAD4"
                         },
                         {
                           type: "committee",
@@ -27830,14 +27854,23 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           border: "#CBD5E1"
                         }
                       ].map(cap => {
-                        const isSelected = (kbForm.actionType || "form") === cap.type;
+                        const isSelected = (kbForm.actionType || "donation") === cap.type;
                         return (
                           <div
                             key={cap.type}
                             onClick={() => {
                               const newObj = { ...kbForm, actionType: cap.type };
-                              if (cap.type === "form" && !newObj.attachedFormId) {
-                                newObj.attachedFormId = "builtin_offline_donation";
+                              if (cap.type === "donation") {
+                                newObj.roleAccess = "donation_collector";
+                                newObj.adminOnly = true;
+                                newObj.storageDestination = "donations";
+                                if (!newObj.summaryType || newObj.summaryType === "registrations") {
+                                  newObj.summaryType = "donation";
+                                }
+                              } else if (cap.type === "form") {
+                                if (newObj.attachedFormId === "builtin_offline_donation") {
+                                  newObj.attachedFormId = "";
+                                }
                               }
                               setKbForm(newObj);
                             }}
@@ -27900,6 +27933,207 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         (Context-sensitive settings for your chosen capability)
                       </span>
                     </div>
+
+                    {/* 0. If Action Type is DONATION SECTION & COLLECTIONS */}
+                    {kbForm.actionType === "donation" && (
+                      <div style={{
+                        background: "#ECFDF5",
+                        border: "1.5px solid #6EE7B7",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".88rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
+                          <span>💰</span> Donation Section & Collections Setup:
+                        </div>
+
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
+                          {/* 1. Select Donation Feature / Mode */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                              1. Select Donation Feature / Mode:
+                            </label>
+                            <select
+                              value={
+                                kbForm.attachedFormId === "builtin_offline_donation" 
+                                  ? "offline_form" 
+                                  : (kbForm.summaryType === "donor_list" ? "donor_list" : "donation_summary")
+                              }
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val === "offline_form") {
+                                  setKbForm({
+                                    ...kbForm,
+                                    actionType: "donation",
+                                    attachedFormId: "builtin_offline_donation",
+                                    storageDestination: "donations",
+                                    summaryType: "donation",
+                                    roleAccess: "donation_collector",
+                                    adminOnly: true
+                                  });
+                                } else if (val === "donor_list") {
+                                  setKbForm({
+                                    ...kbForm,
+                                    actionType: "donation",
+                                    attachedFormId: "",
+                                    summaryType: "donor_list",
+                                    storageDestination: "donations",
+                                    roleAccess: "donation_collector",
+                                    adminOnly: true
+                                  });
+                                } else {
+                                  setKbForm({
+                                    ...kbForm,
+                                    actionType: "donation",
+                                    attachedFormId: "",
+                                    summaryType: "donation",
+                                    storageDestination: "donations",
+                                    roleAccess: "donation_collector",
+                                    adminOnly: true
+                                  });
+                                }
+                              }}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#065F46",cursor:"pointer"}}
+                            >
+                              <option value="donation_summary">📊 Vibhag Donation Summary (Online Razorpay vs Offline Cash/Cheque splits)</option>
+                              <option value="donor_list">📋 Person-wise Donor Registry (Numbered list with WhatsApp broadcast)</option>
+                              <option value="offline_form">✍️ Built-in Offline Cash/Cheque Donation Entry Form</option>
+                            </select>
+                          </div>
+
+                          {/* 2. Optional WhatsApp Broadcast Template */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                              2. Optional WhatsApp Broadcast Template (1-click Share & UPI QR):
+                            </label>
+                            <select
+                              value={kbForm.attachedWhatsAppTplId || ""}
+                              onChange={e => {
+                                const tId = e.target.value;
+                                const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
+                                const sel = allTpls.find(t => t.id === tId);
+                                setKbForm({
+                                  ...kbForm,
+                                  attachedWhatsAppTplId: tId,
+                                  customWaHeader: sel ? sel.header : kbForm.customWaHeader,
+                                  customWaAppeal: sel ? sel.appeal : kbForm.customWaAppeal,
+                                  customWaSignatory: sel ? (sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી") : kbForm.customWaSignatory,
+                                  customWaUpiId: sel ? (sel.upiId || "mumba98697331@barodampay") : kbForm.customWaUpiId,
+                                  customWaIncludeQr: sel ? (sel.includeGPay !== false) : kbForm.customWaIncludeQr
+                                });
+                              }}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            >
+                              <option value="">-- No Attached WhatsApp Template --</option>
+                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
+                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
+                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
+                              {(C.whatsappBroadcastTemplates || []).map(t => (
+                                <option key={t.id} value={t.id}>
+                                  📱 {t.name || t.id}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* 3. Event Scope Filter */}
+                        <div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                            <label style={{fontSize:".76rem",fontWeight:800,color:"#065F46"}}>
+                              3. Event Scope Filter (Filter strictly for a specific event):
+                            </label>
+                            <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
+                              {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) 
+                                ? "🌐 Showing All Events Combined" 
+                                : `📌 Scoped to: ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
+                            </span>
+                          </div>
+                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #059669" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#065F46" : "#475569"}}>
+                              <input
+                                type="checkbox"
+                                checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setKbForm({ ...kbForm, targetEventIds: ['all'] });
+                                  else setKbForm({ ...kbForm, targetEventIds: [] });
+                                }}
+                                style={{cursor:"pointer",accentColor:"#059669"}}
+                              />
+                              <span>🌐 All Events Combined</span>
+                            </label>
+
+                            {(C.events || []).map(evItem => {
+                              const evKey = evItem.id || evItem.title;
+                              const isSelected = Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evKey);
+                              return (
+                                <label key={evKey} style={{display:"inline-flex",alignItems:"center",gap:6,background: isSelected ? "#D1FAE5" : "white",padding:"6px 12px",borderRadius:6,border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:700,cursor:"pointer",color: isSelected ? "#065F46" : "#334155"}}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+                                      let updated = e.target.checked ? [...cur, evKey] : cur.filter(x => x !== evKey);
+                                      if (updated.length === 0) updated = ['all'];
+                                      setKbForm({ ...kbForm, targetEventIds: updated });
+                                    }}
+                                    style={{cursor:"pointer",accentColor:"#059669"}}
+                                  />
+                                  <span>📌 {evItem.title || evItem.id}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div style={{fontSize:".73rem",color:"#047857",marginTop:6}}>
+                            💡 <em>When an event (e.g. <strong>6th Dec Mahaparinirvan Diwas</strong>) is selected, the chatbot calculates totals, donor lists, or sets form purpose strictly for that event, excluding other events and general donations.</em>
+                          </div>
+                        </div>
+
+                        {/* Optional WhatsApp customized fields if template selected */}
+                        {kbForm.attachedWhatsAppTplId && (
+                          <div style={{background:"white",border:"1px solid #A7F3D0",borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:10}}>
+                            <div style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+                              <span>✏️</span> Customize Broadcast Appeal for this Donation Flow:
+                            </div>
+                            <textarea
+                              rows={3}
+                              value={kbForm.customWaAppeal !== undefined ? kbForm.customWaAppeal : ""}
+                              onChange={e => setKbForm({ ...kbForm, customWaAppeal: e.target.value })}
+                              placeholder="Enter custom appeal message to accompany the live totals..."
+                              style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                            />
+                            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",fontSize:".74rem",color:"#475569"}}>
+                              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontWeight:700}}>
+                                <input
+                                  type="checkbox"
+                                  checked={kbForm.customWaIncludeQr !== false}
+                                  onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
+                                  style={{cursor:"pointer",accentColor:"#059669"}}
+                                />
+                                Include Bank QR & Pay Link
+                              </label>
+                              <span style={{color:"#64748B"}}>UPI: <strong>{kbForm.customWaUpiId || "mumba98697331@barodampay"}</strong></span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Answer / Intro text */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                            4. Custom Header / Guidance (Optional):
+                          </label>
+                          <input
+                            type="text"
+                            value={kbForm.answer || ""}
+                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                            placeholder="e.g. 💰 Real-time breakdown of event donations and collection metrics."
+                            style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #6EE7B7",fontSize:".85rem",boxSizing:"border-box"}}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {/* A. If Action Type is INTERACTIVE FORM */}
                     {kbForm.actionType === "form" && (
@@ -28921,6 +29155,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {[
                     { key: "all", label: `📂 All (${kbList.length})` },
+                    { key: "donation", label: `💰 Donations (${countDonations})` },
                     { key: "form", label: `📝 Forms (${countForms})` },
                     { key: "summary", label: `📊 Summaries (${countSummaries})` },
                     { key: "workspace", label: `💌 Workspaces (${countWorkspaces})` },
@@ -29048,6 +29283,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           <td style={{padding:"10px 14px"}}>
                             <div style={{display:"flex",flexDirection:"column",gap:4}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                {actionType === "donation" && (
+                                  <span style={{background:"#ECFDF5",color:"#065F46",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #6EE7B7"}}>
+                                    💰 Donations: {item.attachedFormId === "builtin_offline_donation" ? "Offline Entry Form" : (item.summaryType === "donor_list" ? "Donor Registry" : "Vibhag Summary")}
+                                    {Array.isArray(item.targetEventIds) && !item.targetEventIds.includes('all') && ` (${item.targetEventIds.map(formatEventTitle).join(", ")})`}
+                                  </span>
+                                )}
                                 {actionType === "form" && (
                                   <span style={{background:"#F0FDF4",color:"#166534",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #86EFAC"}}>
                                     📝 Form: {item.attachedFormId === "builtin_offline_donation" ? "Offline Donation" : (item.attachedFormId || "Custom Form")} ➔ {item.storageDestination || "donations"}
@@ -29899,9 +30140,18 @@ function ChatbotAccessManager({ C, setC, auth }) {
               <div>
                 <h4 style={{fontSize:".95rem",fontWeight:800,color:"#0F172A",margin:"0 0 10px 0",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{background:"#2563EB",color:"white",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:".75rem"}}>2</span>
-                  Step 2: The 6 Attached Capabilities Explained
+                  Step 2: The 7 Attached Capabilities Explained
                 </h4>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:10}}>
+                  <div style={{background:"#ECFDF5",border:"1px solid #6EE7B7",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#065F46",fontSize:".85rem",marginBottom:4}}>
+                      💰 Donation Section & Collections
+                    </div>
+                    <div style={{fontSize:".78rem",color:"#047857",lineHeight:1.4}}>
+                      Computes live Vibhag donation collections (Razorpay vs Cash/Cheque), person-wise donor registry list, or built-in offline cash entry form with strict <strong>Event Scoping (e.g. 6th Dec, Education 2026)</strong>.
+                    </div>
+                  </div>
+
                   <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:12}}>
                     <div style={{fontWeight:800,color:"#166534",fontSize:".85rem",marginBottom:4}}>
                       📝 Interactive Form
@@ -29913,10 +30163,10 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                   <div style={{background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:8,padding:12}}>
                     <div style={{fontWeight:800,color:"#1D4ED8",fontSize:".85rem",marginBottom:4}}>
-                      📊 Live Analytics & Summary
+                      📊 Registrations Analytics & Counts
                     </div>
                     <div style={{fontSize:".78rem",color:"#1E40AF",lineHeight:1.4}}>
-                      Computes real-time metrics on the fly: Vibhag donation totals (Cash vs Online), donor registry, or student registration counts with scoped event filter.
+                      Computes real-time student registration metrics: Total registered, pending review awaiting documents, or verified & approved student lists.
                     </div>
                   </div>
 
@@ -29929,11 +30179,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
                     </div>
                   </div>
 
-                  <div style={{background:"#ECFDF5",border:"1px solid #6EE7B7",borderRadius:8,padding:12}}>
-                    <div style={{fontWeight:800,color:"#065F46",fontSize:".85rem",marginBottom:4}}>
+                  <div style={{background:"#F0FDFA",border:"1px solid #5EEAD4",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:800,color:"#0D9488",fontSize:".85rem",marginBottom:4}}>
                       📱 WhatsApp Broadcast & QR
                     </div>
-                    <div style={{fontSize:".78rem",color:"#047857",lineHeight:1.4}}>
+                    <div style={{fontSize:".78rem",color:"#0F766E",lineHeight:1.4}}>
                       Formats an official WhatsApp appeal/notice with instant <strong>📋 Copy for WhatsApp</strong>, <strong>🟢 Share on WhatsApp</strong>, and Bank of Baroda UPI QR standee.
                     </div>
                   </div>
@@ -53272,7 +53522,7 @@ function WhatsAppBroadcastCard({ cardData, C }) {
 }
 
 function DonationSummaryCard({ summaryData, onAction, C }) {
-  const { totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount, vibhagBreakdown } = summaryData;
+  const { totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount, vibhagBreakdown, eventLabel } = summaryData;
   const [copied, setCopied] = useState(false);
 
   const getFormattedSummaryText = () => {
@@ -53287,7 +53537,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
     const upi = C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
 
     let msg = `💳 *QR સ્કેનર & Direct Pay:* ${qrLink}\n`;
-    msg += `📊 *MMP Donations & Collection Summary*\n`;
+    msg += `📊 *MMP Donations & Collection Summary${eventLabel ? ` (${eventLabel})` : ""}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `💰 *Total Collections:* ₹${totalAmount.toLocaleString('en-IN')}\n`;
     msg += `👥 *Total Donors:* ${totalCount}\n`;
@@ -53319,8 +53569,16 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
 
   return (
     <div style={{background:"white",border:"1.5px solid #CBD5E1",borderRadius:12,padding:14,marginTop:6,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,borderBottom:"1px solid #F1F5F9",paddingBottom:8}}>
-        <div style={{fontSize:".9rem",fontWeight:800,color:"#0F172A"}}>📊 Total Collections: ₹{totalAmount.toLocaleString('en-IN')}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,borderBottom:"1px solid #F1F5F9",paddingBottom:8,gap:8,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:".92rem",fontWeight:800,color:"#0F172A"}}>📊 Total Collections: ₹{totalAmount.toLocaleString('en-IN')}</div>
+          {eventLabel && (
+            <div style={{fontSize:".74rem",color:"#2563EB",fontWeight:800,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
+              <span>📌 Event Scope:</span>
+              <span style={{background:"#DBEAFE",color:"#1E40AF",padding:"1px 6px",borderRadius:4}}>{eventLabel}</span>
+            </div>
+          )}
+        </div>
         <span style={{background:"#EFF6FF",color:"#1D4ED8",fontSize:".7rem",padding:"2px 8px",borderRadius:10,fontWeight:800}}>{totalCount} Donors</span>
       </div>
 
@@ -53825,9 +54083,17 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
 
   return (
     <div style={{background:"white",border:"1.5px solid #CBD5E1",borderRadius:12,padding:12,marginTop:6}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <div style={{fontSize:".82rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
-          <span>📋</span> Donor Registry ({filtered.length} of {donors.length})
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:".84rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
+            <span>📋</span> Donor Registry ({filtered.length} of {donors.length})
+          </div>
+          {donorData.eventLabel && (
+            <div style={{fontSize:".72rem",color:"#2563EB",fontWeight:800,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
+              <span>📌 Event Scope:</span>
+              <span style={{background:"#DBEAFE",color:"#1E40AF",padding:"1px 6px",borderRadius:4}}>{donorData.eventLabel}</span>
+            </div>
+          )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <button
@@ -55859,6 +56125,51 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
     });
   };
 
+  const filterDonationsByKbTargetEvents = (donationsList, targetEventIds) => {
+    if (!Array.isArray(donationsList) || donationsList.length === 0) return [];
+    if (!Array.isArray(targetEventIds) || targetEventIds.length === 0 || targetEventIds.includes('all')) {
+      return donationsList.filter(d => !d.archived && !d.isArchived && d.status !== "Archived" && d.deleted !== true && d.isDeleted !== true);
+    }
+
+    return donationsList.filter(d => {
+      if (!d) return false;
+      if (d.archived || d.isArchived || d.status === "Archived" || d.deleted === true || d.isDeleted === true) return false;
+
+      const dEvId = String(d.eventId || '').toLowerCase().trim();
+      const dEvCode = String(d.eventCode || '').toLowerCase().trim();
+      const dEvName = String(d.eventName || d.eventTitle || d.purpose || d.program || '').toLowerCase().trim();
+      const combined = `${dEvId} ${dEvCode} ${dEvName}`.toLowerCase();
+
+      return targetEventIds.some(target => {
+        const tClean = String(target || '').toLowerCase().trim();
+        if (!tClean || tClean === 'all') return true;
+        if (dEvId === tClean || dEvCode === tClean) return true;
+
+        if (tClean.includes('education') || tClean === 'education2026' || tClean === 'edu26') {
+          return combined.includes('education') || combined.includes('felicitation') || combined.includes('edu26') || combined.includes('vidya');
+        }
+
+        if (tClean.includes('6th') || tClean.includes('dec') || tClean.includes('mahaparinirvan')) {
+          return combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan');
+        }
+
+        if (tClean.includes('blood') || tClean.includes('camp')) {
+          return combined.includes('blood') || combined.includes('camp');
+        }
+
+        if (tClean.includes('monsoon') || tClean.includes('tree')) {
+          return combined.includes('monsoon') || combined.includes('tree') || combined.includes('plantation');
+        }
+
+        const tokens = tClean.split(/[\s_/-]+/).filter(w => w.length > 2 && w !== 'event' && w !== 'program');
+        if (tokens.length > 0) {
+          return tokens.some(tok => combined.includes(tok));
+        }
+        return combined.includes(tClean);
+      });
+    });
+  };
+
   const handleSendMessage = async (userText, overrideDisplayText) => {
     const query = (userText || input).trim();
     if (!query) return;
@@ -55958,7 +56269,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       (matchedKb && (
         matchedKb.attachedFormId === "builtin_offline_donation" ||
         matchedKb.cmd === "/don_entry" ||
-        (matchedKb.storageDestination === "donations" && matchedKb.roleAccess === "donation_collector") ||
+        (matchedKb.actionType === "donation" && matchedKb.attachedFormId === "builtin_offline_donation") ||
+        (matchedKb.storageDestination === "donations" && matchedKb.roleAccess === "donation_collector" && (matchedKb.actionType === "form" || matchedKb.actionType === "donation")) ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("offline donation"))
       ))
     );
@@ -55983,14 +56295,27 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             attachedFormId: customFormId
           };
         } else {
-          // Standard / Built-in Offline Donation Entry Form
+          // Standard / Built-in Offline Donation Entry Form (with scoped event defaults)
+          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          let defaultPurpose = "General Donation";
+          let defaultEventCode = "GEN";
+          let defaultEventId = "";
+          if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
+            defaultPurpose = formatEventTitle(scopedEvents[0]);
+            defaultEventId = scopedEvents[0];
+            const cleanT = defaultPurpose.toLowerCase();
+            defaultEventCode = (cleanT.includes("6th") || cleanT.includes("dec")) ? "6THDEC" : (cleanT.includes("edu") ? "EDU26" : "EVT");
+          }
+
           botType = "offline_donation_form";
-          botReply = matchedKb?.answer || `✍️ **Offline Donation Entry Form**\n\nPlease enter the offline donation details below. All fields will be stored directly into the official Donations database:`;
+          botReply = matchedKb?.answer || `✍️ **Offline Donation Entry Form${defaultPurpose !== "General Donation" ? ` (${defaultPurpose})` : ""}**\n\nPlease enter the offline donation details below. All fields will be stored directly into the official Donations database:`;
           cardData = {
             initialDate: new Date().toISOString().split('T')[0],
             defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
-            defaultPurpose: "General Donation",
-            defaultEventCode: "GEN"
+            defaultPurpose: defaultPurpose,
+            defaultEventCode: defaultEventCode,
+            eventId: defaultEventId,
+            eventTitle: defaultPurpose
           };
         }
       }
@@ -55999,6 +56324,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       (matchedKb && (
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
+        (matchedKb.actionType === "donation" && (!matchedKb.summaryType || matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.attachedFormId !== "builtin_offline_donation") ||
         (matchedKb.actionType === "summary" && (!matchedKb.summaryType || matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations")) ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary"))
       ))
@@ -56009,8 +56335,12 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
-          // Exclude archived past-event donations from live active chatbot summary
-          const allDonations = allDonationsRaw.filter(d => !d.archived && !d.isArchived && d.status !== "Archived");
+          // Filter strictly by target events if scoped (e.g. 6th Dec, Education 2026, or All Events)
+          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          const allDonations = filterDonationsByKbTargetEvents(allDonationsRaw, scopedEvents);
+          const eventLabel = (scopedEvents.length === 1 && scopedEvents[0] !== "all") 
+            ? formatEventTitle(scopedEvents[0]) 
+            : (scopedEvents.length > 1 ? `${scopedEvents.length} Selected Events` : "");
           
           let totalAmt = 0;
           let onlineAmt = 0, offlineAmt = 0;
@@ -56038,8 +56368,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           });
 
           botType = "donation_summary_card";
-          botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary (Vibhag-wise & Mode-wise)**:`;
+          botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary${eventLabel ? ` (${eventLabel})` : ""}**:`;
           cardData = {
+            eventLabel: eventLabel,
+            targetEventIds: scopedEvents,
             totalAmount: totalAmt,
             totalCount: allDonations.length,
             onlineAmount: onlineAmt,
@@ -56057,6 +56389,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" || qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" || qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" || qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
       (matchedKb && (
         matchedKb.id === "kb_donerlist" ||
+        (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
         (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
         (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
       ))
@@ -56067,15 +56400,21 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
-          // Exclude archived past-event donations from live active chatbot donor registry
-          const allDonations = allDonationsRaw.filter(d => !d.archived && !d.isArchived && d.status !== "Archived");
+          // Filter strictly by target events if scoped (e.g. 6th Dec, Education 2026, or All Events)
+          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          const allDonations = filterDonationsByKbTargetEvents(allDonationsRaw, scopedEvents);
+          const eventLabel = (scopedEvents.length === 1 && scopedEvents[0] !== "all") 
+            ? formatEventTitle(scopedEvents[0]) 
+            : (scopedEvents.length > 1 ? `${scopedEvents.length} Selected Events` : "");
 
           if (allDonations.length === 0) {
-            botReply = `📋 **No donation records found in the database.**`;
+            botReply = `📋 **No donation records found${eventLabel ? ` for "${eventLabel}"` : " in the database"}.**`;
           } else {
             botType = "donor_list_card";
-            botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Donor Registry (${allDonations.length} Donors Recorded)**:`;
+            botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Donor Registry${eventLabel ? ` — ${eventLabel}` : ""} (${allDonations.length} Donors Recorded)**:`;
             cardData = {
+              eventLabel: eventLabel,
+              targetEventIds: scopedEvents,
               donors: allDonations,
               totalAmount: allDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0),
               tplId: matchedKb?.attachedWhatsAppTplId || "tpl_edu_appeal"
@@ -57044,17 +57383,22 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                         {(m.type === "offline_donation_form" || m.type === "offline_donation_card") && m.cardData && (
                           <OfflineDonationEntryCard
                             initialData={m.cardData}
+                            C={C}
                             onSubmit={async (formData) => {
                               setLoading(true);
                               try {
                                 const donRecord = {
                                   name: formData.name.trim(),
+                                  mobile: formData.mobile ? formData.mobile.trim() : "",
                                   amount: parseFloat(formData.amount) || 0,
                                   date: formData.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-                                  program: formData.purpose || "Education Felicitation 2026",
-                                  purpose: formData.purpose || "Education Felicitation 2026",
+                                  program: formData.purpose || m.cardData?.defaultPurpose || "General Donation",
+                                  purpose: formData.purpose || m.cardData?.defaultPurpose || "General Donation",
+                                  eventName: formData.purpose || m.cardData?.eventTitle || m.cardData?.defaultPurpose || "",
+                                  eventTitle: formData.purpose || m.cardData?.eventTitle || m.cardData?.defaultPurpose || "",
+                                  eventId: m.cardData?.eventId || "",
                                   vibhag: formData.vibhag || "General",
-                                  eventCode: formData.eventCode || "EDU26",
+                                  eventCode: formData.eventCode || m.cardData?.defaultEventCode || "GEN",
                                   receiptNo: formData.receiptNo || `RCP-${Math.floor(1000 + Math.random() * 9000)}`,
                                   internalReceiptNo: formData.receiptNo || `RCP-${Math.floor(1000 + Math.random() * 9000)}`,
                                   paymentMode: "Offline",
