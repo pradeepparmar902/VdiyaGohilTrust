@@ -25585,6 +25585,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [searchFilter, setSearchFilter] = useState("");
   const [selectedWhatsAppTplId, setSelectedWhatsAppTplId] = useState("tpl_edu_appeal");
+  const [showWaMediaModal, setShowWaMediaModal] = useState(false);
   const [cmdColFilter, setCmdColFilter] = useState("all");
   const [titleColFilter, setTitleColFilter] = useState("all");
   const [answerColFilter, setAnswerColFilter] = useState("all");
@@ -28633,7 +28634,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
               {showWaMediaModal && (
                 <MediaLibraryModal
+                  isOpen={showWaMediaModal}
                   C={C}
+                  setC={setC}
                   auth={auth}
                   targetCategory="banner"
                   onClose={() => setShowWaMediaModal(false)}
