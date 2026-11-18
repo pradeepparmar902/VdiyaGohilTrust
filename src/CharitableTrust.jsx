@@ -53820,8 +53820,12 @@ function WhatsAppBroadcastCard({ cardData, C }) {
 }
 
 function DonationSummaryCard({ summaryData, onAction, C }) {
-  const { totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount, vibhagBreakdown, eventLabel, donors } = summaryData;
-  const [viewMode, setViewMode] = useState("vibhag"); // "vibhag" | "person_wise"
+  const {
+    totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount,
+    vibhagBreakdown, eventLabel, donors, summaryType,
+    customWaHeader, customWaAppeal, customWaSignatory, customWaIncludeQr, customWaUpiId
+  } = summaryData;
+  const [viewMode, setViewMode] = useState(summaryType === "donor_list" ? "person_wise" : "vibhag"); // "vibhag" | "person_wise"
   const [personSearch, setPersonSearch] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -53851,12 +53855,33 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
       : "https://mmp-cwc.com";
 
     const qrLink = C?.whatsappTemplates?.donateLink || donateUrl;
-    const upi = C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
+    const upi = customWaUpiId || C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
 
+    // 1. QR Standee & Direct Pay URL
+    let msg = "";
+    if (customWaIncludeQr !== false) {
+      msg += `💳 *દાન QR સ્કેનર:* ${qrLink}\n`;
+    }
+
+    // 2. Trust Header
+    const defaultHeader = "🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸";
+    const headerText = customWaHeader !== undefined && customWaHeader !== null ? customWaHeader : (C?.whatsappTemplates?.gujaratiHeader || defaultHeader);
+    if (headerText && headerText.trim()) {
+      msg += `${headerText.trim()}\n\n`;
+    }
+
+    // 3. Main Appeal / Body text
+    const defaultAppeal = "સુજ્ઞ જ્ઞાતિજનો, સંસ્થા ના વિવિધ સામાજિક તથા વિકાસ કાર્યો માટે આપનું સ્વૈચ્છિક દાન આવકાર્ય છે.";
+    const appealText = customWaAppeal !== undefined && customWaAppeal !== null ? customWaAppeal : (C?.whatsappTemplates?.gujaratiAppeal || defaultAppeal);
+    if (appealText && appealText.trim()) {
+      msg += `${appealText.trim()}\n\n`;
+    }
+
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    // 4. Content Block (Person-wise list vs Vibhag breakdown)
     if (viewMode === "person_wise") {
-      let msg = `💳 *QR સ્કેનર & Direct Pay:* ${qrLink}\n`;
-      msg += `📋 *MMP દાતાઓની યાદી (Person-wise Donor Registry)${eventLabel ? ` — ${eventLabel}` : ""}*\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `📋 *દાતાઓની યાદી (Person-wise Donor Registry)${eventLabel ? ` — ${eventLabel}` : ""}:*\n`;
       if (donorList.length === 0) {
         msg += `(હાલમાં કોઈ દાતા નોંધાયેલ નથી)\n`;
       } else {
@@ -53870,26 +53895,32 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
       }
       msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
       msg += `💰 *કુલ દાન રકમ:* ₹${totalAmount.toLocaleString('en-IN')} (${totalCount} દાતાઓ)\n`;
-      msg += `📲 *UPI ID:* ${upi}\n`;
-      msg += `🌐 *Live Portal:* ${portalUrl}`;
-      return msg;
+    } else {
+      msg += `📊 *MMP દાન વિગત & કલેક્શન સમરી${eventLabel ? ` (${eventLabel})` : ""}*\n`;
+      msg += `💰 *કુલ દાન રકમ:* ₹${totalAmount.toLocaleString('en-IN')}\n`;
+      msg += `👥 *કુલ દાતાઓ:* ${totalCount}\n`;
+      msg += `🟢 *Online (Razorpay):* ₹${onlineAmount.toLocaleString('en-IN')} (${onlineCount} txns)\n`;
+      msg += `🟠 *Offline / રોકડ:* ₹${offlineAmount.toLocaleString('en-IN')} (${offlineCount} entries)\n`;
+      if ((vibhagBreakdown || []).length > 0) {
+        msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `📍 *વિભાગ વાર વિગત:*\n`;
+        vibhagBreakdown.forEach(([vName, vData]) => {
+          msg += `• *${vName}*: ₹${vData.total.toLocaleString('en-IN')} (${vData.count} દાતા)\n`;
+        });
+      }
     }
 
-    let msg = `💳 *QR સ્કેનર & Direct Pay:* ${qrLink}\n`;
-    msg += `📊 *MMP Donations & Collection Summary${eventLabel ? ` (${eventLabel})` : ""}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `💰 *Total Collections:* ₹${totalAmount.toLocaleString('en-IN')}\n`;
-    msg += `👥 *Total Donors:* ${totalCount}\n`;
-    msg += `🟢 *Online (Razorpay):* ₹${onlineAmount.toLocaleString('en-IN')} (${onlineCount} txns)\n`;
-    msg += `🟠 *Offline / Manual:* ₹${offlineAmount.toLocaleString('en-IN')} (${offlineCount} entries)\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `📍 *Vibhag Breakdown:*\n`;
 
-    (vibhagBreakdown || []).forEach(([vName, vData]) => {
-      msg += `• *${vName}*: ₹${vData.total.toLocaleString('en-IN')} (${vData.count} donors)\n`;
-    });
+    // 5. Signatories / Sign-off footer
+    const defaultSignatory = "રવિકુમાર પુંજાલાલ ધારીયા - પ્રમુખ (મુખ્ય ટ્રસ્ટી)\nવિનોદભાઈ જીવાભાઈ મકવાણા - મહામંત્રી (ટ્રસ્ટી)\nમુંબઈ મેઘવાળ પંચાયત (સેવક) અને સંલગ્ન ૭૧ વિભાગીય પંચાયત.";
+    const signatoryText = customWaSignatory !== undefined && customWaSignatory !== null ? customWaSignatory : (C?.whatsappTemplates?.gujaratiSignatory || defaultSignatory);
+    if (signatoryText && signatoryText.trim()) {
+      msg += `${signatoryText.trim()}\n`;
+    }
 
-    msg += `\n📲 *UPI ID:* ${upi}\n`;
+    // 6. UPI ID & Portal Link
+    msg += `📲 *UPI ID:* ${upi}\n`;
     msg += `🌐 *Live Portal:* ${portalUrl}`;
     return msg;
   };
@@ -53908,6 +53939,23 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
 
   return (
     <div style={{background:"white",border:"1.5px solid #CBD5E1",borderRadius:12,padding:14,marginTop:6,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
+      {/* If custom appeal text exists, render it prominently at the top of the card */}
+      {customWaAppeal && customWaAppeal.trim() && (
+        <div style={{
+          background: "#F0FDF4",
+          border: "1px solid #86EFAC",
+          borderRadius: 8,
+          padding: "10px 12px",
+          marginBottom: 12,
+          fontSize: ".78rem",
+          color: "#065F46",
+          lineHeight: 1.5,
+          whiteSpace: "pre-wrap"
+        }}>
+          {customWaAppeal.trim()}
+        </div>
+      )}
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,borderBottom:"1px solid #F1F5F9",paddingBottom:8,gap:8,flexWrap:"wrap"}}>
         <div>
           <div style={{fontSize:".92rem",fontWeight:800,color:"#0F172A"}}>📊 Total Collections: ₹{totalAmount.toLocaleString('en-IN')}</div>
@@ -54367,12 +54415,12 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   });
 
   const tpls = C?.whatsappTemplates || {};
-  const [customHeader, setCustomHeader] = useState(tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸`);
-  const [customAppeal, setCustomAppeal] = useState(tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે.");
+  const [customHeader, setCustomHeader] = useState(donorData.customWaHeader !== undefined && donorData.customWaHeader !== null ? donorData.customWaHeader : (tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸`));
+  const [customAppeal, setCustomAppeal] = useState(donorData.customWaAppeal !== undefined && donorData.customWaAppeal !== null ? donorData.customWaAppeal : (tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે."));
   const [customRowPattern, setCustomRowPattern] = useState(tpls.rowPattern || "₹ {AMOUNT}/- {NAME}");
-  const [customSignatory, setCustomSignatory] = useState(tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી");
+  const [customSignatory, setCustomSignatory] = useState(donorData.customWaSignatory !== undefined && donorData.customWaSignatory !== null ? donorData.customWaSignatory : (tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી"));
   const [customQrHeader, setCustomQrHeader] = useState(tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*");
-  const [customUpiId, setCustomUpiId] = useState(tpls.upiId || "mumba98697331@barodampay");
+  const [customUpiId, setCustomUpiId] = useState(donorData.customWaUpiId || tpls.upiId || "mumba98697331@barodampay");
   const defaultPosterCaptionMsg = "શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણ ગૌરવ પુરસ્કાર માટે ડોનેશન (દાન) આપનાર દાતા ને આરીતે સર્ટિફિકેટ આપી તેમને નવાજવામા આવશે\n\nઆભાર 🌷🙏";
   const [customPosterCaptionMsg, setCustomPosterCaptionMsg] = useState(tpls.posterCaptionMsg || defaultPosterCaptionMsg);
   const [customAppreciationMsg, setCustomAppreciationMsg] = useState(tpls.appreciationMsg || "🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸\n\nવિષય: શૈક્ષણિક કાર્યક્રમ દાન રસીદ & સન્માન પત્રક\n\nનમસ્તે શ્રીમાન/શ્રીમતી *{NAME}*,\nવિદ્યાર્થી ગુણગૌરવ પુરસ્કાર ૨૦૨૬ માટે આપના ઉદાર દાન બદલ મુંબઈ મેઘવાળ પંચાયત આપનો હૃદયપૂર્વક આભાર માને છે.\n\n🧾 *દાન પાવતી વિગત:*\n• દાતા: *{NAME}*\n• રકમ: *₹{AMOUNT}/-*\n• પાવતી નં.: *{RECEIPT}*\n• વિભાગ: *{VIBHAG}*\n• તારીખ: *{DATE}*\n• હેતુ: *{PURPOSE}*\n\n📜 આપનું ડિજિટલ સન્માન પ્રમાણપત્ર (Certificate of Appreciation) તૈયાર થઈ ગયું છે.\n\nલિ. સેન્ટ્રલ વર્કિંગ કમિટી\nમુંબઈ મેઘવાળ પંચાયત\n🌐 https://www.mmp-cwc.com");
@@ -54416,13 +54464,13 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       : "https://mmp-cwc.com";
 
     if (exportFormat === "gujarati") {
-      const header = tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸`;
-      const appeal = tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે.";
-      const signatory = tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી";
-      const rowPattern = tpls.rowPattern || "₹ {AMOUNT}/- {NAME}";
+      const header = customHeader || (tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸`);
+      const appeal = customAppeal || (tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે.");
+      const signatory = customSignatory || (tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી");
+      const rowPattern = customRowPattern || tpls.rowPattern || "₹ {AMOUNT}/- {NAME}";
       const totalPattern = tpls.totalLabel || "💰 *કુલ દાન રકમ: ₹{TOTAL}* ({COUNT} દાતાઓ)";
-      const qrHeader = tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
-      const upiId = tpls.upiId || "mumba98697331@barodampay";
+      const qrHeader = customQrHeader || tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
+      const upiId = customUpiId || tpls.upiId || "mumba98697331@barodampay";
       const targetDonateUrl = tpls.donateLink || donateUrl;
 
       // Ensure Donate QR Link is at the top so WhatsApp ALWAYS generates the Bank of Baroda QR Standee Preview
@@ -56530,6 +56578,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
   const resolveEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle) return "";
     if (evIdOrTitle === "all") return "All Events Combined";
+    if (evIdOrTitle === "ev_donor_data" || evIdOrTitle === "Donor Data" || String(evIdOrTitle).toLowerCase().includes("donor data")) return "All Community Donors";
     if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
     const evObj = (C?.events || []).find(e => e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase()));
     if (evObj && evObj.title) return evObj.title;
@@ -56574,22 +56623,37 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
   const filterDonationsByKbTargetEvents = (donationsList, targetEventIds) => {
     if (!Array.isArray(donationsList) || donationsList.length === 0) return [];
-    if (!Array.isArray(targetEventIds) || targetEventIds.length === 0 || targetEventIds.includes('all')) {
-      return donationsList.filter(d => !d.archived && !d.isArchived && d.status !== "Archived" && d.deleted !== true && d.isDeleted !== true);
+
+    // Filter out deleted / trash records only (Do NOT exclude archived records, because past event collections are preserved in archive!)
+    const cleanDonations = donationsList.filter(d => {
+      if (!d) return false;
+      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted" || d.Status === "Deleted") return false;
+      return true;
+    });
+
+    const isAll = !Array.isArray(targetEventIds) || targetEventIds.length === 0 || targetEventIds.includes('all');
+
+    // Check if target is "Donor Data" (ev_donor_data) or general community donations
+    const isDonorDataScope = Array.isArray(targetEventIds) && targetEventIds.some(t => {
+      const s = String(t || '').toLowerCase().trim();
+      return s === 'ev_donor_data' || s === 'donor data' || s.includes('donor data');
+    });
+
+    if (isAll || isDonorDataScope) {
+      return cleanDonations;
     }
 
-    return donationsList.filter(d => {
-      if (!d) return false;
-      if (d.archived || d.isArchived || d.status === "Archived" || d.deleted === true || d.isDeleted === true) return false;
-
+    // Specific event scoping
+    const filtered = cleanDonations.filter(d => {
       const dEvId = String(d.eventId || '').toLowerCase().trim();
       const dEvCode = String(d.eventCode || '').toLowerCase().trim();
       const dEvName = String(d.eventName || d.eventTitle || d.purpose || d.program || '').toLowerCase().trim();
-      const combined = `${dEvId} ${dEvCode} ${dEvName}`.toLowerCase();
+      const dRemarks = String(d.remarks || '').toLowerCase().trim();
+      const combined = `${dEvId} ${dEvCode} ${dEvName} ${dRemarks}`.toLowerCase();
 
       return targetEventIds.some(target => {
         const tClean = String(target || '').toLowerCase().trim();
-        if (!tClean || tClean === 'all') return true;
+        if (!tClean || tClean === 'all' || tClean === 'ev_donor_data' || tClean === 'donor data') return true;
         if (dEvId === tClean || dEvCode === tClean) return true;
 
         if (tClean.includes('education') || tClean === 'education2026' || tClean === 'edu26') {
@@ -56597,7 +56661,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         }
 
         if (tClean.includes('6th') || tClean.includes('dec') || tClean.includes('mahaparinirvan')) {
-          return combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan');
+          return combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan') || combined.includes('06');
         }
 
         if (tClean.includes('blood') || tClean.includes('camp')) {
@@ -56608,6 +56672,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           return combined.includes('monsoon') || combined.includes('tree') || combined.includes('plantation');
         }
 
+        if (tClean.includes('donor') || tClean.includes('donation')) {
+          return true;
+        }
+
         const tokens = tClean.split(/[\s_/-]+/).filter(w => w.length > 2 && w !== 'event' && w !== 'program');
         if (tokens.length > 0) {
           return tokens.some(tok => combined.includes(tok));
@@ -56615,6 +56683,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         return combined.includes(tClean);
       });
     });
+
+    return filtered;
   };
 
   const handleSendMessage = async (userText, overrideDisplayText) => {
@@ -56706,8 +56776,24 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return false;
     });
 
+    // ── Command 2: Person-wise Donor Registry ──
+    const isDonorList = (
+      qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" ||
+      qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" ||
+      qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" ||
+      qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
+      qLower.startsWith("/don_list") || qLower.startsWith("/donorlist") ||
+      (matchedKb && (
+        matchedKb.id === "kb_donerlist" ||
+        matchedKb.summaryType === "donor_list" ||
+        (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
+        (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
+      ))
+    );
+
     // ── Command 1: Live Vibhag Donation Summary (Online vs Offline splits) ──
-    const isDonSummary = (
+    const isDonSummary = !isDonorList && (
       qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" ||
       qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" ||
       qLower === "/donationsummary" || qLower === "/donationsumary" ||
@@ -56715,27 +56801,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       (matchedKb && (
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
-        (matchedKb.actionType === "donation" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations" || !matchedKb.summaryType) && matchedKb.attachedFormId !== "builtin_offline_donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "offline_form") ||
-        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations")) ||
-        (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary"))
+        (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
+        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.summaryType !== "donor_list") ||
+        (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list")
       ))
-    );
-
-    // ── Command 2: Person-wise Donor Registry ──
-    const isDonorList = (
-      !isDonSummary && (
-        qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" ||
-        qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" ||
-        qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" ||
-        qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
-        qLower.startsWith("/don_list") || qLower.startsWith("/donorlist") ||
-        (matchedKb && (
-          matchedKb.id === "kb_donerlist" ||
-          (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
-          (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
-          (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
-        ))
-      )
     );
 
     // ── Command 3: Offline Donation Entry Form ──
@@ -56795,7 +56864,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           });
 
           botType = "donation_summary_card";
-          botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary${eventLabel ? ` (${eventLabel})` : ""}**:`;
+          botReply = (matchedKb && matchedKb.customWaAppeal && matchedKb.customWaAppeal.trim())
+            ? matchedKb.customWaAppeal.trim()
+            : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary${eventLabel ? ` (${eventLabel})` : ""}**:`);
           cardData = {
             eventLabel: eventLabel,
             targetEventIds: scopedEvents,
@@ -56807,7 +56878,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             offlineCount: offlineCount,
             vibhagBreakdown: Object.entries(vibhagMap).sort((a, b) => b[1].total - a[1].total),
             donors: allDonations,
-            tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_summary"
+            summaryType: matchedKb?.summaryType || "donation",
+            tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_summary",
+            customWaHeader: matchedKb?.customWaHeader,
+            customWaAppeal: matchedKb?.customWaAppeal,
+            customWaSignatory: matchedKb?.customWaSignatory,
+            customWaIncludeQr: matchedKb?.customWaIncludeQr,
+            customWaUpiId: matchedKb?.customWaUpiId,
+            matchedKb: matchedKb
           };
         } catch (err) {
           botReply = `❌ **Failed to fetch donation summary**: ${err.message}`;
@@ -56831,13 +56909,21 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             botReply = `📋 **No donation records found${eventLabel ? ` for "${eventLabel}"` : " in the database"}.**`;
           } else {
             botType = "donor_list_card";
-            botReply = (matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Donor Registry${eventLabel ? ` — ${eventLabel}` : ""} (${allDonations.length} Donors Recorded)**:`;
+            botReply = (matchedKb && matchedKb.customWaAppeal && matchedKb.customWaAppeal.trim())
+              ? matchedKb.customWaAppeal.trim()
+              : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Donor Registry${eventLabel ? ` — ${eventLabel}` : ""} (${allDonations.length} Donors Recorded)**:`);
             cardData = {
               eventLabel: eventLabel,
               targetEventIds: scopedEvents,
               donors: allDonations,
               totalAmount: allDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0),
-              tplId: matchedKb?.attachedWhatsAppTplId || "tpl_edu_appeal"
+              tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_list",
+              customWaHeader: matchedKb?.customWaHeader,
+              customWaAppeal: matchedKb?.customWaAppeal,
+              customWaSignatory: matchedKb?.customWaSignatory,
+              customWaIncludeQr: matchedKb?.customWaIncludeQr,
+              customWaUpiId: matchedKb?.customWaUpiId,
+              matchedKb: matchedKb
             };
           }
         } catch (err) {
