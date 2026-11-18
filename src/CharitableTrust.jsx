@@ -27972,11 +27972,120 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </span>
                         </div>
 
-                        {/* 1. Event Scope Filter (Filter strictly for specific event) */}
+                        {/* 1. SELECT DONATION OUTPUT MODE (Person-wise vs Vibhag Summary vs Offline Form) - PLACED AT TOP */}
+                        <div style={{background:"white",border:"2px solid #34D399",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(5,150,105,0.08)"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".82rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+                              <span>🎯</span> 1. Select Donation Output Mode (Choose Person-wise vs Vibhag Summary):
+                            </label>
+                            <span style={{fontSize:".72rem",color: kbForm.summaryType === "donor_list" ? "#1E40AF" : "#047857",background: kbForm.summaryType === "donor_list" ? "#DBEAFE" : "#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                              {kbForm.summaryType === "donor_list"
+                                ? "📋 Mode: Person-wise Donor Registry"
+                                : (kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form"
+                                  ? "✍️ Mode: Offline Donation Entry Form"
+                                  : "📊 Mode: Vibhag Donation Summary")}
+                            </span>
+                          </div>
+
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10}}>
+                            {[
+                              {
+                                id: "donation_summary",
+                                icon: "📊",
+                                title: "Vibhag Donation Summary",
+                                desc: "Live collection totals, online Razorpay vs offline cash splits, Vibhag-by-Vibhag breakdown table & WhatsApp summary."
+                              },
+                              {
+                                id: "donor_list",
+                                icon: "📋",
+                                title: "Person-wise Donor Registry",
+                                desc: "Numbered list of individual donors (૧. રમેશભાઈ... ૨. વિનોદભાઈ...) with amounts, dates, Vibhags & 1-click WhatsApp share."
+                              },
+                              {
+                                id: "offline_form",
+                                icon: "✍️",
+                                title: "Offline Donation Entry Form",
+                                desc: "Interactive cash/cheque collection entry form for authorized collectors to record donations directly into database."
+                              }
+                            ].map(opt => {
+                              const isSelected = opt.id === "offline_form"
+                                ? (kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form")
+                                : (opt.id === "donor_list" ? kbForm.summaryType === "donor_list" : (kbForm.summaryType === "donation" && kbForm.attachedFormId !== "builtin_offline_donation"));
+                              return (
+                                <div
+                                  key={opt.id}
+                                  onClick={() => {
+                                    if (opt.id === "offline_form") {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "builtin_offline_donation",
+                                        storageDestination: "donations",
+                                        summaryType: "offline_form",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    } else if (opt.id === "donor_list") {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "",
+                                        summaryType: "donor_list",
+                                        attachedWhatsAppTplId: "tpl_donor_list",
+                                        storageDestination: "donations",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    } else {
+                                      setKbForm({
+                                        ...kbForm,
+                                        actionType: "donation",
+                                        attachedFormId: "",
+                                        summaryType: "donation",
+                                        attachedWhatsAppTplId: "tpl_donor_summary",
+                                        storageDestination: "donations",
+                                        roleAccess: "donation_collector",
+                                        adminOnly: true
+                                      });
+                                    }
+                                  }}
+                                  style={{
+                                    background: isSelected ? "#ECFDF5" : "#F8FAFC",
+                                    border: isSelected ? "2px solid #059669" : "1px solid #CBD5E1",
+                                    borderRadius: 8,
+                                    padding: 12,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    boxShadow: isSelected ? "0 2px 8px rgba(5,150,105,0.15)" : "none"
+                                  }}
+                                >
+                                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:800,fontSize:".85rem",color: isSelected ? "#065F46" : "#1E293B"}}>
+                                      <span>{opt.icon}</span>
+                                      <span>{opt.title}</span>
+                                    </div>
+                                    <input
+                                      type="radio"
+                                      name="donationModeSelectorTop"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      style={{accentColor:"#059669",cursor:"pointer"}}
+                                    />
+                                  </div>
+                                  <p style={{fontSize:".74rem",color:"#475569",margin:0,lineHeight:1.35}}>
+                                    {opt.desc}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 2. Event Scope Filter (Filter strictly for specific event) */}
                         <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
                             <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
-                              <span>📌</span> 1. Donation Section Connection (Filter Strictly for Specific Event Only):
+                              <span>📌</span> 2. Donation Section Connection (Filter Strictly for Specific Event Only):
                             </label>
                             <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
                               {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) 
@@ -28025,7 +28134,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </div>
                         </div>
 
-                        {/* 2. Allow to Attach QR Code Template */}
+                        {/* 3. Allow to Attach QR Code Template */}
                         <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
                             <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
@@ -28035,7 +28144,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
                                 style={{cursor:"pointer",accentColor:"#059669",width:16,height:16}}
                               />
-                              <span>💳 2. Allow to Attach QR Code Template (Bank of Baroda UPI QR & Pay Link):</span>
+                              <span>💳 3. Allow to Attach QR Code Template (Bank of Baroda UPI QR & Pay Link):</span>
                             </label>
                             <span style={{fontSize:".7rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
                               mmp-cwc.com/donate/
@@ -28076,11 +28185,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </div>
                         </div>
 
-                        {/* 3. WhatsApp Template & Custom Broadcast Message */}
+                        {/* 4. WhatsApp Template & Custom Broadcast Message */}
                         <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
                             <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
-                              <span>📱</span> 3. WhatsApp Template & Custom Broadcast Message:
+                              <span>📱</span> 4. WhatsApp Template & Custom Broadcast Message:
                             </label>
                             <span style={{fontSize:".7rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
                               Live 1-Click Share & Copy
@@ -28092,9 +28201,27 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               Select Broadcast Template Preset:
                             </label>
                             <select
-                              value={kbForm.attachedWhatsAppTplId || "tpl_donor_summary"}
+                              value={kbForm.attachedWhatsAppTplId || (kbForm.summaryType === "donor_list" ? "tpl_donor_list" : "tpl_donor_summary")}
                               onChange={e => {
                                 const tId = e.target.value;
+                                if (tId === "tpl_donor_list") {
+                                  setKbForm({
+                                    ...kbForm,
+                                    attachedWhatsAppTplId: tId,
+                                    summaryType: "donor_list",
+                                    customWaAppeal: "વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર તથા સામાજિક ઉત્થાન અર્થે દાન આપનાર દાતાઓ અને આવેલ દાન ની યાદી નીચે મુજબ છે:"
+                                  });
+                                  return;
+                                }
+                                if (tId === "tpl_donor_summary") {
+                                  setKbForm({
+                                    ...kbForm,
+                                    attachedWhatsAppTplId: tId,
+                                    summaryType: "donation",
+                                    customWaAppeal: "વિભાગ વાર આવેલ દાન ની લાઈવ વિગત નીચે મુજબ છે:"
+                                  });
+                                  return;
+                                }
                                 const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
                                 const sel = allTpls.find(t => t.id === tId) || DEFAULT_WA_TEMPLATES[1];
                                 setKbForm({
@@ -28110,6 +28237,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1.5px solid #6EE7B7",fontSize:".83rem",fontWeight:700,background:"#F0FDF4",boxSizing:"border-box",color:"#065F46",cursor:"pointer"}}
                             >
                               <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary (with live totals & vibhag breakdown)</option>
+                              <option value="tpl_donor_list">📋 Person-Wise Numbered Donor List (with individual donor rows & amounts)</option>
                               <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)</option>
                               <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
                               {(C.whatsappBroadcastTemplates || []).map(t => (
@@ -28139,7 +28267,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "વિભાગ વાર આવેલ દાન ની લાઈવ વિગત નીચે મુજબ છે:" }))}
                                   style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
                                 >
-                                  + 📊 Donation Summary
+                                  + 📊 Vibhag Summary
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm(p => ({ ...p, customWaAppeal: (p.customWaAppeal ? p.customWaAppeal + "\n\n" : "") + "વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર તથા સામાજિક ઉત્થાન અર્થે દાન આપનાર દાતાઓ અને આવેલ દાન ની યાદી નીચે મુજબ છે:" }))}
+                                  style={{background:"white",border:"1px solid #A7F3D0",color:"#065F46",fontSize:".7rem",fontWeight:700,borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+                                >
+                                  + 📋 Person-Wise List
                                 </button>
                                 <button
                                   type="button"
@@ -28202,6 +28337,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,borderBottom:"1px solid rgba(255,255,255,0.15)",paddingBottom:4}}>
                               <span style={{fontWeight:800,color:"#6EE7B7",display:"flex",alignItems:"center",gap:6}}>
                                 <span>💬</span> Real-Time WhatsApp Message Preview:
+                                <span style={{fontSize:".68rem",background:"rgba(255,255,255,0.15)",color:"#A7F3D0",padding:"1px 6px",borderRadius:4}}>
+                                  {kbForm.summaryType === "donor_list" ? "📋 Person-wise Donor Registry Mode" : "📊 Vibhag Collection Summary Mode"}
+                                </span>
                               </span>
                               <span style={{fontSize:".68rem",color:"#A7F3D0"}}>Trigger: {kbForm.cmd || "/don_summ"}</span>
                             </div>
@@ -28210,10 +28348,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               {kbForm.customWaHeader ? `${kbForm.customWaHeader}\n` : ""}
                               {kbForm.customWaAppeal ? `${kbForm.customWaAppeal}\n` : ""}
                               {`━━━━━━━━━━━━━━━━━━━━━\n`}
-                              {`💰 *Total Collections:* ₹1,25,000 (Sample Scoped)\n`}
-                              {`👥 *Total Donors:* 42 Donors\n`}
-                              {`🟢 *Online Razorpay:* ₹75,000 | 🟠 *Offline:* ₹50,000\n`}
-                              {`📍 *10 MAHALAXMI:* ₹35,000\n`}
+                              {kbForm.summaryType === "donor_list" ? (
+                                `📋 *દાતાઓની યાદી (Sample Scoped Donor List):*\n` +
+                                `૧. રમેશભાઈ પુંજાલાલ પટેલ: ₹ ૫,૦૦૦/- (10 MAHALAXMI)\n` +
+                                `૨. વિનોદભાઈ જીવાભાઈ મકવાણા: ₹ ૨,૫૦૦/- (01 DADAR)\n` +
+                                `૩. કાંતિલાલ હરજીભાઈ સોલંકી: ₹ ૧,૫૦૦/- (05 KURLA)\n` +
+                                `૪. મહેશભાઈ બાબુભાઈ રાઠોડ: ₹ ૧,૦૦૦/- (12 ANDHERI)\n` +
+                                `━━━━━━━━━━━━━━━━━━━━━\n` +
+                                `💰 *કુલ દાન રકમ: ₹1,25,000* (42 દાતાઓ)\n`
+                              ) : (
+                                `💰 *Total Collections:* ₹1,25,000 (Sample Scoped)\n` +
+                                `👥 *Total Donors:* 42 Donors\n` +
+                                `🟢 *Online Razorpay:* ₹75,000 | 🟠 *Offline:* ₹50,000\n` +
+                                `📍 *10 MAHALAXMI:* ₹35,000\n`
+                              )}
                               {`━━━━━━━━━━━━━━━━━━━━━\n`}
                               {kbForm.customWaSignatory ? `${kbForm.customWaSignatory}\n` : ""}
                               {`📲 *UPI ID:* ${kbForm.customWaUpiId || "mumba98697331@barodampay"}\n`}
@@ -28222,103 +28370,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </div>
                         </div>
 
-                        {/* 4. Select Donation Output Feature (Donation Summary / Donor Registry / Offline Form) */}
-                        <div style={{background:"white",border:"1.5px solid #A7F3D0",borderRadius:10,padding:14}}>
-                          <label style={{fontSize:".78rem",fontWeight:800,color:"#065F46",display:"block",marginBottom:8}}>
-                            4. Select Donation Output (What should the Chatbot display when clicked?):
-                          </label>
-                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10}}>
-                            {[
-                              {
-                                id: "donation_summary",
-                                icon: "📊",
-                                title: "Vibhag Donation Summary",
-                                desc: "Live breakdown of Online Razorpay vs Offline Cash collections, Vibhag table, and 1-click WhatsApp broadcast."
-                              },
-                              {
-                                id: "donor_list",
-                                icon: "📋",
-                                title: "Person-wise Donor Registry",
-                                desc: "Numbered list of individual donors with amounts, dates, and Vibhags with 1-click WhatsApp share."
-                              },
-                              {
-                                id: "offline_form",
-                                icon: "✍️",
-                                title: "Offline Donation Entry Form",
-                                desc: "Interactive cash/cheque collection entry form for authorized collectors to record donations directly into database."
-                              }
-                            ].map(opt => {
-                              const isSelected = opt.id === "offline_form"
-                                ? (kbForm.attachedFormId === "builtin_offline_donation" || kbForm.summaryType === "offline_form")
-                                : (opt.id === "donor_list" ? kbForm.summaryType === "donor_list" : (kbForm.summaryType === "donation" && kbForm.attachedFormId !== "builtin_offline_donation"));
-                              return (
-                                <div
-                                  key={opt.id}
-                                  onClick={() => {
-                                    if (opt.id === "offline_form") {
-                                      setKbForm({
-                                        ...kbForm,
-                                        actionType: "donation",
-                                        attachedFormId: "builtin_offline_donation",
-                                        storageDestination: "donations",
-                                        summaryType: "offline_form",
-                                        roleAccess: "donation_collector",
-                                        adminOnly: true
-                                      });
-                                    } else if (opt.id === "donor_list") {
-                                      setKbForm({
-                                        ...kbForm,
-                                        actionType: "donation",
-                                        attachedFormId: "",
-                                        summaryType: "donor_list",
-                                        storageDestination: "donations",
-                                        roleAccess: "donation_collector",
-                                        adminOnly: true
-                                      });
-                                    } else {
-                                      setKbForm({
-                                        ...kbForm,
-                                        actionType: "donation",
-                                        attachedFormId: "",
-                                        summaryType: "donation",
-                                        storageDestination: "donations",
-                                        roleAccess: "donation_collector",
-                                        adminOnly: true
-                                      });
-                                    }
-                                  }}
-                                  style={{
-                                    background: isSelected ? "#D1FAE5" : "#F8FAFC",
-                                    border: isSelected ? "2px solid #059669" : "1px solid #CBD5E1",
-                                    borderRadius: 8,
-                                    padding: 12,
-                                    cursor: "pointer",
-                                    transition: "all 0.15s ease"
-                                  }}
-                                >
-                                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                                    <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:800,fontSize:".84rem",color: isSelected ? "#065F46" : "#1E293B"}}>
-                                      <span>{opt.icon}</span>
-                                      <span>{opt.title}</span>
-                                    </div>
-                                    <input
-                                      type="radio"
-                                      name="donationModeSelector"
-                                      checked={isSelected}
-                                      onChange={() => {}}
-                                      style={{accentColor:"#059669",cursor:"pointer"}}
-                                    />
-                                  </div>
-                                  <p style={{fontSize:".74rem",color:"#475569",margin:0,lineHeight:1.35}}>
-                                    {opt.desc}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Answer / Intro text */}
+                        {/* 5. Custom Header / Guidance */}
                         <div>
                           <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
                             5. Custom Header / Guidance (Optional):
@@ -28327,7 +28379,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             type="text"
                             value={kbForm.answer || ""}
                             onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
-                            placeholder="e.g. 💰 Real-time breakdown of event donations and collection metrics."
+                            placeholder={kbForm.summaryType === "donor_list" ? "e.g. 📋 Live Person-wise Donor Registry with amounts & receipts." : "e.g. 💰 Real-time breakdown of event donations and collection metrics."}
                             style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #6EE7B7",fontSize:".85rem",boxSizing:"border-box"}}
                           />
                         </div>
@@ -53768,8 +53820,27 @@ function WhatsAppBroadcastCard({ cardData, C }) {
 }
 
 function DonationSummaryCard({ summaryData, onAction, C }) {
-  const { totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount, vibhagBreakdown, eventLabel } = summaryData;
+  const { totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount, vibhagBreakdown, eventLabel, donors } = summaryData;
+  const [viewMode, setViewMode] = useState("vibhag"); // "vibhag" | "person_wise"
+  const [personSearch, setPersonSearch] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const toGujDigits = (num) => {
+    const guj = ['૦', '૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯'];
+    return String(num).replace(/[0-9]/g, d => guj[parseInt(d, 10)]);
+  };
+
+  const donorList = donors || [];
+  const filteredDonors = donorList.filter(d => {
+    if (!personSearch) return true;
+    const q = personSearch.toLowerCase();
+    return (
+      (d.name || "").toLowerCase().includes(q) ||
+      (d.vibhag || "").toLowerCase().includes(q) ||
+      (d.receiptNo || d.internalReceiptNo || "").toLowerCase().includes(q) ||
+      String(d.amount || "").includes(q)
+    );
+  });
 
   const getFormattedSummaryText = () => {
     const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
@@ -53781,6 +53852,28 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
 
     const qrLink = C?.whatsappTemplates?.donateLink || donateUrl;
     const upi = C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
+
+    if (viewMode === "person_wise") {
+      let msg = `💳 *QR સ્કેનર & Direct Pay:* ${qrLink}\n`;
+      msg += `📋 *MMP દાતાઓની યાદી (Person-wise Donor Registry)${eventLabel ? ` — ${eventLabel}` : ""}*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      if (donorList.length === 0) {
+        msg += `(હાલમાં કોઈ દાતા નોંધાયેલ નથી)\n`;
+      } else {
+        donorList.forEach((d, idx) => {
+          const numGu = toGujDigits(idx + 1);
+          const name = d.name || "દાતાશ્રી";
+          const amt = Number(d.amount || 0).toLocaleString('en-IN');
+          const vib = d.vibhag ? ` (${d.vibhag})` : "";
+          msg += `${numGu}. ${name}: ₹${amt}/-${vib}\n`;
+        });
+      }
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `💰 *કુલ દાન રકમ:* ₹${totalAmount.toLocaleString('en-IN')} (${totalCount} દાતાઓ)\n`;
+      msg += `📲 *UPI ID:* ${upi}\n`;
+      msg += `🌐 *Live Portal:* ${portalUrl}`;
+      return msg;
+    }
 
     let msg = `💳 *QR સ્કેનર & Direct Pay:* ${qrLink}\n`;
     msg += `📊 *MMP Donations & Collection Summary${eventLabel ? ` (${eventLabel})` : ""}*\n`;
@@ -53842,37 +53935,144 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
         </div>
       </div>
 
-      {/* Vibhag Wise Breakdown Table */}
-      <div style={{fontSize:".75rem",fontWeight:800,color:"#334155",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>
-        📍 Vibhag-Wise Breakdown:
+      {/* View Switcher: Vibhag Breakdown vs Person-Wise Donors */}
+      <div style={{display:"flex",gap:4,background:"#F1F5F9",padding:3,borderRadius:8,marginBottom:12}}>
+        <button
+          type="button"
+          onClick={() => setViewMode("vibhag")}
+          style={{
+            flex: 1,
+            padding: "7px 8px",
+            borderRadius: 6,
+            border: "none",
+            background: viewMode === "vibhag" ? "white" : "transparent",
+            color: viewMode === "vibhag" ? "#065F46" : "#64748B",
+            fontWeight: 800,
+            fontSize: ".75rem",
+            boxShadow: viewMode === "vibhag" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6
+          }}
+        >
+          <span>📍 Vibhag-Wise Breakdown</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("person_wise")}
+          style={{
+            flex: 1,
+            padding: "7px 8px",
+            borderRadius: 6,
+            border: "none",
+            background: viewMode === "person_wise" ? "white" : "transparent",
+            color: viewMode === "person_wise" ? "#1E40AF" : "#64748B",
+            fontWeight: 800,
+            fontSize: ".75rem",
+            boxShadow: viewMode === "person_wise" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6
+          }}
+        >
+          <span>📋 Person-Wise Donors ({totalCount})</span>
+        </button>
       </div>
-      <div style={{maxHeight:200,overflowY:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
-          <thead>
-            <tr style={{background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",color:"#475569",textAlign:"left"}}>
-              <th style={{padding:"6px 8px"}}>Vibhag</th>
-              <th style={{padding:"6px 8px",textAlign:"center"}}>Donors</th>
-              <th style={{padding:"6px 8px",textAlign:"right"}}>Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vibhagBreakdown.map(([vName, vData], vi) => (
-              <tr key={vi} style={{borderBottom:"1px solid #F1F5F9",background:vi%2===0?"white":"#FAFAFA"}}>
-                <td style={{padding:"6px 8px",fontWeight:600,color:"#0F172A"}}>{vName}</td>
-                <td style={{padding:"6px 8px",textAlign:"center",color:"#64748B"}}>{vData.count}</td>
-                <td style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:"#15803D"}}>₹{vData.total.toLocaleString('en-IN')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      {viewMode === "vibhag" ? (
+        <>
+          {/* Vibhag Wise Breakdown Table */}
+          <div style={{fontSize:".75rem",fontWeight:800,color:"#334155",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>
+            📍 Vibhag-Wise Breakdown:
+          </div>
+          <div style={{maxHeight:200,overflowY:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
+              <thead>
+                <tr style={{background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",color:"#475569",textAlign:"left"}}>
+                  <th style={{padding:"6px 8px"}}>Vibhag</th>
+                  <th style={{padding:"6px 8px",textAlign:"center"}}>Donors</th>
+                  <th style={{padding:"6px 8px",textAlign:"right"}}>Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vibhagBreakdown.map(([vName, vData], vi) => (
+                  <tr key={vi} style={{borderBottom:"1px solid #F1F5F9",background:vi%2===0?"white":"#FAFAFA"}}>
+                    <td style={{padding:"6px 8px",fontWeight:600,color:"#0F172A"}}>{vName}</td>
+                    <td style={{padding:"6px 8px",textAlign:"center",color:"#64748B"}}>{vData.count}</td>
+                    <td style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:"#15803D"}}>₹{vData.total.toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Person-wise Donors Table */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
+            <div style={{fontSize:".75rem",fontWeight:800,color:"#1E40AF",textTransform:"uppercase",letterSpacing:0.5}}>
+              📋 Individual Donor Registry:
+            </div>
+            <input
+              type="text"
+              value={personSearch}
+              onChange={e => setPersonSearch(e.target.value)}
+              placeholder="Search donor..."
+              style={{padding:"3px 8px",borderRadius:4,border:"1px solid #CBD5E1",fontSize:".72rem",width:130}}
+            />
+          </div>
+          <div style={{maxHeight:220,overflowY:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:".75rem"}}>
+              <thead>
+                <tr style={{background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",color:"#475569",textAlign:"left"}}>
+                  <th style={{padding:"6px 8px",width:24}}>#</th>
+                  <th style={{padding:"6px 8px"}}>Donor Name</th>
+                  <th style={{padding:"6px 8px"}}>Vibhag</th>
+                  <th style={{padding:"6px 8px",textAlign:"right"}}>Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDonors.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{padding:"14px 8px",textAlign:"center",color:"#94A3B8"}}>
+                      No matching donor records found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDonors.map((d, di) => (
+                    <tr key={di} style={{borderBottom:"1px solid #F1F5F9",background:di%2===0?"white":"#FAFAFA"}}>
+                      <td style={{padding:"6px 8px",color:"#64748B",fontWeight:700}}>{di + 1}</td>
+                      <td style={{padding:"6px 8px",fontWeight:600,color:"#0F172A"}}>
+                        {d.name || "Anonymous Donor"}
+                        {d.isOffline || d.paymentMode === "Offline" ? (
+                          <span style={{fontSize:".65rem",background:"#FFEDD5",color:"#C2410C",padding:"1px 4px",borderRadius:3,marginLeft:4}}>Offline</span>
+                        ) : (
+                          <span style={{fontSize:".65rem",background:"#DCFCE7",color:"#15803D",padding:"1px 4px",borderRadius:3,marginLeft:4}}>Online</span>
+                        )}
+                      </td>
+                      <td style={{padding:"6px 8px",color:"#475569",fontSize:".72rem"}}>{d.vibhag || "-"}</td>
+                      <td style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:"#15803D"}}>
+                        ₹{Number(d.amount || 0).toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       <div style={{display:"flex",gap:6,marginTop:10}}>
         <button
           onClick={() => onAction && onAction("/donerlist")}
           style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid #CBD5E1",background:"#F8FAFC",color:"#1E293B",fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
         >
-          📋 View Person-wise Donors
+          📋 Full Registry & Certificates
         </button>
         <button
           onClick={() => onAction && onAction("/donation update")}
@@ -53901,10 +54101,10 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
             justifyContent: "center",
             gap: 4
           }}
-          title="Copy formatted summary text for WhatsApp"
+          title={viewMode === "person_wise" ? "Copy formatted person-wise donor list for WhatsApp" : "Copy formatted summary text for WhatsApp"}
         >
           <span>{copied ? "✅" : "📋"}</span>
-          <span>{copied ? "Copied!" : "Copy for WhatsApp"}</span>
+          <span>{copied ? "Copied!" : (viewMode === "person_wise" ? "Copy Donor List" : "Copy for WhatsApp")}</span>
         </button>
 
         <button
@@ -53925,10 +54125,10 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
             gap: 4,
             boxShadow: "0 2px 6px rgba(37,211,102,0.25)"
           }}
-          title="Share summary directly to WhatsApp"
+          title={viewMode === "person_wise" ? "Share person-wise donor list directly to WhatsApp" : "Share summary directly to WhatsApp"}
         >
           <span>🟢</span>
-          <span>Share on WhatsApp</span>
+          <span>{viewMode === "person_wise" ? "Share Donor List" : "Share on WhatsApp"}</span>
         </button>
       </div>
     </div>
@@ -56606,6 +56806,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             offlineAmount: offlineAmt,
             offlineCount: offlineCount,
             vibhagBreakdown: Object.entries(vibhagMap).sort((a, b) => b[1].total - a[1].total),
+            donors: allDonations,
             tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_summary"
           };
         } catch (err) {
