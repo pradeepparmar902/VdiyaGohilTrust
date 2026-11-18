@@ -25578,7 +25578,7 @@ function ChatbotWhatsAppDispatcherCard({ dispatchData, C, allRegs }) {
 // ── End Shared Sub-Workspace Utilities ──
 
 function ChatbotAccessManager({ C, setC, auth }) {
-  const [activeTab, setActiveTab] = useState("users"); // "users" | "kb"
+  const [activeTab, setActiveTab] = useState("kb"); // Default to 1-Flow Question & Action Studio ("kb" / "studio")
   const [accessScope, setAccessScope] = useState("individual"); // Default to "individual" (Mobile/Txn only)
   const [selectedVibhag, setSelectedVibhag] = useState("10 MAHALAXMI");
   const [allRegisteredUsers, setAllRegisteredUsers] = useState([]);
@@ -25590,6 +25590,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [titleColFilter, setTitleColFilter] = useState("all");
   const [answerColFilter, setAnswerColFilter] = useState("all");
   const [statusColFilter, setStatusColFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [tableSearchQuery, setTableSearchQuery] = useState("");
+  const [isStudioOpen, setIsStudioOpen] = useState(true);
 
   // Default Knowledge Base entries
   const DEFAULT_KB = [
@@ -25787,7 +25790,51 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const uniqueCmds = Array.from(new Set(kbList.map(k => (k.cmd || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const uniqueTitles = Array.from(new Set(kbList.map(k => (k.title || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
+  const inferActionType = (item) => {
+    if (!item) return "form";
+    if (item.actionType) return item.actionType;
+    if (item.connectedSubWorkspaceId) return "workspace";
+    if (item.attachedFormId) return "form";
+    if (item.cmd === "/don_summary" || item.id === "kb_donationsummary" || (item.title && item.title.toLowerCase().includes("donation summary"))) return "summary";
+    if (item.cmd === "/don_list" || item.id === "kb_donerlist" || (item.title && item.title.toLowerCase().includes("donor registry"))) return "summary";
+    if (item.cmd === "/all" || item.cmd === "/Edu_all" || item.id === "kb_all" || (item.title && item.title.toLowerCase().includes("summary of all"))) return "summary";
+    if (item.cmd === "/pending" || item.cmd === "/Edu_pending" || item.id === "kb_pending") return "summary";
+    if (item.cmd === "/approved" || item.cmd === "/Edu_approved" || item.id === "kb_approved") return "summary";
+    if (item.attachedWhatsAppTplId) return "whatsapp";
+    if (item.cmd === "/cwc_committee" || item.cmd === "/contact" || item.id === "kb_cwc_committee" || item.id === "kb_contact") return "committee";
+    return "text";
+  };
+
+  const inferSummaryType = (item) => {
+    if (!item) return "donation";
+    if (item.summaryType) return item.summaryType;
+    if (item.cmd === "/don_summary" || item.id === "kb_donationsummary" || (item.title && item.title.toLowerCase().includes("donation summary"))) return "donation";
+    if (item.cmd === "/don_list" || item.id === "kb_donerlist" || (item.title && item.title.toLowerCase().includes("donor registry"))) return "donor_list";
+    if (item.cmd === "/pending" || item.cmd === "/Edu_pending" || item.id === "kb_pending") return "pending";
+    if (item.cmd === "/approved" || item.cmd === "/Edu_approved" || item.id === "kb_approved") return "approved";
+    return "registrations";
+  };
+
   const filteredKbList = kbList.filter(item => {
+    const action = inferActionType(item);
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "form" && action !== "form") return false;
+      if (categoryFilter === "summary" && action !== "summary") return false;
+      if (categoryFilter === "workspace" && action !== "workspace") return false;
+      if (categoryFilter === "whatsapp" && action !== "whatsapp") return false;
+      if (categoryFilter === "committee" && action !== "committee") return false;
+      if (categoryFilter === "text" && action !== "text") return false;
+      if (categoryFilter === "admin" && (!item.adminOnly && item.roleAccess === "public")) return false;
+      if (categoryFilter === "hidden" && item.enabled !== false) return false;
+    }
+    if (tableSearchQuery && tableSearchQuery.trim()) {
+      const q = tableSearchQuery.toLowerCase();
+      const matchCmd = (item.cmd || "").toLowerCase().includes(q);
+      const matchTitle = (item.title || "").toLowerCase().includes(q);
+      const matchAns = (item.answer || "").toLowerCase().includes(q);
+      const matchWs = (item.connectedSubWorkspaceName || "").toLowerCase().includes(q);
+      if (!matchCmd && !matchTitle && !matchAns && !matchWs) return false;
+    }
     if (cmdColFilter && cmdColFilter !== "all") {
       if ((item.cmd || "").trim().toLowerCase() !== cmdColFilter.toLowerCase()) return false;
     }
@@ -25809,20 +25856,26 @@ function ChatbotAccessManager({ C, setC, auth }) {
     return true;
   });
 
-  // New Q&A Form State
+  // 1-Flow Question & Action Studio State
   const [editingKbId, setEditingKbId] = useState(null);
   const [kbForm, setKbForm] = useState({
     cmd: "",
     icon: "❓",
     title: "",
     answer: "",
+    actionType: "form", // "form" | "summary" | "workspace" | "whatsapp" | "committee" | "text"
+    summaryType: "donation", // "donation" | "donor_list" | "registrations" | "pending" | "approved"
     enabled: true,
     adminOnly: false,
     attachedFormId: "",
     storageDestination: "donations",
     roleAccess: "public",
     attachedWhatsAppTplId: "",
-    targetEventIds: ["all"]
+    connectedEventId: "",
+    connectedSubWorkspaceId: "",
+    connectedSubWorkspaceName: "",
+    targetEventIds: ["all"],
+    order: kbList.length + 1
   });
 
   const VIBHAG_LIST = [
@@ -26077,43 +26130,64 @@ function ChatbotAccessManager({ C, setC, auth }) {
   };
 
   const handleSaveKbForm = async (e) => {
-    e.preventDefault();
-    let cleanCmd = kbForm.cmd.trim();
+    if (e && e.preventDefault) e.preventDefault();
+    let cleanCmd = (kbForm.cmd || "").trim();
+    if (!cleanCmd) cleanCmd = "/ss";
     if (!cleanCmd.startsWith("/")) cleanCmd = "/" + cleanCmd;
-    if (!kbForm.title.trim() || !kbForm.answer.trim()) return alert("Please fill Title and Answer.");
+    if (!kbForm.title || !kbForm.title.trim()) return alert("Please enter a Question / Title Label.");
+
+    // Generate intelligent default answer based on chosen capability if empty
+    let finalAnswer = (kbForm.answer || "").trim();
+    if (!finalAnswer) {
+      if (kbForm.actionType === "form") {
+        finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease complete the interactive form below:`;
+      } else if (kbForm.actionType === "summary") {
+        finalAnswer = `📊 **${kbForm.title.trim()}**\n\nLive real-time summary metrics dashboard.`;
+      } else if (kbForm.actionType === "workspace") {
+        finalAnswer = `💌 **${kbForm.title.trim()}**\n\nSub-workspace contacts and personalized passes dispatcher.`;
+      } else if (kbForm.actionType === "whatsapp") {
+        finalAnswer = `📱 **${kbForm.title.trim()}**\n\nOfficial WhatsApp broadcast message:`;
+      } else if (kbForm.actionType === "committee") {
+        finalAnswer = `🏛️ **${kbForm.title.trim()}**\n\nCentral Working Committee directory and verified contacts.`;
+      } else {
+        finalAnswer = `Information and guidance for ${kbForm.title.trim()}`;
+      }
+    }
+
+    const itemOrder = kbForm.order !== undefined && kbForm.order !== null && !isNaN(Number(kbForm.order)) 
+      ? Number(kbForm.order) 
+      : (editingKbId ? (kbList.find(k => k.id === editingKbId)?.order || 1) : (kbList.length + 1));
+
+    const payload = {
+      ...kbForm,
+      cmd: cleanCmd,
+      title: kbForm.title.trim(),
+      answer: finalAnswer,
+      actionType: kbForm.actionType || "form",
+      summaryType: kbForm.summaryType || "donation",
+      order: itemOrder,
+      roleAccess: kbForm.roleAccess || "public",
+      adminOnly: kbForm.roleAccess !== "public",
+      attachedWhatsAppTplId: kbForm.attachedWhatsAppTplId || "",
+      attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "builtin_offline_donation") : (kbForm.attachedFormId || ""),
+      storageDestination: kbForm.storageDestination || "donations",
+      connectedEventId: kbForm.connectedEventId || "",
+      connectedSubWorkspaceId: kbForm.connectedSubWorkspaceId || "",
+      connectedSubWorkspaceName: kbForm.connectedSubWorkspaceName || "",
+      targetEventIds: (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.length > 0) ? kbForm.targetEventIds : ["all"]
+    };
 
     let updated = [];
     if (editingKbId) {
       updated = kbList.map(item => (item.id === editingKbId) ? {
         ...item,
-        ...kbForm,
-        id: editingKbId,
-        cmd: cleanCmd,
-        title: kbForm.title.trim(),
-        answer: kbForm.answer.trim(),
-        roleAccess: kbForm.roleAccess || "public",
-        adminOnly: kbForm.roleAccess !== "public",
-        attachedWhatsAppTplId: kbForm.attachedWhatsAppTplId || "",
-        attachedFormId: kbForm.attachedFormId || "",
-        storageDestination: kbForm.storageDestination || "donations",
-        connectedEventId: kbForm.connectedEventId || "",
-        connectedSubWorkspaceId: kbForm.connectedSubWorkspaceId || "",
-        connectedSubWorkspaceName: kbForm.connectedSubWorkspaceName || "",
-        targetEventIds: (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.length > 0) ? kbForm.targetEventIds : ["all"]
+        ...payload,
+        id: editingKbId
       } : item);
     } else {
       const newEntry = {
-        ...kbForm,
-        id: "kb_" + Date.now(),
-        cmd: cleanCmd,
-        title: kbForm.title.trim(),
-        answer: kbForm.answer.trim(),
-        roleAccess: kbForm.roleAccess || "public",
-        adminOnly: kbForm.roleAccess !== "public",
-        attachedWhatsAppTplId: kbForm.attachedWhatsAppTplId || "",
-        attachedFormId: kbForm.attachedFormId || "",
-        storageDestination: kbForm.storageDestination || "donations",
-        targetEventIds: (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.length > 0) ? kbForm.targetEventIds : ["all"]
+        ...payload,
+        id: "kb_" + Date.now()
       };
       updated = [...kbList, newEntry];
     }
@@ -26125,12 +26199,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
       icon: "❓",
       title: "",
       answer: "",
+      actionType: "form",
+      summaryType: "donation",
       enabled: true,
       adminOnly: false,
       attachedFormId: "",
       storageDestination: "donations",
       roleAccess: "public",
-      attachedWhatsAppTplId: ""
+      attachedWhatsAppTplId: "",
+      connectedEventId: "",
+      connectedSubWorkspaceId: "",
+      connectedSubWorkspaceName: "",
+      targetEventIds: ["all"],
+      order: kbList.length + 1
     });
   };
 
@@ -26269,36 +26350,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
         {/* Sub-Tabs Switcher */}
         <div style={{display:"flex",background:"#E2E8F0",padding:4,borderRadius:12,gap:4,flexWrap:"wrap",boxShadow:"inset 0 1px 3px rgba(0,0,0,0.1)"}}>
           <button
-            onClick={() => setActiveTab("branding")}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: ".82rem",
-              fontWeight: 800,
-              background: activeTab === "branding" ? "white" : "transparent",
-              color: activeTab === "branding" ? "#0F172A" : "#475569",
-              border: activeTab === "branding" ? "1px solid #CBD5E1" : "1px solid transparent",
-              cursor: "pointer",
-              boxShadow: activeTab === "branding" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
-            }}
-          >
-            🎨 Header & Branding
-          </button>
-          <button
             onClick={() => setActiveTab("kb")}
             style={{
-              padding: "8px 14px",
+              padding: "8px 16px",
               borderRadius: 8,
-              fontSize: ".82rem",
+              fontSize: ".84rem",
               fontWeight: 800,
-              background: activeTab === "kb" ? "white" : "transparent",
-              color: activeTab === "kb" ? "#0F172A" : "#475569",
-              border: activeTab === "kb" ? "1px solid #CBD5E1" : "1px solid transparent",
+              background: (activeTab === "kb" || activeTab === "studio") ? "linear-gradient(135deg, #2563EB, #1D4ED8)" : "transparent",
+              color: (activeTab === "kb" || activeTab === "studio") ? "white" : "#1E293B",
+              border: (activeTab === "kb" || activeTab === "studio") ? "1px solid #1D4ED8" : "1px solid transparent",
               cursor: "pointer",
-              boxShadow: activeTab === "kb" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
+              boxShadow: (activeTab === "kb" || activeTab === "studio") ? "0 2px 8px rgba(37,99,235,0.3)" : "none"
             }}
           >
-            ❓ Slash Commands & Q&A ({kbList.length})
+            ⚡ Question & Action Studio ({kbList.length})
           </button>
           <button
             onClick={() => setActiveTab("users")}
@@ -26317,22 +26382,6 @@ function ChatbotAccessManager({ C, setC, auth }) {
             👥 User Access & Scopes ({allRegisteredUsers.length})
           </button>
           <button
-            onClick={() => setActiveTab("rules")}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: ".82rem",
-              fontWeight: 800,
-              background: activeTab === "rules" ? "#15803D" : "#DCFCE7",
-              color: activeTab === "rules" ? "white" : "#166534",
-              border: "1px solid #86EFAC",
-              cursor: "pointer",
-              boxShadow: activeTab === "rules" ? "0 2px 8px rgba(21,128,61,0.3)" : "none"
-            }}
-          >
-            🛡️ Restricted Messages & Rules
-          </button>
-          <button
             onClick={() => setActiveTab("whatsapp")}
             style={{
               padding: "8px 14px",
@@ -26347,6 +26396,38 @@ function ChatbotAccessManager({ C, setC, auth }) {
             }}
           >
             📱 WhatsApp Templates & QR
+          </button>
+          <button
+            onClick={() => setActiveTab("branding")}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: ".82rem",
+              fontWeight: 800,
+              background: activeTab === "branding" ? "white" : "transparent",
+              color: activeTab === "branding" ? "#0F172A" : "#475569",
+              border: activeTab === "branding" ? "1px solid #CBD5E1" : "1px solid transparent",
+              cursor: "pointer",
+              boxShadow: activeTab === "branding" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
+            }}
+          >
+            🎨 Header & Branding
+          </button>
+          <button
+            onClick={() => setActiveTab("rules")}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: ".82rem",
+              fontWeight: 800,
+              background: activeTab === "rules" ? "#15803D" : "#DCFCE7",
+              color: activeTab === "rules" ? "white" : "#166534",
+              border: "1px solid #86EFAC",
+              cursor: "pointer",
+              boxShadow: activeTab === "rules" ? "0 2px 8px rgba(21,128,61,0.3)" : "none"
+            }}
+          >
+            🛡️ Restricted Messages & Rules
           </button>
         </div>
       </div>
@@ -27215,841 +27296,1597 @@ function ChatbotAccessManager({ C, setC, auth }) {
         </>
       )}
 
-      {activeTab === "kb" && (
-        <div>
-          {/* Add / Edit Q&A Form */}
-          <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"20px 24px",marginBottom:24,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{fontSize:".95rem",fontWeight:800,color:"#0F172A"}}>
-                {editingKbId ? "✏️ Edit Slash Command & Custom Answer:" : "➕ Add New Slash Command & Answer:"}
+      {(activeTab === "kb" || activeTab === "studio") && (() => {
+        const countForms = kbList.filter(k => inferActionType(k) === "form").length;
+        const countSummaries = kbList.filter(k => inferActionType(k) === "summary").length;
+        const countWorkspaces = kbList.filter(k => inferActionType(k) === "workspace").length;
+        const countWhatsApp = kbList.filter(k => inferActionType(k) === "whatsapp").length;
+        const countCommittee = kbList.filter(k => inferActionType(k) === "committee").length;
+        const countText = kbList.filter(k => inferActionType(k) === "text").length;
+        const countAdmin = kbList.filter(k => k.adminOnly || (k.roleAccess && k.roleAccess !== "public")).length;
+        const countHidden = kbList.filter(k => k.enabled === false).length;
+
+        const handleLoadItemToEdit = (item) => {
+          setEditingKbId(item.id);
+          const act = inferActionType(item);
+          const sum = inferSummaryType(item);
+          setKbForm({
+            ...item,
+            actionType: act,
+            summaryType: sum,
+            order: item.order || 1,
+            roleAccess: item.roleAccess || (item.adminOnly ? "vibhag_admin" : "public"),
+            storageDestination: item.storageDestination || "donations",
+            targetEventIds: Array.isArray(item.targetEventIds) && item.targetEventIds.length > 0 ? item.targetEventIds : ["all"]
+          });
+          setIsStudioOpen(true);
+          window.scrollTo({ top: 120, behavior: "smooth" });
+        };
+
+        const handleStartNewItem = (customCmd = "/ss") => {
+          setEditingKbId(null);
+          setKbForm({
+            cmd: customCmd,
+            icon: "❓",
+            title: "",
+            answer: "",
+            actionType: "form",
+            summaryType: "donation",
+            enabled: true,
+            adminOnly: false,
+            attachedFormId: "",
+            storageDestination: "donations",
+            roleAccess: "public",
+            attachedWhatsAppTplId: "",
+            connectedEventId: "",
+            connectedSubWorkspaceId: "",
+            connectedSubWorkspaceName: "",
+            targetEventIds: ["all"],
+            order: kbList.length + 1
+          });
+          setIsStudioOpen(true);
+          window.scrollTo({ top: 120, behavior: "smooth" });
+        };
+
+        return (
+          <div style={{animation:"fadeIn .25s ease"}}>
+            {/* ── Studio Hero Header ── */}
+            <div style={{
+              background: "linear-gradient(135deg, #1E293B, #0F172A)",
+              borderRadius: 14,
+              padding: "20px 24px",
+              color: "white",
+              marginBottom: 20,
+              boxShadow: "0 4px 16px rgba(15,23,42,0.15)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 16
+            }}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                  <span style={{fontSize:"1.6rem"}}>⚡</span>
+                  <h3 style={{margin:0,fontSize:"1.25rem",fontWeight:800,letterSpacing:"-0.01em"}}>
+                    1-Flow Question & Action Studio
+                  </h3>
+                  <span style={{background:"#2563EB",color:"white",fontSize:".7rem",fontWeight:800,padding:"2px 8px",borderRadius:10,textTransform:"uppercase"}}>
+                    Unified Wizard
+                  </span>
+                </div>
+                <p style={{margin:0,fontSize:".84rem",color:"#94A3B8",maxWidth:720,lineHeight:1.4}}>
+                  First enter your question or slash trigger (e.g. <strong>/ss</strong>), then attach your capability (Workspace passes, Form Builder forms, Donation summaries, or WhatsApp messages) in one simple, guided flow.
+                </p>
               </div>
-              {editingKbId && (
+
+              <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <button
-                  onClick={() => {
-                    setEditingKbId(null);
-                    setKbForm({ cmd: "", icon: "❓", title: "", answer: "", enabled: true, adminOnly: false });
+                  type="button"
+                  onClick={() => handleStartNewItem("/ss")}
+                  style={{
+                    padding: "10px 18px",
+                    background: "linear-gradient(135deg, #22C55E, #16A34A)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: ".86rem",
+                    cursor: "pointer",
+                    boxShadow: "0 3px 10px rgba(34,197,94,0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
                   }}
-                  style={{background:"#F1F5F9",border:"none",padding:"4px 10px",borderRadius:6,fontSize:".75rem",cursor:"pointer",fontWeight:600}}
                 >
-                  Cancel Edit
+                  <span>➕</span> Create New Question (/ss)
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setIsStudioOpen(!isStudioOpen)}
+                  style={{
+                    padding: "9px 14px",
+                    background: "rgba(255,255,255,0.1)",
+                    color: "white",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    fontSize: ".82rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  {isStudioOpen ? "▲ Hide Studio Builder" : "▼ Open Studio Builder"}
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSaveKbForm} style={{display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{display:"grid",gridTemplateColumns:"70px 90px 160px 1fr 130px",gap:10}}>
-                <div>
-                  <label style={{fontSize:".73rem",fontWeight:800,color:"#1D4ED8",display:"block",marginBottom:4}}># Order:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
-                    value={kbForm.order || (editingKbId ? (kbList.find(k=>k.id===editingKbId)?.order || 1) : (kbList.length + 1))}
-                    onChange={e=>setKbForm({...kbForm, order: parseInt(e.target.value, 10) || 1})}
-                    style={{width:"100%",padding:"9px 8px",borderRadius:6,border:"1.5px solid #93C5FD",fontSize:".88rem",fontWeight:800,textAlign:"center",boxSizing:"border-box",background:"#EFF6FF",color:"#1E40AF"}}
-                    title="1 = First, 2 = Second, 3 = Third..."
-                  />
-                </div>
-                <div>
-                  <label style={{fontSize:".75rem",fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Icon:</label>
-                  <input
-                    type="text"
-                    value={kbForm.icon}
-                    onChange={e=>setKbForm({...kbForm, icon: e.target.value})}
-                    placeholder="🎓"
-                    style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".9rem",textAlign:"center",boxSizing:"border-box"}}
-                  />
-                </div>
-                <div>
-                  <label style={{fontSize:".75rem",fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Command Shortcut:</label>
-                  <input
-                    type="text"
-                    value={kbForm.cmd}
-                    onChange={e=>setKbForm({...kbForm, cmd: e.target.value})}
-                    placeholder="/edu_committee"
-                    required
-                    style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".85rem",fontFamily:"monospace",fontWeight:700,boxSizing:"border-box"}}
-                  />
-                </div>
-                <div>
-                  <label style={{fontSize:".75rem",fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Question / Title Label:</label>
-                  <input
-                    type="text"
-                    value={kbForm.title}
-                    onChange={e=>setKbForm({...kbForm, title: e.target.value})}
-                    placeholder="e.g. Education Committee Members"
-                    required
-                    style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".85rem",boxSizing:"border-box"}}
-                  />
-                </div>
-                <div>
-                  <label style={{fontSize:".75rem",fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Visibility / Hide:</label>
-                  <select
-                    value={kbForm.enabled ? "enabled" : "hidden"}
-                    onChange={e=>setKbForm({...kbForm, enabled: e.target.value === "enabled"})}
-                    style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontWeight:700,boxSizing:"border-box"}}
-                  >
-                    <option value="enabled">👁️ Enabled (Visible)</option>
-                    <option value="hidden">🙈 Hidden (Disabled)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
-                  <label style={{fontSize:".75rem",fontWeight:700,color:"#475569"}}>
-                    Answer / Response Text (Click helper buttons to insert clickable links & formatting):
-                  </label>
-                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = prompt("Enter YouTube URL (e.g. https://youtu.be/hg2dxZjDLfo):", "https://youtu.be/hg2dxZjDLfo");
-                        if (!url) return;
-                        const label = prompt("Enter Button Label:", "Watch Video on YouTube") || "Watch Video on YouTube";
-                        const linkStr = `\n• [${label}](${url.trim()})`;
-                        setKbForm(prev => ({ ...prev, answer: prev.answer + linkStr }));
-                      }}
-                      style={{background:"#FEE2E2",color:"#DC2626",border:"1px solid #FCA5A5",padding:"4px 10px",borderRadius:6,fontSize:".75rem",fontWeight:700,cursor:"pointer"}}
-                    >
-                      + 🎥 Insert YouTube Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = prompt("Enter Website URL (e.g. www.mmp-cwc.com or https://...):", "www.mmp-cwc.com");
-                        if (!url) return;
-                        const label = prompt("Enter Button Label:", "Visit Website Portal") || "Visit Website Portal";
-                        const linkStr = `\n• [${label}](${url.trim()})`;
-                        setKbForm(prev => ({ ...prev, answer: prev.answer + linkStr }));
-                      }}
-                      style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",padding:"4px 10px",borderRadius:6,fontSize:".75rem",fontWeight:700,cursor:"pointer"}}
-                    >
-                      + 🔗 Insert Web Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setKbForm(prev => ({ ...prev, answer: prev.answer + "\n• **Name** — Designation (+91 9820785209)" }));
-                      }}
-                      style={{background:"#F1F5F9",color:"#334155",border:"1px solid #CBD5E1",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
-                    >
-                      + 👤 Member
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={kbForm.answer}
-                  onChange={e=>setKbForm({...kbForm, answer: e.target.value})}
-                  placeholder="Enter detailed answer, committee member list with mobile numbers, event guidelines, or instructions..."
-                  rows={5}
-                  required
-                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #CBD5E1",fontSize:".85rem",lineHeight:1.5,fontFamily:"inherit",boxSizing:"border-box"}}
-                />
-              </div>
-
-              {/* ── Connect / Filter Target Event(s) ── */}
-              <div style={{background:"#F0F9FF",border:"1.5px solid #BAE6FD",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{fontSize:".82rem",fontWeight:800,color:"#0369A1",display:"flex",alignItems:"center",gap:6}}>
-                  <span>🎯</span> Connect / Filter Specific Event(s) Data (Select one or more events to filter chatbot answers):
-                </div>
-
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{fontSize:".74rem",color:"#0284C7",fontWeight:600}}>
-                    When a user asks this question or executes this slash command, the chatbot response will query and filter data strictly for the selected event(s):
+            {/* ── 1-FLOW QUESTION & ACTION BUILDER WIZARD ── */}
+            {isStudioOpen && (
+              <div style={{
+                background: "white",
+                border: "1.5px solid #CBD5E1",
+                borderRadius: 14,
+                padding: "24px 26px",
+                marginBottom: 26,
+                boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+                position: "relative"
+              }}>
+                {/* Wizard Status Banner */}
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingBottom: 16,
+                  borderBottom: "1.5px solid #F1F5F9",
+                  marginBottom: 20,
+                  flexWrap: "wrap",
+                  gap: 10
+                }}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: editingKbId ? "#F59E0B" : "#2563EB",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: ".9rem",
+                      fontWeight: 800
+                    }}>
+                      {editingKbId ? "✏️" : "✨"}
+                    </span>
+                    <span style={{fontSize:"1.05rem",fontWeight:800,color:"#0F172A"}}>
+                      {editingKbId 
+                        ? `Editing Question: ${kbForm.cmd || "/..."} — "${kbForm.title || "Untitled"}"` 
+                        : "Configure New Question & Action Flow"}
+                    </span>
+                    {editingKbId && (
+                      <span style={{background:"#FEF3C7",color:"#92400E",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800}}>
+                        ID: {editingKbId}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Event Checkboxes */}
-                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                    <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #0284C7" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#0369A1" : "#475569"}}>
-                      <input
-                        type="checkbox"
-                        checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setKbForm({ ...kbForm, targetEventIds: ['all'] });
-                          } else {
-                            setKbForm({ ...kbForm, targetEventIds: [] });
-                          }
-                        }}
-                        style={{cursor:"pointer",accentColor:"#0284C7"}}
-                      />
-                      <span>🌐 All Events Combined</span>
-                    </label>
+                  {editingKbId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingKbId(null);
+                        handleStartNewItem("/ss");
+                      }}
+                      style={{
+                        background: "#F1F5F9",
+                        color: "#475569",
+                        border: "1px solid #CBD5E1",
+                        padding: "6px 14px",
+                        borderRadius: 6,
+                        fontSize: ".8rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Cancel Edit & Start Fresh
+                    </button>
+                  )}
+                </div>
 
-                    {(C.events || []).map(evItem => {
-                      const evKey = evItem.id || evItem.title;
-                      const isSelected = Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evKey);
-                      return (
-                        <label key={evKey} style={{display:"inline-flex",alignItems:"center",gap:6,background: isSelected ? "#E0F2FE" : "white",padding:"6px 12px",borderRadius:6,border: isSelected ? "1.5px solid #0284C7" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:700,cursor:"pointer",color: isSelected ? "#0369A1" : "#334155"}}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
-                              let updated = [];
-                              if (e.target.checked) {
-                                updated = [...cur, evKey];
-                              } else {
-                                updated = cur.filter(x => x !== evKey);
-                              }
-                              if (updated.length === 0) updated = ['all'];
-                              setKbForm({ ...kbForm, targetEventIds: updated });
-                            }}
-                            style={{cursor:"pointer",accentColor:"#0284C7"}}
-                          />
-                          <span>📌 {evItem.title || evItem.id}</span>
+                <form onSubmit={handleSaveKbForm} style={{display:"flex",flexDirection:"column",gap:20}}>
+
+                  {/* ──── STEP 1: Question & Command Trigger ──── */}
+                  <div style={{
+                    background: "#F8FAFC",
+                    border: "1.5px solid #E2E8F0",
+                    borderRadius: 12,
+                    padding: "18px 20px"
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{
+                        background: "#2563EB",
+                        color: "white",
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: ".75rem",
+                        fontWeight: 800
+                      }}>
+                        1
+                      </span>
+                      <span style={{fontSize:".95rem",fontWeight:800,color:"#1E293B"}}>
+                        Step 1: Enter Question Trigger & Details
+                      </span>
+                      <span style={{fontSize:".74rem",color:"#64748B"}}>
+                        (e.g. Command like <strong>/ss</strong>, button title, and display priority)
+                      </span>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:14,alignItems:"flex-end"}}>
+                      {/* Command Trigger */}
+                      <div style={{minWidth:160}}>
+                        <label style={{fontSize:".75rem",fontWeight:800,color:"#2563EB",display:"block",marginBottom:4}}>
+                          Command Trigger (/) *
                         </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+                        <div style={{display:"flex",alignItems:"center",background:"white",borderRadius:6,border:"1.5px solid #93C5FD",overflow:"hidden"}}>
+                          <span style={{background:"#EFF6FF",color:"#1D4ED8",fontWeight:800,padding:"9px 10px",fontSize:".9rem",fontFamily:"monospace"}}>
+                            /
+                          </span>
+                          <input
+                            type="text"
+                            value={(kbForm.cmd || "").replace(/^\//, "")}
+                            onChange={e => {
+                              const clean = e.target.value.replace(/\s+/g, "_").toLowerCase();
+                              setKbForm({ ...kbForm, cmd: "/" + clean });
+                            }}
+                            placeholder="ss"
+                            required
+                            style={{
+                              width: "100%",
+                              padding: "9px 10px",
+                              border: "none",
+                              fontSize: ".9rem",
+                              fontFamily: "monospace",
+                              fontWeight: 800,
+                              color: "#1E3A8A",
+                              outline: "none"
+                            }}
+                          />
+                        </div>
+                      </div>
 
-                            {/* ── Connect Sub-Workspace & WhatsApp Pass Dispatcher ── */}
-              <div style={{background:"#FDF2F8",border:"1.5px solid #F472B6",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{fontSize:".82rem",fontWeight:800,color:"#9D174D",display:"flex",alignItems:"center",gap:6}}>
-                  <span>💌</span> Connect Sub-Workspace & WhatsApp Dispatcher (Send Passes & Updates from Frontend Chatbot):
-                </div>
+                      {/* Question Label / Button Name */}
+                      <div style={{flexGrow:2,minWidth:240}}>
+                        <label style={{fontSize:".75rem",fontWeight:700,color:"#334155",display:"block",marginBottom:4}}>
+                          Question / Button Label in Chatbot *
+                        </label>
+                        <input
+                          type="text"
+                          value={kbForm.title || ""}
+                          onChange={e => setKbForm({ ...kbForm, title: e.target.value })}
+                          placeholder="e.g. Special Scheme Application, 6th Dec Passes, or Donation Summary"
+                          required
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 6,
+                            border: "1px solid #CBD5E1",
+                            fontSize: ".88rem",
+                            boxSizing: "border-box",
+                            fontWeight: 700,
+                            color: "#0F172A"
+                          }}
+                        />
+                      </div>
 
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:12}}>
-                  {/* Sub-Workspace Selector */}
-                  <div>
-                    <label style={{fontSize:".73rem",fontWeight:700,color:"#9D174D",display:"block",marginBottom:3}}>
-                      1. Select Sub-Workspace / Pass Template:
-                    </label>
-                    <select
-                      value={(kbForm.connectedEventId && kbForm.connectedSubWorkspaceId) ? `${kbForm.connectedEventId}:::${kbForm.connectedSubWorkspaceId}` : ""}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (!val) {
-                          setKbForm({ ...kbForm, connectedEventId: "", connectedSubWorkspaceId: "", connectedSubWorkspaceName: "" });
-                          return;
-                        }
-                        const [rawEvId, docId] = val.split(":::");
-                        const evObj = (C.events || []).find(ev => 
-                          (ev.id && ev.id !== "undefined" && ev.id === rawEvId) || 
-                          (ev.title === rawEvId) ||
-                          ((ev.pdfTemplates || []).some(t => t.id === docId || t.name === docId))
-                        );
-                        const evId = (evObj?.id && evObj.id !== "undefined") ? evObj.id : (evObj?.title || rawEvId);
-                        let docName = "Official Invite Letter";
-                        if (docId === 'cert') docName = "Certificate / Receipt";
-                        else if (docId && evObj?.pdfTemplates) {
-                          const t = evObj.pdfTemplates.find(x => x.id === docId);
-                          if (t) docName = t.name;
-                        }
-                        const fullDisplayName = `${evObj?.title || evId} > ${docName}`;
-                        setKbForm({
-                          ...kbForm,
-                          connectedEventId: evId,
-                          connectedSubWorkspaceId: docId,
-                          connectedSubWorkspaceName: fullDisplayName
-                        });
-                      }}
-                      style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #DB2777",fontSize:".84rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#9D174D",cursor:"pointer"}}
-                    >
-                      <option value="">-- No Sub-Workspace (Standard Text Answer Only) --</option>
-                      {(C.events || []).map(evItem => {
-                        const evId = (evItem.id && evItem.id !== "undefined") ? evItem.id : (evItem.title || "Education Committee");
-                        const evTitle = evItem.title || evItem.id;
-                        const customTpls = evItem.pdfTemplates || [];
-                        return (
-                          <optgroup key={evId} label={`📁 ${evTitle} Workspace`}>
-                            <option value={`${evId}:::invite`}>
-                              {`💌 ${evTitle} ➔ Official Invite Letter`}
-                            </option>
-                            <option value={`${evId}:::cert`}>
-                              {`🎓 ${evTitle} ➔ Certificate / 80G Receipt`}
-                            </option>
-                            {customTpls.map(t => (
-                              <option key={t.id} value={`${evId}:::${t.id}`}>
-                                {`🎟️ ${evTitle} ➔ ${t.name} (Custom Pass / Sub-Workspace)`}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
-                  </div>
+                      {/* Order Priority */}
+                      <div style={{width:100}}>
+                        <label style={{fontSize:".73rem",fontWeight:800,color:"#1D4ED8",display:"block",marginBottom:4}}>
+                          # Order:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={kbForm.order || (editingKbId ? (kbList.find(k=>k.id===editingKbId)?.order || 1) : (kbList.length + 1))}
+                          onChange={e => setKbForm({ ...kbForm, order: parseInt(e.target.value, 10) || 1 })}
+                          style={{
+                            width: "100%",
+                            padding: "9px 8px",
+                            borderRadius: 6,
+                            border: "1.5px solid #93C5FD",
+                            fontSize: ".88rem",
+                            fontWeight: 800,
+                            textAlign: "center",
+                            boxSizing: "border-box",
+                            background: "#EFF6FF",
+                            color: "#1E40AF"
+                          }}
+                          title="Display order on chatbot button grid (1 = First)"
+                        />
+                      </div>
 
-                  {/* Target WhatsApp Message Template */}
-                  {kbForm.connectedSubWorkspaceId && (() => {
-                    const selectedEv = (C.events || []).find(e => e.id === kbForm.connectedEventId || e.title === kbForm.connectedEventId);
-                    const associatedTpls = typeof getEventWhatsAppTemplates === 'function' ? getEventWhatsAppTemplates(selectedEv, C) : (selectedEv?.whatsAppTemplates || []);
-                    return (
-                      <div>
-                        <label style={{fontSize:".73rem",fontWeight:700,color:"#9D174D",display:"block",marginBottom:3}}>
-                          2. Select WhatsApp Message Template for Contacts:
+                      {/* Visibility */}
+                      <div style={{minWidth:170}}>
+                        <label style={{fontSize:".75rem",fontWeight:700,color:"#334155",display:"block",marginBottom:4}}>
+                          Visibility:
                         </label>
                         <select
-                          value={kbForm.attachedWhatsAppTplId || ""}
-                          onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
-                          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #F472B6",fontSize:".84rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                          value={kbForm.enabled !== false ? "enabled" : "hidden"}
+                          onChange={e => setKbForm({ ...kbForm, enabled: e.target.value === "enabled" })}
+                          style={{
+                            width: "100%",
+                            padding: "9px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #CBD5E1",
+                            fontSize: ".84rem",
+                            fontWeight: 700,
+                            boxSizing: "border-box",
+                            color: "#0F172A",
+                            cursor: "pointer"
+                          }}
                         >
-                          <option value="">💌 Default Invitation Pass Message</option>
+                          <option value="enabled">👁️ Active in Menu & Buttons</option>
+                          <option value="hidden">🙈 Hidden (Slash-only Trigger)</option>
+                        </select>
+                      </div>
+                    </div>
 
-                          {/* Associated Sub-Workspace WhatsApp Templates (Prioritized) */}
-                          {selectedEv && (
-                            <optgroup label={`📁 ${selectedEv.title || kbForm.connectedEventId} Associated Templates (${associatedTpls.length})`}>
-                              {associatedTpls.map(t => (
-                                <option key={t.id} value={t.id}>
-                                  {`📝 ${t.name} ${t.isDefault ? "(Default)" : ""}`}
+                    {/* Quick Emoji Icon Picker */}
+                    <div style={{marginTop:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:".74rem",fontWeight:800,color:"#64748B"}}>
+                        Choose Icon ({kbForm.icon || "❓"}):
+                      </span>
+                      {["🎓", "💰", "📝", "📊", "💌", "🎟️", "🏛️", "📞", "🔍", "✍️", "📢", "🟢", "⏳", "❓"].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setKbForm({ ...kbForm, icon: emoji })}
+                          style={{
+                            background: kbForm.icon === emoji ? "#2563EB" : "white",
+                            color: kbForm.icon === emoji ? "white" : "#0F172A",
+                            border: kbForm.icon === emoji ? "1.5px solid #1D4ED8" : "1px solid #CBD5E1",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            fontSize: ".95rem",
+                            cursor: "pointer",
+                            transition: "all 0.15s"
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                      <input
+                        type="text"
+                        value={kbForm.icon || ""}
+                        onChange={e => setKbForm({ ...kbForm, icon: e.target.value })}
+                        placeholder="Custom Icon"
+                        style={{width:70,padding:"4px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",textAlign:"center"}}
+                        title="Enter custom emoji"
+                      />
+                    </div>
+                  </div>
+
+                  {/* ──── STEP 2: Choose Attached Capability ──── */}
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{
+                        background: "#2563EB",
+                        color: "white",
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: ".75rem",
+                        fontWeight: 800
+                      }}>
+                        2
+                      </span>
+                      <span style={{fontSize:".95rem",fontWeight:800,color:"#1E293B"}}>
+                        Step 2: Choose Attached Capability (What should this Question do?)
+                      </span>
+                      <span style={{fontSize:".74rem",color:"#64748B"}}>
+                        Click 1 capability to instantly connect it to <strong>{kbForm.cmd || "/ss"}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                      gap: 12
+                    }}>
+                      {[
+                        {
+                          type: "form",
+                          icon: "📝",
+                          title: "Interactive Form",
+                          desc: "Display custom Event Form from Form Builder or Offline Donation Form & save submissions directly into database",
+                          color: "#16A34A",
+                          bg: "#F0FDF4",
+                          border: "#86EFAC"
+                        },
+                        {
+                          type: "summary",
+                          icon: "📊",
+                          title: "Live Analytics & Summary",
+                          desc: "Calculate & display real-time Vibhag donation totals, student registration counts, or verified lists",
+                          color: "#2563EB",
+                          bg: "#EFF6FF",
+                          border: "#93C5FD"
+                        },
+                        {
+                          type: "workspace",
+                          icon: "💌",
+                          title: "Workspace & Passes Dispatcher",
+                          desc: "Link to a workspace (6th Dec, Education 2026) to manage invite passes & 1-tap WhatsApp broadcast",
+                          color: "#DB2777",
+                          bg: "#FDF2F8",
+                          border: "#F472B6"
+                        },
+                        {
+                          type: "whatsapp",
+                          icon: "📱",
+                          title: "WhatsApp Broadcast & QR",
+                          desc: "Generate templated WhatsApp donation appeal or notice with 1-click Share, Copy & GPay QR standee",
+                          color: "#059669",
+                          bg: "#ECFDF5",
+                          border: "#6EE7B7"
+                        },
+                        {
+                          type: "committee",
+                          icon: "🏛️",
+                          title: "Committee Directory & Helpline",
+                          desc: "Show verified CWC leadership or Vibhag contacts with direct WhatsApp & phone call links",
+                          color: "#D97706",
+                          bg: "#FFFBEB",
+                          border: "#FCD34D"
+                        },
+                        {
+                          type: "text",
+                          icon: "💬",
+                          title: "Custom Answer & Web Links",
+                          desc: "Custom formatted text guidance with clickable YouTube video links, website links, or guidelines",
+                          color: "#475569",
+                          bg: "#F8FAFC",
+                          border: "#CBD5E1"
+                        }
+                      ].map(cap => {
+                        const isSelected = (kbForm.actionType || "form") === cap.type;
+                        return (
+                          <div
+                            key={cap.type}
+                            onClick={() => {
+                              const newObj = { ...kbForm, actionType: cap.type };
+                              if (cap.type === "form" && !newObj.attachedFormId) {
+                                newObj.attachedFormId = "builtin_offline_donation";
+                              }
+                              setKbForm(newObj);
+                            }}
+                            style={{
+                              background: isSelected ? cap.bg : "white",
+                              border: isSelected ? `2px solid ${cap.color}` : "1.5px solid #E2E8F0",
+                              borderRadius: 12,
+                              padding: "14px 16px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                              boxShadow: isSelected ? `0 4px 12px ${cap.color}25` : "none",
+                              position: "relative"
+                            }}
+                          >
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <span style={{fontSize:"1.3rem"}}>{cap.icon}</span>
+                                <span style={{fontSize:".88rem",fontWeight:800,color: isSelected ? cap.color : "#1E293B"}}>
+                                  {cap.title}
+                                </span>
+                              </div>
+                              <input
+                                type="radio"
+                                name="actionTypeSelector"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                style={{accentColor: cap.color, cursor: "pointer"}}
+                              />
+                            </div>
+                            <p style={{fontSize:".76rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                              {cap.desc}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ──── STEP 3: Action Setup & Data Connections ──── */}
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{
+                        background: "#2563EB",
+                        color: "white",
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: ".75rem",
+                        fontWeight: 800
+                      }}>
+                        3
+                      </span>
+                      <span style={{fontSize:".95rem",fontWeight:800,color:"#1E293B"}}>
+                        Step 3: Configure Attached Action Details
+                      </span>
+                      <span style={{fontSize:".74rem",color:"#64748B"}}>
+                        (Context-sensitive settings for your chosen capability)
+                      </span>
+                    </div>
+
+                    {/* A. If Action Type is INTERACTIVE FORM */}
+                    {kbForm.actionType === "form" && (
+                      <div style={{
+                        background: "#F0FDF4",
+                        border: "1.5px solid #86EFAC",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
+                          <span>📝</span> Interactive Form & Destination Settings:
+                        </div>
+
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
+                          {/* 1. Form Selector */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
+                              1. Select Form to Display in Chatbot:
+                            </label>
+                            <select
+                              value={kbForm.attachedFormId || "builtin_offline_donation"}
+                              onChange={e => {
+                                const formId = e.target.value;
+                                const isBuiltinDon = formId === "builtin_offline_donation";
+                                setKbForm({
+                                  ...kbForm,
+                                  attachedFormId: formId,
+                                  storageDestination: isBuiltinDon ? "donations" : (kbForm.storageDestination || "registrations"),
+                                  roleAccess: isBuiltinDon ? "donation_collector" : (kbForm.roleAccess || "public")
+                                });
+                              }}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            >
+                              <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
+                              {(C.forms || []).map(f => (
+                                <option key={f.id} value={f.id}>
+                                  📝 {f.name || f.id} (Custom Event Form - {Array.isArray(f.fields) ? f.fields.length : 0} fields)
                                 </option>
                               ))}
-                            </optgroup>
-                          )}
+                            </select>
+                          </div>
 
-                          {/* Other Workspace WhatsApp Templates */}
-                          {(C.events || []).filter(ev => ev.id !== kbForm.connectedEventId && ev.title !== kbForm.connectedEventId).map(evItem => {
-                            const evTitle = evItem.title || evItem.id;
-                            const wsTpls = typeof getEventWhatsAppTemplates === 'function' ? getEventWhatsAppTemplates(evItem, C) : (evItem.whatsAppTemplates || []);
-                            if (!Array.isArray(wsTpls) || wsTpls.length === 0) return null;
-                            return (
-                              <optgroup key={evItem.id || evTitle} label={`📁 ${evTitle} WhatsApp Templates (${wsTpls.length})`}>
-                                {wsTpls.map(t => (
-                                  <option key={t.id} value={t.id}>
-                                    {`📝 ${evTitle} ➔ ${t.name} ${t.isDefault ? "(Default)" : ""}`}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            );
-                          })}
+                          {/* 2. Target Database Destination */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
+                              2. Store Submissions Into Database:
+                            </label>
+                            <select
+                              value={kbForm.storageDestination || "donations"}
+                              onChange={e => setKbForm({ ...kbForm, storageDestination: e.target.value })}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#166534",cursor:"pointer"}}
+                            >
+                              <option value="donations">💰 Donations Collection (donations)</option>
+                              <option value="registrations">📥 Event Registrations Collection (registrations)</option>
+                              <option value="volunteers">👥 Volunteers Collection (volunteers)</option>
+                            </select>
+                          </div>
+                        </div>
 
-                          {/* Global Broadcast Templates */}
-                          <optgroup label="📢 Global Broadcast Templates">
-                            <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
+                        {/* Form Intro Message */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
+                            3. Guidance / Form Introduction Text (Shown directly above the form in Chat):
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={kbForm.answer || ""}
+                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                            placeholder="Enter guidance or instructions that will appear above the interactive form..."
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #86EFAC",fontSize:".85rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                          />
+                        </div>
+
+                        <div style={{fontSize:".74rem",color:"#15803D",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #BBF7D0"}}>
+                          ✨ <strong>Connected Form</strong>: When any permitted user triggers <strong>{kbForm.cmd || "/ss"}</strong>, the chatbot presents the interactive submission form and instantly saves all records into <strong>{kbForm.storageDestination}</strong>.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* B. If Action Type is LIVE ANALYTICS & SUMMARY */}
+                    {kbForm.actionType === "summary" && (
+                      <div style={{
+                        background: "#EFF6FF",
+                        border: "1.5px solid #93C5FD",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#1D4ED8",display:"flex",alignItems:"center",gap:8}}>
+                          <span>📊</span> Live Analytics & Scoped Metrics Setup:
+                        </div>
+
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
+                          {/* 1. Summary Metric Type */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
+                              1. Select Metric / Summary Type:
+                            </label>
+                            <select
+                              value={kbForm.summaryType || "donation"}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setKbForm({
+                                  ...kbForm,
+                                  summaryType: val,
+                                  roleAccess: (val === "donation" || val === "donor_list") ? "donation_collector" : "vibhag_admin"
+                                });
+                              }}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #93C5FD",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            >
+                              <option value="donation">💰 Vibhag Donation Collection Summary (Cash/Cheque + Online splits)</option>
+                              <option value="donor_list">📋 Person-wise Donor Registry (Numbered list with WhatsApp broadcast)</option>
+                              <option value="registrations">📈 All Student Registrations Summary (Totals, Approved, Pending metrics)</option>
+                              <option value="pending">⏳ Pending Review Registrations (Awaiting document verification)</option>
+                              <option value="approved">🟢 Approved Registrations List (Verified students)</option>
+                            </select>
+                          </div>
+
+                          {/* 2. WhatsApp Template for Broadcast (if donation summary or donor list) */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
+                              2. Optional WhatsApp Broadcast Template:
+                            </label>
+                            <select
+                              value={kbForm.attachedWhatsAppTplId || ""}
+                              onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #93C5FD",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            >
+                              <option value="">-- No Attached WhatsApp Template --</option>
+                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
+                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
+                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
+                              {(C.whatsappBroadcastTemplates || []).map(t => (
+                                <option key={t.id} value={t.id}>
+                                  📱 {t.name || t.id}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* 3. Event Scope Filter */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:800,color:"#1D4ED8",display:"block",marginBottom:6}}>
+                            3. Event Scope Filter (Select one or more events to scope the metrics):
+                          </label>
+                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #2563EB" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#1D4ED8" : "#475569"}}>
+                              <input
+                                type="checkbox"
+                                checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setKbForm({ ...kbForm, targetEventIds: ['all'] });
+                                  else setKbForm({ ...kbForm, targetEventIds: [] });
+                                }}
+                                style={{cursor:"pointer",accentColor:"#2563EB"}}
+                              />
+                              <span>🌐 All Events Combined</span>
+                            </label>
+
+                            {(C.events || []).map(evItem => {
+                              const evKey = evItem.id || evItem.title;
+                              const isSelected = Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evKey);
+                              return (
+                                <label key={evKey} style={{display:"inline-flex",alignItems:"center",gap:6,background: isSelected ? "#DBEAFE" : "white",padding:"6px 12px",borderRadius:6,border: isSelected ? "1.5px solid #2563EB" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:700,cursor:"pointer",color: isSelected ? "#1E40AF" : "#334155"}}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+                                      let updated = e.target.checked ? [...cur, evKey] : cur.filter(x => x !== evKey);
+                                      if (updated.length === 0) updated = ['all'];
+                                      setKbForm({ ...kbForm, targetEventIds: updated });
+                                    }}
+                                    style={{cursor:"pointer",accentColor:"#2563EB"}}
+                                  />
+                                  <span>📌 {evItem.title || evItem.id}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Answer text */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
+                            4. Custom Header / Guidance (Optional):
+                          </label>
+                          <input
+                            type="text"
+                            value={kbForm.answer || ""}
+                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                            placeholder="e.g. 📊 Real-time breakdown of total collections and Vibhag-by-Vibhag financial metrics."
+                            style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #93C5FD",fontSize:".85rem",boxSizing:"border-box"}}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* C. If Action Type is WORKSPACE & PASSES DISPATCHER */}
+                    {kbForm.actionType === "workspace" && (
+                      <div style={{
+                        background: "#FDF2F8",
+                        border: "1.5px solid #F472B6",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#9D174D",display:"flex",alignItems:"center",gap:8}}>
+                          <span>💌</span> Connect Workspace & WhatsApp Passes Dispatcher:
+                        </div>
+
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:14}}>
+                          {/* Workspace & Pass Selector */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#9D174D",display:"block",marginBottom:4}}>
+                              1. Select Target Workspace & Sub-Workspace / Pass Template:
+                            </label>
+                            <select
+                              value={(kbForm.connectedEventId && kbForm.connectedSubWorkspaceId) ? `${kbForm.connectedEventId}:::${kbForm.connectedSubWorkspaceId}` : ""}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (!val) {
+                                  setKbForm({ ...kbForm, connectedEventId: "", connectedSubWorkspaceId: "", connectedSubWorkspaceName: "" });
+                                  return;
+                                }
+                                const [rawEvId, docId] = val.split(":::");
+                                const evObj = (C.events || []).find(ev => 
+                                  (ev.id && ev.id !== "undefined" && ev.id === rawEvId) || 
+                                  (ev.title === rawEvId) ||
+                                  ((ev.pdfTemplates || []).some(t => t.id === docId || t.name === docId))
+                                );
+                                const evId = (evObj?.id && evObj.id !== "undefined") ? evObj.id : (evObj?.title || rawEvId);
+                                let docName = "Official Invite Letter";
+                                if (docId === 'cert') docName = "Certificate / Receipt";
+                                else if (docId && evObj?.pdfTemplates) {
+                                  const t = evObj.pdfTemplates.find(x => x.id === docId);
+                                  if (t) docName = t.name;
+                                }
+                                const fullDisplayName = `${evObj?.title || evId} > ${docName}`;
+                                setKbForm({
+                                  ...kbForm,
+                                  connectedEventId: evId,
+                                  connectedSubWorkspaceId: docId,
+                                  connectedSubWorkspaceName: fullDisplayName
+                                });
+                              }}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #DB2777",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#9D174D",cursor:"pointer"}}
+                            >
+                              <option value="">-- Select Workspace & Pass --</option>
+                              {(C.events || []).map(evItem => {
+                                const evId = (evItem.id && evItem.id !== "undefined") ? evItem.id : (evItem.title || "Education Committee");
+                                const evTitle = evItem.title || evItem.id;
+                                const customTpls = evItem.pdfTemplates || [];
+                                return (
+                                  <optgroup key={evId} label={`📁 ${evTitle} Workspace`}>
+                                    <option value={`${evId}:::invite`}>
+                                      {`💌 ${evTitle} ➔ Official Invite Letter`}
+                                    </option>
+                                    <option value={`${evId}:::cert`}>
+                                      {`🎓 ${evTitle} ➔ Certificate / 80G Receipt`}
+                                    </option>
+                                    {customTpls.map(t => (
+                                      <option key={t.id} value={`${evId}:::${t.id}`}>
+                                        {`🎟️ ${evTitle} ➔ ${t.name} (Custom Pass)`}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          {/* WhatsApp Template */}
+                          <div>
+                            <label style={{fontSize:".75rem",fontWeight:700,color:"#9D174D",display:"block",marginBottom:4}}>
+                              2. Select WhatsApp Message Template for Contacts:
+                            </label>
+                            <select
+                              value={kbForm.attachedWhatsAppTplId || ""}
+                              onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
+                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #F472B6",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                            >
+                              <option value="">💌 Default Invitation Pass Message</option>
+                              {(C.whatsappBroadcastTemplates || []).map(t => (
+                                <option key={t.id} value={t.id}>
+                                  📱 {t.name || t.id}
+                                </option>
+                              ))}
+                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
+                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
+                              <option value="tpl_meeting_notice">📢 CWC Committee Meeting Notice</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {kbForm.connectedSubWorkspaceName && (
+                          <div style={{fontSize:".75rem",color:"#BE185D",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #FCE7F3"}}>
+                            ✨ <strong>Connected Sub-Workspace</strong>: <strong>{kbForm.connectedSubWorkspaceName}</strong><br/>
+                            When users/admins run <strong>{kbForm.cmd || "/ss"}</strong> in the chatbot, the bot will load contacts strictly from this workspace and provide 1-tap WhatsApp sending with all live variables filled!
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* D. If Action Type is WHATSAPP MESSAGE & QR */}
+                    {kbForm.actionType === "whatsapp" && (
+                      <div style={{
+                        background: "#ECFDF5",
+                        border: "1.5px solid #6EE7B7",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:8}}>
+                          <span>📱</span> WhatsApp Broadcast Template & QR Standee Settings:
+                        </div>
+
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                            Select Broadcast Template:
+                          </label>
+                          <select
+                            value={kbForm.attachedWhatsAppTplId || "tpl_edu_appeal"}
+                            onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #6EE7B7",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                          >
+                            <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)</option>
                             <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
-                            <option value="tpl_meeting_notice">📢 CWC Committee Meeting Notice</option>
+                            <option value="tpl_meeting_notice">📢 CWC Committee Meeting & Gathering Notice</option>
                             <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
                             {(C.whatsappBroadcastTemplates || []).map(t => (
                               <option key={t.id} value={t.id}>
-                                {`📱 ${t.name || t.id} (Custom Broadcast Template)`}
+                                📱 {t.name || t.id} (Custom Template)
                               </option>
                             ))}
-                          </optgroup>
-                        </select>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {kbForm.connectedSubWorkspaceId && (
-                  <div style={{fontSize:".74rem",color:"#BE185D",lineHeight:1.4,background:"#FFF5F7",padding:"8px 12px",borderRadius:6,border:"1px solid #FCE7F3"}}>
-                    ✨ <strong>Connected Sub-Workspace</strong>: <strong>{kbForm.connectedSubWorkspaceName || kbForm.connectedSubWorkspaceId}</strong><br/>
-                    When users/admins run <strong>{kbForm.cmd || "this command"}</strong> in the frontend chatbot, the bot will load contacts strictly from this sub-workspace and provide 1-tap WhatsApp sending with all live variables filled!
-                  </div>
-                )}
-              </div>
-
-              {/* ── Connect WhatsApp Broadcast Template ── */}
-              <div style={{background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                  <span>📱</span> Connect WhatsApp Broadcast Template (Adds 📋 Copy & 🟢 Share WhatsApp buttons to Bot response):
-                </div>
-
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:12}}>
-                  <div>
-                    <label style={{fontSize:".73rem",fontWeight:700,color:"#166534",display:"block",marginBottom:3}}>
-                      Select WhatsApp Broadcast Template:
-                    </label>
-                    <select
-                      value={kbForm.attachedWhatsAppTplId || ""}
-                      onChange={e => setKbForm({ ...kbForm, attachedWhatsAppTplId: e.target.value })}
-                      style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #86EFAC",fontSize:".8rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A"}}
-                    >
-                      <option value="">💬 No WhatsApp Template (Standard Text Reply Only)</option>
-                      <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal (Bank of Baroda QR)</option>
-                      <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
-                      <option value="tpl_meeting_notice">📢 CWC Committee Meeting & Gathering Notice</option>
-                      <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary</option>
-                      {(C.whatsappBroadcastTemplates || []).map(t => (
-                        <option key={t.id} value={t.id}>
-                          {`📱 ${t.name || t.id} (Custom Template)`}
-                        </option>
-                      ))}
-
-                      {/* Sub-Workspace & Event WhatsApp Templates */}
-                      {(C.events || []).map(evItem => {
-                        const evTitle = evItem.title || evItem.id;
-                        const evTpls = typeof getEventWhatsAppTemplates === 'function' ? getEventWhatsAppTemplates(evItem, C) : (evItem.whatsAppTemplates || []);
-                        return (
-                          <optgroup key={`bcast_${evItem.id || evTitle}`} label={`📁 ${evTitle} Workspace Templates (${evTpls.length})`}>
-                            {evTpls.map(t => (
-                              <option key={`bcast_${t.id}`} value={t.id}>
-                                {`📝 ${evTitle} ➔ ${t.name} ${t.isDefault ? "(Default)" : ""}`}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </div>
-
-                {kbForm.attachedWhatsAppTplId && (
-                  <div style={{fontSize:".72rem",color:"#15803D",lineHeight:1.4}}>
-                    ℹ️ When users ask <strong>{kbForm.cmd || "this question"}</strong>, the chatbot response will include <strong>📋 Copy for WhatsApp</strong> and <strong>🟢 Share on WhatsApp</strong> buttons formatted with the connected template.
-                  </div>
-                )}
-              </div>
-
-              {/* ── Connect Interactive Form & Target Storage Destination ── */}
-              <div style={{background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
-                <div style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                  <span>📝</span> Connect Interactive Form (Displays in Chatbot Conversation):
-                </div>
-
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:12}}>
-                  {/* Form Selector */}
-                  <div>
-                    <label style={{fontSize:".73rem",fontWeight:700,color:"#166534",display:"block",marginBottom:3}}>
-                      Select Form from Form Builder:
-                    </label>
-                    <select
-                      value={kbForm.attachedFormId || ""}
-                      onChange={e => {
-                        const formId = e.target.value;
-                        const isDon = formId === "builtin_offline_donation";
-                        setKbForm({
-                          ...kbForm,
-                          attachedFormId: formId,
-                          storageDestination: isDon ? "donations" : (kbForm.storageDestination || "registrations")
-                        });
-                      }}
-                      style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #86EFAC",fontSize:".8rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A"}}
-                    >
-                      <option value="">💬 No Form (Text & Links Answer Only)</option>
-                      <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
-                      {(C.forms || []).map(f => (
-                        <option key={f.id} value={f.id}>
-                          📝 {f.name || f.id} (Custom Event Form - {Array.isArray(f.fields) ? f.fields.length : 0} fields)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Target Storage Destination */}
-                  {kbForm.attachedFormId && (
-                    <div>
-                      <label style={{fontSize:".73rem",fontWeight:700,color:"#166534",display:"block",marginBottom:3}}>
-                        Target Storage Destination:
-                      </label>
-                      <select
-                        value={kbForm.storageDestination || "donations"}
-                        onChange={e => setKbForm({ ...kbForm, storageDestination: e.target.value })}
-                        style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #86EFAC",fontSize:".8rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#15803D"}}
-                      >
-                        <option value="donations">💰 Donations Collection (donations)</option>
-                        <option value="registrations">📥 Registrations Collection (registrations)</option>
-                        <option value="volunteers">👥 Volunteers Collection (volunteers)</option>
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Role / Access Requirement */}
-                  <div>
-                    <label style={{fontSize:".73rem",fontWeight:700,color:"#166534",display:"block",marginBottom:3}}>
-                      Who Can Use This Form / Command:
-                    </label>
-                    <select
-                      value={kbForm.roleAccess || (kbForm.adminOnly ? "vibhag_admin" : "public")}
-                      onChange={e => setKbForm({ ...kbForm, roleAccess: e.target.value, adminOnly: e.target.value !== "public" })}
-                      style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #86EFAC",fontSize:".8rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#1E293B"}}
-                    >
-                      <option value="public">🌐 Public (All Visitors & Applicants)</option>
-                      <option value="donation_collector">💰 Donation Collectors & Super Admins Only</option>
-                      <option value="vibhag_admin">📍 Vibhag Admins & Super Admins Only</option>
-                      <option value="super_admin">🛡️ Super Admin Only</option>
-                    </select>
-                  </div>
-                </div>
-
-                {kbForm.attachedFormId && (
-                  <div style={{fontSize:".72rem",color:"#15803D",lineHeight:1.4}}>
-                    ℹ️ When users trigger <strong>{kbForm.cmd || "this command"}</strong>, the chatbot will display the complete interactive form in a card and save submitted data directly into <strong>{kbForm.storageDestination === "donations" ? "Donations" : kbForm.storageDestination === "registrations" ? "Registrations" : "Volunteers"}</strong>.
-                  </div>
-                )}
-              </div>
-
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:4}}>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:".8rem",color:"#475569",cursor:"pointer",fontWeight:600}}>
-                  <input
-                    type="checkbox"
-                    checked={kbForm.adminOnly}
-                    onChange={e=>setKbForm({...kbForm, adminOnly: e.target.checked})}
-                  />
-                  🔒 Restrict to Committee Admins Only (Hide from Public Users)
-                </label>
-
-                <button
-                  type="submit"
-                  style={{
-                    padding:"10px 24px",
-                    background:"linear-gradient(135deg, #2563EB, #1D4ED8)",
-                    color:"white",
-                    border:"none",
-                    borderRadius:8,
-                    fontWeight:700,
-                    fontSize:".88rem",
-                    cursor:"pointer",
-                    boxShadow:"0 2px 8px rgba(37,99,235,0.25)"
-                  }}
-                >
-                  {editingKbId ? "💾 Save Changes & Form Connection" : "+ Add Slash Command & Form Connection"}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Knowledge Base Table */}
-          <div style={{background:"white",borderRadius:12,border:"1px solid #E2E8F0",overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-            <div style={{padding:"14px 18px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontWeight:700,fontSize:".88rem",color:"#0F172A",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span>Configured Questions & Slash Commands ({filteredKbList.length}{filteredKbList.length !== kbList.length ? ` of ${kbList.length}` : ""})</span>
-                {(cmdColFilter !== "all" || titleColFilter !== "all" || answerColFilter !== "all" || statusColFilter !== "all") && (
-                  <span style={{background:"#FEF3C7",color:"#92400E",fontSize:".72rem",padding:"2px 8px",borderRadius:12,fontWeight:800}}>
-                    Filtered
-                  </span>
-                )}
-              </div>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                {(cmdColFilter !== "all" || titleColFilter !== "all" || answerColFilter !== "all" || statusColFilter !== "all") && (
-                  <button
-                    type="button"
-                    onClick={() => { setCmdColFilter("all"); setTitleColFilter("all"); setAnswerColFilter("all"); setStatusColFilter("all"); }}
-                    style={{background:"#EF4444",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:".74rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
-                  >
-                    <span>✕</span> Reset All Column Filters
-                  </button>
-                )}
-                <span style={{fontSize:".75rem",color:"#64748B"}}>Toggle Hide/Unhide with one click</span>
-              </div>
-            </div>
-
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:".85rem"}}>
-                <thead>
-                  <tr style={{background:"#1E293B",color:"white"}}>
-                    {/* 1. Command Dropdown Filter */}
-                    <th style={{padding:"10px 8px",textAlign:"center",width:75,verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5,alignItems:"center"}}>
-                        <span style={{fontWeight:800,fontSize:".8rem",color:"#38BDF8"}}># Order</span>
-                        <span style={{fontSize:".68rem",color:"#94A3B8"}}>▲ / ▼</span>
-                      </div>
-                    </th>
-                    <th style={{padding:"10px 12px",textAlign:"left",width:180,verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span style={{fontWeight:800,fontSize:".82rem"}}>Command (/)</span>
-                          <span style={{fontSize:".72rem",color:"#38BDF8"}}>▼</span>
+                          </select>
                         </div>
-                        <select
-                          value={cmdColFilter}
-                          onChange={e=>setCmdColFilter(e.target.value)}
-                          style={{
-                            width:"100%",
-                            padding:"6px 8px",
-                            borderRadius:6,
-                            border: cmdColFilter !== "all" ? "1.5px solid #F59E0B" : "1.5px solid #38BDF8",
-                            background:"#0F172A",
-                            color:"#FFFFFF",
-                            fontSize:".75rem",
-                            fontWeight:700,
-                            boxSizing:"border-box",
-                            cursor:"pointer",
-                            outline:"none"
-                          }}
-                        >
-                          <option value="all" style={{background:"#0F172A",color:"white"}}>📂 All Commands ({kbList.length})</option>
-                          {uniqueCmds.map(cmd => (
-                            <option key={cmd} value={cmd} style={{background:"#0F172A",color:"white"}}>
-                              {cmd}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </th>
 
-                    {/* 2. Question / Title Dropdown Filter */}
-                    <th style={{padding:"10px 12px",textAlign:"left",width:240,verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span style={{fontWeight:800,fontSize:".82rem"}}>Question / Title</span>
-                          <span style={{fontSize:".72rem",color:"#38BDF8"}}>▼</span>
-                        </div>
-                        <select
-                          value={titleColFilter}
-                          onChange={e=>setTitleColFilter(e.target.value)}
-                          style={{
-                            width:"100%",
-                            padding:"6px 8px",
-                            borderRadius:6,
-                            border: titleColFilter !== "all" ? "1.5px solid #F59E0B" : "1.5px solid #38BDF8",
-                            background:"#0F172A",
-                            color:"#FFFFFF",
-                            fontSize:".75rem",
-                            fontWeight:700,
-                            boxSizing:"border-box",
-                            cursor:"pointer",
-                            outline:"none"
-                          }}
-                        >
-                          <option value="all" style={{background:"#0F172A",color:"white"}}>📂 All Titles ({uniqueTitles.length})</option>
-                          {uniqueTitles.map(title => (
-                            <option key={title} value={title} style={{background:"#0F172A",color:"white"}}>
-                              {title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </th>
-
-                    {/* 3. Answer / Attached Type Dropdown Filter */}
-                    <th style={{padding:"10px 12px",textAlign:"left",verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span style={{fontWeight:800,fontSize:".82rem"}}>Answer / Connection</span>
-                          <span style={{fontSize:".72rem",color:"#38BDF8"}}>▼</span>
-                        </div>
-                        <select
-                          value={answerColFilter}
-                          onChange={e=>setAnswerColFilter(e.target.value)}
-                          style={{
-                            width:"100%",
-                            padding:"6px 8px",
-                            borderRadius:6,
-                            border: answerColFilter !== "all" ? "1.5px solid #F59E0B" : "1.5px solid #38BDF8",
-                            background:"#0F172A",
-                            color:"#FFFFFF",
-                            fontSize:".75rem",
-                            fontWeight:700,
-                            boxSizing:"border-box",
-                            cursor:"pointer",
-                            outline:"none"
-                          }}
-                        >
-                          <option value="all" style={{background:"#0F172A",color:"white"}}>📂 All Connection Types</option>
-                          <option value="form" style={{background:"#0F172A",color:"white"}}>📝 With Attached Interactive Form</option>
-                          <option value="whatsapp" style={{background:"#0F172A",color:"white"}}>📱 With Attached WhatsApp Template</option>
-                          <option value="text_only" style={{background:"#0F172A",color:"white"}}>💬 Standard Text Reply Only</option>
-                        </select>
-                      </div>
-                    </th>
-
-                    {/* 4. Status & Role Dropdown Filter */}
-                    <th style={{padding:"10px 12px",textAlign:"center",width:150,verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:4}}>
-                          <span style={{fontWeight:800,fontSize:".82rem"}}>Status & Role</span>
-                          <span style={{fontSize:".72rem",color:"#38BDF8"}}>▼</span>
-                        </div>
-                        <select
-                          value={statusColFilter}
-                          onChange={e=>setStatusColFilter(e.target.value)}
-                          style={{
-                            width:"100%",
-                            padding:"6px 8px",
-                            borderRadius:6,
-                            border: statusColFilter !== "all" ? "1.5px solid #F59E0B" : "1.5px solid #38BDF8",
-                            background:"#0F172A",
-                            color:"#FFFFFF",
-                            fontSize:".75rem",
-                            fontWeight:700,
-                            boxSizing:"border-box",
-                            cursor:"pointer",
-                            outline:"none"
-                          }}
-                        >
-                          <option value="all" style={{background:"#0F172A",color:"white"}}>📂 All Statuses</option>
-                          <option value="visible" style={{background:"#0F172A",color:"white"}}>🟢 Visible Only</option>
-                          <option value="hidden" style={{background:"#0F172A",color:"white"}}>🙈 Hidden Only</option>
-                          <option value="public" style={{background:"#0F172A",color:"white"}}>🌐 Public Access</option>
-                          <option value="donation_collector" style={{background:"#0F172A",color:"white"}}>✍️ Donation Collector Only</option>
-                          <option value="admin" style={{background:"#0F172A",color:"white"}}>🛡️ Admin Only</option>
-                        </select>
-                      </div>
-                    </th>
-
-                    {/* 5. Actions & Reset Button */}
-                    <th style={{padding:"10px 12px",textAlign:"right",width:130,verticalAlign:"top"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:5,alignItems:"flex-end"}}>
-                        <span style={{fontWeight:800,fontSize:".82rem"}}>Actions</span>
-                        {(cmdColFilter !== "all" || titleColFilter !== "all" || answerColFilter !== "all" || statusColFilter !== "all") ? (
-                          <button
-                            type="button"
-                            onClick={() => { setCmdColFilter("all"); setTitleColFilter("all"); setAnswerColFilter("all"); setStatusColFilter("all"); }}
-                            style={{
-                              background:"#EF4444",
-                              color:"white",
-                              border:"none",
-                              borderRadius:4,
-                              padding:"4px 8px",
-                              fontSize:".7rem",
-                              fontWeight:800,
-                              cursor:"pointer",
-                              boxShadow:"0 1px 3px rgba(239,68,68,0.3)"
-                            }}
-                          >
-                            Reset ✕
-                          </button>
-                        ) : (
-                          <span style={{fontSize:".7rem",color:"#94A3B8"}}>Edit / Delete</span>
-                        )}
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredKbList.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{padding:"30px 20px",textAlign:"center",color:"#64748B",fontSize:".85rem"}}>
-                        🔍 No questions or slash commands match the active column filters.
-                        <br />
-                        <button
-                          type="button"
-                          onClick={() => { setCmdColFilter("all"); setTitleColFilter("all"); setAnswerColFilter("all"); setStatusColFilter("all"); }}
-                          style={{marginTop:8,background:"#2563EB",color:"white",border:"none",borderRadius:6,padding:"6px 14px",fontSize:".75rem",fontWeight:700,cursor:"pointer"}}
-                        >
-                          Reset Filters
-                        </button>
-                      </td>
-                    </tr>
-                  ) : filteredKbList.map((item, idx) => (
-                    <tr key={item.id || idx} style={{borderBottom:"1px solid #F1F5F9",background:item.enabled ? (idx%2===1?"#F8FAFC":"white") : "#FFFBEB"}}>
-                      {/* Order Controls */}
-                      <td style={{padding:"10px 6px",textAlign:"center"}}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                          <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                            <button
-                              type="button"
-                              onClick={() => moveKbOrder(item.id, "up")}
-                              disabled={idx === 0}
-                              style={{background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:3,padding:"1px 4px",fontSize:".62rem",cursor:idx===0?"default":"pointer",opacity:idx===0?0.3:1}}
-                              title="Move Up"
-                            >
-                              ▲
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveKbOrder(item.id, "down")}
-                              disabled={idx === filteredKbList.length - 1}
-                              style={{background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:3,padding:"1px 4px",fontSize:".62rem",cursor:idx===filteredKbList.length-1?"default":"pointer",opacity:idx===filteredKbList.length-1?0.3:1}}
-                              title="Move Down"
-                            >
-                              ▼
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            value={item.order || (idx + 1)}
-                            onChange={e => updateKbOrderDirect(item.id, e.target.value)}
-                            style={{width:36,padding:"3px 2px",textAlign:"center",borderRadius:4,border:"1px solid #93C5FD",fontSize:".78rem",fontWeight:800,background:"#EFF6FF",color:"#1D4ED8"}}
-                            title="Direct Order Number (1, 2, 3...)"
+                        {/* Answer text */}
+                        <div>
+                          <label style={{fontSize:".75rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
+                            Intro Message (Shown above the WhatsApp buttons in chat):
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={kbForm.answer || ""}
+                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                            placeholder="Enter intro message..."
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #6EE7B7",fontSize:".85rem",fontFamily:"inherit",boxSizing:"border-box"}}
                           />
                         </div>
-                      </td>
-                      <td style={{padding:"12px 16px",fontWeight:800,fontFamily:"monospace",color:"#2563EB",fontSize:".9rem"}}>
-                        <span style={{marginRight:6}}>{item.icon || "❓"}</span>
-                        {item.cmd}
-                      </td>
-                      <td style={{padding:"12px 16px",fontWeight:700,color:"#0F172A"}}>
-                        {item.title}
-                        {item.adminOnly && (
-                          <div style={{fontSize:".68rem",color:"#B45309",fontWeight:800,marginTop:2}}>{item.roleAccess === "donation_collector" ? "🔒 Donation Collector Only" : "🔒 Admin Only"}</div>
-                        )}
-                      </td>
-                      <td style={{padding:"10px 14px",color:"#334155",fontSize:".8rem",lineHeight:1.4,maxWidth:340}}>
-                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                          {/* Live System Feature Badge */}
-                          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                            {item.id === "kb_donationsummary" && (
-                              <span style={{background:"#EFF6FF",color:"#1D4ED8",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #BFDBFE"}}>
-                                📊 Aggregate Vibhag Metrics Card
-                              </span>
-                            )}
-                            {item.id === "kb_donerlist" && (
-                              <span style={{background:"#FEF3C7",color:"#92400E",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #FDE68A"}}>
-                                📋 Person-wise Donor Table & Broadcast
-                              </span>
-                            )}
-                            {item.id === "kb_all" && (
-                              <span style={{background:"#DCFCE7",color:"#15803D",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #BBF7D0"}}>
-                                📈 Live Registrations Table
-                              </span>
-                            )}
-                            {item.id === "kb_pending" && (
-                              <span style={{background:"#FEF3C7",color:"#B45309",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #FED7AA"}}>
-                                ⏳ Live Pending Applications
-                              </span>
-                            )}
-                            {item.id === "kb_approved" && (
-                              <span style={{background:"#DCFCE7",color:"#15803D",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #BBF7D0"}}>
-                                🟢 Live Approved Applications
-                              </span>
-                            )}
-                            {item.id === "kb_donation_update" && (
-                              <span style={{background:"#F0FDF4",color:"#166534",padding:"2px 7px",borderRadius:4,fontSize:".68rem",fontWeight:800,border:"1px solid #86EFAC"}}>
-                                ✍️ Offline Cash/Cheque Entry Form
-                              </span>
-                            )}
-                            {item.attachedWhatsAppTplId && (
-                              <span style={{background:"#DCFCE7",color:"#15803D",padding:"1px 5px",borderRadius:4,fontSize:".65rem",fontWeight:700}}>
-                                📲 WhatsApp
-                              </span>
-                            )}
-                          </div>
-                          <div style={{color:"#475569",fontSize:".76rem",lineHeight:1.35}}>
-                            {item.answer}
+
+                        <div style={{fontSize:".74rem",color:"#047857",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #A7F3D0"}}>
+                          ℹ️ When users trigger <strong>{kbForm.cmd || "/ss"}</strong>, the chatbot response will include <strong>📋 Copy for WhatsApp</strong> and <strong>🟢 Share on WhatsApp</strong> buttons formatted with this template and the Bank of Baroda UPI scanner.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* E. If Action Type is COMMITTEE DIRECTORY & CONTACTS */}
+                    {kbForm.actionType === "committee" && (
+                      <div style={{
+                        background: "#FFFBEB",
+                        border: "1.5px solid #FCD34D",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#92400E",display:"flex",alignItems:"center",gap:8}}>
+                          <span>🏛️</span> Committee Directory & Contact List:
+                        </div>
+
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <span style={{fontSize:".75rem",fontWeight:700,color:"#92400E"}}>
+                            Click helper to insert verified committee contacts:
+                          </span>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const str = `\n• **President**: Ravi Dharia (+91 9820785209)\n• **General Secretary**: CWC Executive (+91 9967821964)`;
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + str }));
+                              }}
+                              style={{background:"white",border:"1px solid #FCD34D",color:"#92400E",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 🏛️ Insert CWC Executives
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const str = `\n• **Trust Helpline**: +91 9820785209 / +91 9967821964 (10 AM - 7 PM)`;
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + str }));
+                              }}
+                              style={{background:"white",border:"1px solid #FCD34D",color:"#92400E",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 📞 Insert Office Helpline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const str = `\n• **Vibhag Coordinator**: [Name] - [Vibhag] (+91 98XXXXXXXX)`;
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + str }));
+                              }}
+                              style={{background:"white",border:"1px solid #FCD34D",color:"#92400E",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 📍 Insert Vibhag Lead
+                            </button>
                           </div>
                         </div>
-                      </td>
-                      <td style={{padding:"12px 16px",textAlign:"center"}}>
-                        <button
-                          onClick={() => toggleKbEnabled(item.id)}
+
+                        <textarea
+                          rows={5}
+                          value={kbForm.answer || ""}
+                          onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                          placeholder="🏛️ Central Working Committee (CWC) Members:&#10;&#10;• President: Ravi Dharia (+91 9820785209)..."
+                          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #FCD34D",fontSize:".85rem",lineHeight:1.45,fontFamily:"inherit",boxSizing:"border-box"}}
+                        />
+                      </div>
+                    )}
+
+                    {/* F. If Action Type is CUSTOM ANSWER & WEB LINKS */}
+                    {kbForm.actionType === "text" && (
+                      <div style={{
+                        background: "#F8FAFC",
+                        border: "1.5px solid #CBD5E1",
+                        borderRadius: 12,
+                        padding: "18px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14
+                      }}>
+                        <div style={{fontSize:".86rem",fontWeight:800,color:"#1E293B",display:"flex",alignItems:"center",gap:8}}>
+                          <span>💬</span> Formatted Answer, YouTube & Web Portal Links:
+                        </div>
+
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <span style={{fontSize:".75rem",fontWeight:700,color:"#475569"}}>
+                            Click to insert clickable link buttons or dynamic live tokens:
+                          </span>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = prompt("Enter YouTube URL (e.g. https://youtu.be/...):", "https://youtu.be/hg2dxZjDLfo");
+                                if (!url) return;
+                                const label = prompt("Enter Button Label:", "Watch Video on YouTube") || "Watch Video on YouTube";
+                                const linkStr = `\n• [${label}](${url.trim()})`;
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + linkStr }));
+                              }}
+                              style={{background:"#FEE2E2",color:"#DC2626",border:"1px solid #FCA5A5",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 🎥 YouTube Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = prompt("Enter Website Portal URL:", "https://mmp-cwc.com");
+                                if (!url) return;
+                                const label = prompt("Enter Button Label:", "Visit Portal") || "Visit Portal";
+                                const linkStr = `\n• [${label}](${url.trim()})`;
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + linkStr }));
+                              }}
+                              style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 🔗 Website Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + "\n• Total Registrations: {TOTAL_REGISTRATIONS}" }));
+                              }}
+                              style={{background:"#DCFCE7",color:"#15803D",border:"1px solid #86EFAC",padding:"4px 8px",borderRadius:6,fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 📊 Token: Total Count
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setKbForm(prev => ({ ...prev, answer: (prev.answer || "") + "\n• Approved Students: {APPROVED_STUDENTS_COUNT}" }));
+                              }}
+                              style={{background:"#DCFCE7",color:"#15803D",border:"1px solid #86EFAC",padding:"4px 8px",borderRadius:6,fontSize:".72rem",fontWeight:700,cursor:"pointer"}}
+                            >
+                              + 🟢 Token: Approved
+                            </button>
+                          </div>
+                        </div>
+
+                        <textarea
+                          rows={6}
+                          value={kbForm.answer || ""}
+                          onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
+                          placeholder="Enter formatted answer, instructions, or bullet points..."
+                          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #CBD5E1",fontSize:".85rem",lineHeight:1.45,fontFamily:"inherit",boxSizing:"border-box"}}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ──── STEP 4: Access Control & Visibility ──── */}
+                  <div style={{
+                    background: "#F8FAFC",
+                    border: "1.5px solid #E2E8F0",
+                    borderRadius: 12,
+                    padding: "18px 20px"
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{
+                        background: "#2563EB",
+                        color: "white",
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: ".75rem",
+                        fontWeight: 800
+                      }}>
+                        4
+                      </span>
+                      <span style={{fontSize:".95rem",fontWeight:800,color:"#1E293B"}}>
+                        Step 4: Who Can Access & Security Control
+                      </span>
+                      <span style={{fontSize:".74rem",color:"#64748B"}}>
+                        (Choose who can view or trigger this question in the chatbot)
+                      </span>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:14,alignItems:"center"}}>
+                      <div>
+                        <label style={{fontSize:".75rem",fontWeight:700,color:"#334155",display:"block",marginBottom:4}}>
+                          Required Access Role:
+                        </label>
+                        <select
+                          value={kbForm.roleAccess || (kbForm.adminOnly ? "vibhag_admin" : "public")}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setKbForm({ ...kbForm, roleAccess: val, adminOnly: val !== "public" });
+                          }}
                           style={{
-                            background: item.enabled ? "#DCFCE7" : "#FEE2E2",
-                            color: item.enabled ? "#15803D" : "#DC2626",
-                            border: `1px solid ${item.enabled ? "#86EFAC" : "#FCA5A5"}`,
-                            padding: "4px 10px",
-                            borderRadius: 12,
-                            fontSize: ".75rem",
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1.5px solid #94A3B8",
+                            fontSize: ".85rem",
                             fontWeight: 800,
+                            background: "white",
+                            boxSizing: "border-box",
+                            color: "#0F172A",
                             cursor: "pointer"
                           }}
-                          title="Click to toggle visibility in Chatbot"
                         >
-                          {item.enabled ? "👁️ Visible" : "🙈 Hidden"}
-                        </button>
-                      </td>
-                      <td style={{padding:"12px 16px",textAlign:"right"}}>
-                        <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
-                          <button
-                            onClick={() => {
-                              setEditingKbId(item.id);
-                              setKbForm({ ...item });
-                              window.scrollTo({ top: 0, behavior: "smooth" });
+                          <option value="public">🌐 Public (All Website Visitors & Applicants)</option>
+                          <option value="donation_collector">💰 Donation Collectors & Super Admins Only</option>
+                          <option value="vibhag_admin">📍 Vibhag Committee Admins & Super Admins Only</option>
+                          <option value="super_admin">🛡️ Super Admin Only</option>
+                        </select>
+                      </div>
+
+                      <div style={{paddingTop:20}}>
+                        <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:".82rem",color:"#334155",cursor:"pointer",fontWeight:700}}>
+                          <input
+                            type="checkbox"
+                            checked={kbForm.adminOnly}
+                            onChange={e => {
+                              const chk = e.target.checked;
+                              setKbForm({
+                                ...kbForm,
+                                adminOnly: chk,
+                                roleAccess: chk ? (kbForm.roleAccess === "public" ? "vibhag_admin" : kbForm.roleAccess) : "public"
+                              });
                             }}
-                            style={{background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",padding:"4px 8px",borderRadius:6,fontSize:".75rem",fontWeight:700,cursor:"pointer"}}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteKbItem(item.id)}
-                            style={{background:"#FEE2E2",color:"#DC2626",border:"1px solid #FCA5A5",padding:"4px 8px",borderRadius:6,fontSize:".75rem",fontWeight:700,cursor:"pointer"}}
-                          >
-                            Delete
-                          </button>
+                            style={{accentColor:"#2563EB",cursor:"pointer"}}
+                          />
+                          <span>🔒 Restrict to Committee Admins Only (Hide from Public Visitors)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ──── LIVE CHATBOT PREVIEW CARD ──── */}
+                  <div style={{
+                    background: "linear-gradient(135deg, #F8FAFC, #F1F5F9)",
+                    border: "1.5px dashed #94A3B8",
+                    borderRadius: 12,
+                    padding: "16px 20px"
+                  }}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{fontSize:".82rem",fontWeight:800,color:"#475569",display:"flex",alignItems:"center",gap:6}}>
+                        <span>📱</span> Live Chatbot Preview (Simulating User View):
+                      </div>
+                      <span style={{fontSize:".72rem",background:"#E2E8F0",color:"#475569",padding:"2px 8px",borderRadius:10,fontWeight:700}}>
+                        {kbForm.enabled !== false ? "Visible in Menu" : "Hidden / Slash Only"} • {kbForm.roleAccess || "public"}
+                      </span>
+                    </div>
+
+                    <div style={{display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
+                      {/* Button in Menu */}
+                      <div style={{minWidth:180}}>
+                        <div style={{fontSize:".7rem",fontWeight:700,color:"#64748B",marginBottom:4}}>
+                          1. Quick Menu Button:
                         </div>
-                      </td>
-                    </tr>
+                        <div style={{
+                          background: "white",
+                          border: "1.5px solid #2563EB",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          boxShadow: "0 2px 6px rgba(37,99,235,0.15)",
+                          fontWeight: 800,
+                          fontSize: ".84rem",
+                          color: "#1E3A8A"
+                        }}>
+                          <span>{kbForm.icon || "❓"}</span>
+                          <span>{kbForm.title || "Question Label"}</span>
+                          <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#2563EB",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}}>
+                            {kbForm.cmd || "/ss"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bot Response Bubble */}
+                      <div style={{flexGrow:1,minWidth:280}}>
+                        <div style={{fontSize:".7rem",fontWeight:700,color:"#64748B",marginBottom:4}}>
+                          2. Bot Response Bubble:
+                        </div>
+                        <div style={{
+                          background: "white",
+                          border: "1px solid #E2E8F0",
+                          borderRadius: 12,
+                          padding: "12px 16px",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+                        }}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                            <span style={{fontSize:"1rem"}}>🤖</span>
+                            <span style={{fontSize:".8rem",fontWeight:800,color:"#0F172A"}}>Mumbai Meghwal Panchayat Assistant</span>
+                          </div>
+                          <div style={{fontSize:".8rem",color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.4}}>
+                            {kbForm.answer || `✍️ **${kbForm.title || "Question Title"}**\n\nAttached Action: ${kbForm.actionType}`}
+                          </div>
+
+                          {/* Action Preview Pill */}
+                          <div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:6,background:"#EFF6FF",color:"#1D4ED8",padding:"4px 10px",borderRadius:6,fontSize:".74rem",fontWeight:800,border:"1px solid #BFDBFE"}}>
+                            {kbForm.actionType === "form" && `📝 Attached Form: ${kbForm.attachedFormId || "Offline Donation"} ➔ ${kbForm.storageDestination}`}
+                            {kbForm.actionType === "summary" && `📊 Attached Metric: ${kbForm.summaryType} ➔ Scoped Stats`}
+                            {kbForm.actionType === "workspace" && `💌 Workspace Dispatcher: ${kbForm.connectedSubWorkspaceName || "Connected Workspace"}`}
+                            {kbForm.actionType === "whatsapp" && `📱 WhatsApp Broadcast: ${kbForm.attachedWhatsAppTplId || "Template"}`}
+                            {kbForm.actionType === "committee" && `🏛️ Committee Directory & Contacts`}
+                            {kbForm.actionType === "text" && `💬 Custom Text & Links`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ──── ACTION BUTTONS (SAVE / RESET) ──── */}
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingTop: 10,
+                    borderTop: "1.5px solid #F1F5F9",
+                    flexWrap: "wrap",
+                    gap: 12
+                  }}>
+                    <div style={{display:"flex",gap:8}}>
+                      <button
+                        type="button"
+                        onClick={() => handleStartNewItem("/ss")}
+                        style={{
+                          background: "#F1F5F9",
+                          color: "#475569",
+                          border: "1px solid #CBD5E1",
+                          borderRadius: 8,
+                          padding: "9px 16px",
+                          fontSize: ".84rem",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Reset All Fields
+                      </button>
+                      {editingKbId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingKbId(null);
+                            handleStartNewItem("/ss");
+                          }}
+                          style={{
+                            background: "#FEE2E2",
+                            color: "#DC2626",
+                            border: "1px solid #FCA5A5",
+                            borderRadius: 8,
+                            padding: "9px 16px",
+                            fontSize: ".84rem",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Cancel Edit
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      style={{
+                        padding: "11px 28px",
+                        background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 8,
+                        fontWeight: 800,
+                        fontSize: ".92rem",
+                        cursor: "pointer",
+                        boxShadow: "0 4px 14px rgba(37,99,235,0.35)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8
+                      }}
+                    >
+                      <span>💾</span>
+                      {editingKbId 
+                        ? `Save Changes (${kbForm.cmd || "/ss"})` 
+                        : `Publish Question (${kbForm.cmd || "/ss"})`}
+                    </button>
+                  </div>
+
+                </form>
+              </div>
+            )}
+
+            {/* ── CONFIGURED QUESTIONS & SLASH COMMANDS TABLE ── */}
+            <div style={{
+              background: "white",
+              borderRadius: 14,
+              border: "1px solid #E2E8F0",
+              overflow: "hidden",
+              boxShadow: "0 3px 12px rgba(0,0,0,0.04)"
+            }}>
+              {/* Table Header & Category Filter Pills */}
+              <div style={{
+                padding: "16px 20px",
+                background: "#F8FAFC",
+                borderBottom: "1px solid #E2E8F0",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12
+              }}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontWeight:800,fontSize:".98rem",color:"#0F172A"}}>
+                      Configured Questions & Slash Commands ({filteredKbList.length}{filteredKbList.length !== kbList.length ? ` of ${kbList.length}` : ""})
+                    </span>
+                    {categoryFilter !== "all" && (
+                      <span style={{background:"#FEF3C7",color:"#92400E",fontSize:".72rem",padding:"2px 8px",borderRadius:12,fontWeight:800}}>
+                        Category Filter Active
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Quick Search */}
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <input
+                      type="text"
+                      value={tableSearchQuery}
+                      onChange={e => setTableSearchQuery(e.target.value)}
+                      placeholder="🔍 Search command or title..."
+                      style={{
+                        padding: "7px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #CBD5E1",
+                        fontSize: ".82rem",
+                        width: 220,
+                        outline: "none"
+                      }}
+                    />
+                    {(tableSearchQuery || categoryFilter !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => { setTableSearchQuery(""); setCategoryFilter("all"); }}
+                        style={{
+                          background: "#EF4444",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          fontSize: ".75rem",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Reset ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter Category Pills */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                  {[
+                    { key: "all", label: `📂 All (${kbList.length})` },
+                    { key: "form", label: `📝 Forms (${countForms})` },
+                    { key: "summary", label: `📊 Summaries (${countSummaries})` },
+                    { key: "workspace", label: `💌 Workspaces (${countWorkspaces})` },
+                    { key: "whatsapp", label: `📱 WhatsApp (${countWhatsApp})` },
+                    { key: "committee", label: `🏛️ Contacts (${countCommittee})` },
+                    { key: "text", label: `💬 Text (${countText})` },
+                    { key: "admin", label: `🔒 Admin Only (${countAdmin})` },
+                    { key: "hidden", label: `🙈 Hidden (${countHidden})` }
+                  ].map(pill => (
+                    <button
+                      key={pill.key}
+                      type="button"
+                      onClick={() => setCategoryFilter(pill.key)}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 20,
+                        fontSize: ".78rem",
+                        fontWeight: categoryFilter === pill.key ? 800 : 600,
+                        background: categoryFilter === pill.key ? "#0F172A" : "white",
+                        color: categoryFilter === pill.key ? "white" : "#475569",
+                        border: categoryFilter === pill.key ? "1px solid #0F172A" : "1px solid #CBD5E1",
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      {pill.label}
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
+
+              {/* Table Data */}
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:".85rem"}}>
+                  <thead>
+                    <tr style={{background:"#1E293B",color:"white"}}>
+                      <th style={{padding:"10px 8px",textAlign:"center",width:70}}># Order</th>
+                      <th style={{padding:"10px 12px",textAlign:"left",width:160}}>Command (/)</th>
+                      <th style={{padding:"10px 12px",textAlign:"left",width:240}}>Question Title</th>
+                      <th style={{padding:"10px 12px",textAlign:"left"}}>Connected Capability</th>
+                      <th style={{padding:"10px 12px",textAlign:"center",width:140}}>Access Role</th>
+                      <th style={{padding:"10px 12px",textAlign:"center",width:110}}>Visibility</th>
+                      <th style={{padding:"10px 12px",textAlign:"right",width:130}}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredKbList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{padding:"36px 20px",textAlign:"center",color:"#64748B",fontSize:".88rem"}}>
+                          🔍 No questions or slash commands match your search or filter.
+                          <br />
+                          <button
+                            type="button"
+                            onClick={() => { setCategoryFilter("all"); setTableSearchQuery(""); }}
+                            style={{marginTop:10,background:"#2563EB",color:"white",border:"none",borderRadius:6,padding:"6px 14px",fontSize:".76rem",fontWeight:700,cursor:"pointer"}}
+                          >
+                            Reset Filters
+                          </button>
+                        </td>
+                      </tr>
+                    ) : filteredKbList.map((item, idx) => {
+                      const actionType = inferActionType(item);
+                      return (
+                        <tr 
+                          key={item.id || idx} 
+                          style={{
+                            borderBottom: "1px solid #F1F5F9",
+                            background: editingKbId === item.id 
+                              ? "#EFF6FF" 
+                              : (item.enabled !== false ? (idx % 2 === 1 ? "#F8FAFC" : "white") : "#FFFBEB")
+                          }}
+                        >
+                          {/* 1. Order Controls */}
+                          <td style={{padding:"10px 6px",textAlign:"center"}}>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                              <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                                <button
+                                  type="button"
+                                  onClick={() => moveKbOrder(item.id, "up")}
+                                  disabled={idx === 0}
+                                  style={{background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:3,padding:"1px 4px",fontSize:".62rem",cursor:idx===0?"default":"pointer",opacity:idx===0?0.3:1}}
+                                  title="Move Up"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveKbOrder(item.id, "down")}
+                                  disabled={idx === filteredKbList.length - 1}
+                                  style={{background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:3,padding:"1px 4px",fontSize:".62rem",cursor:idx===filteredKbList.length-1?"default":"pointer",opacity:idx===filteredKbList.length-1?0.3:1}}
+                                  title="Move Down"
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                              <input
+                                type="number"
+                                value={item.order || (idx + 1)}
+                                onChange={e => updateKbOrderDirect(item.id, e.target.value)}
+                                style={{width:36,padding:"3px 2px",textAlign:"center",borderRadius:4,border:"1px solid #93C5FD",fontSize:".78rem",fontWeight:800,background:"#EFF6FF",color:"#1D4ED8"}}
+                                title="Order Number"
+                              />
+                            </div>
+                          </td>
+
+                          {/* 2. Command */}
+                          <td style={{padding:"12px 14px",fontWeight:800,fontFamily:"monospace",color:"#2563EB",fontSize:".88rem"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span>{item.icon || "❓"}</span>
+                              <span>{item.cmd}</span>
+                            </div>
+                          </td>
+
+                          {/* 3. Question Title */}
+                          <td style={{padding:"12px 14px",fontWeight:700,color:"#0F172A"}}>
+                            <div>{item.title}</div>
+                            {item.adminOnly && (
+                              <div style={{fontSize:".68rem",color:"#B45309",fontWeight:800,marginTop:2}}>
+                                🔒 Restricted: {item.roleAccess === "donation_collector" ? "Donation Collector" : item.roleAccess === "super_admin" ? "Super Admin" : "Vibhag Admin"}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 4. Connected Capability Badge */}
+                          <td style={{padding:"10px 14px"}}>
+                            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                {actionType === "form" && (
+                                  <span style={{background:"#F0FDF4",color:"#166534",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #86EFAC"}}>
+                                    📝 Form: {item.attachedFormId === "builtin_offline_donation" ? "Offline Donation" : (item.attachedFormId || "Custom Form")} ➔ {item.storageDestination || "donations"}
+                                  </span>
+                                )}
+                                {actionType === "summary" && (
+                                  <span style={{background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #BFDBFE"}}>
+                                    📊 Summary: {item.id === "kb_donationsummary" ? "Vibhag Donation Summary" : item.id === "kb_donerlist" ? "Donor Registry" : item.id === "kb_pending" ? "Pending Applications" : item.id === "kb_approved" ? "Approved Applications" : "Registrations Count"}
+                                  </span>
+                                )}
+                                {actionType === "workspace" && (
+                                  <span style={{background:"#FDF2F8",color:"#9D174D",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #F472B6"}}>
+                                    💌 Workspace: {item.connectedSubWorkspaceName || item.connectedSubWorkspaceId || "Passes Dispatcher"}
+                                  </span>
+                                )}
+                                {actionType === "whatsapp" && (
+                                  <span style={{background:"#ECFDF5",color:"#065F46",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #6EE7B7"}}>
+                                    📱 WhatsApp Broadcast ({item.attachedWhatsAppTplId || "Default"})
+                                  </span>
+                                )}
+                                {actionType === "committee" && (
+                                  <span style={{background:"#FFFBEB",color:"#92400E",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #FCD34D"}}>
+                                    🏛️ Committee Directory & Contacts
+                                  </span>
+                                )}
+                                {actionType === "text" && (
+                                  <span style={{background:"#F8FAFC",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #CBD5E1"}}>
+                                    💬 Custom Text & Links
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{fontSize:".74rem",color:"#64748B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:320}}>
+                                {item.answer}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 5. Access Role */}
+                          <td style={{padding:"12px 14px",textAlign:"center"}}>
+                            <span style={{
+                              background: item.roleAccess === "public" ? "#F0FDF4" : item.roleAccess === "donation_collector" ? "#FEF3C7" : item.roleAccess === "super_admin" ? "#FEE2E2" : "#EFF6FF",
+                              color: item.roleAccess === "public" ? "#166534" : item.roleAccess === "donation_collector" ? "#92400E" : item.roleAccess === "super_admin" ? "#DC2626" : "#1D4ED8",
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              fontSize: ".72rem",
+                              fontWeight: 800,
+                              display: "inline-block"
+                            }}>
+                              {item.roleAccess === "public" ? "🌐 Public" : item.roleAccess === "donation_collector" ? "💰 Collector" : item.roleAccess === "super_admin" ? "🛡️ Super" : "📍 Vibhag"}
+                            </span>
+                          </td>
+
+                          {/* 6. Visibility Switch */}
+                          <td style={{padding:"12px 14px",textAlign:"center"}}>
+                            <button
+                              type="button"
+                              onClick={() => toggleKbEnabled(item.id)}
+                              style={{
+                                background: item.enabled !== false ? "#DCFCE7" : "#FEE2E2",
+                                color: item.enabled !== false ? "#15803D" : "#DC2626",
+                                border: `1px solid ${item.enabled !== false ? "#86EFAC" : "#FCA5A5"}`,
+                                padding: "4px 8px",
+                                borderRadius: 12,
+                                fontSize: ".72rem",
+                                fontWeight: 800,
+                                cursor: "pointer"
+                              }}
+                              title="Click to toggle visibility in chatbot menu"
+                            >
+                              {item.enabled !== false ? "👁️ Visible" : "🙈 Hidden"}
+                            </button>
+                          </td>
+
+                          {/* 7. Actions */}
+                          <td style={{padding:"12px 14px",textAlign:"right"}}>
+                            <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                              <button
+                                type="button"
+                                onClick={() => handleLoadItemToEdit(item)}
+                                style={{
+                                  background: "#EFF6FF",
+                                  color: "#1D4ED8",
+                                  border: "1px solid #BFDBFE",
+                                  padding: "4px 10px",
+                                  borderRadius: 6,
+                                  fontSize: ".75rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteKbItem(item.id)}
+                                style={{
+                                  background: "#FEE2E2",
+                                  color: "#DC2626",
+                                  border: "1px solid #FCA5A5",
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: ".75rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     
 
                   {/* ── SUB-TAB 5: WhatsApp Templates & QR Standee ── */}
@@ -54521,12 +55358,13 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
     const qWords = qLower.split(/\s+/);
     const matchedKb = kbList.find(kb => {
-      if (kb.enabled === false || !kb.answer || !kb.answer.trim()) return false;
+      if (kb.enabled === false) return false;
       const cClean = (kb.cmd || "").toLowerCase().replace(/^\//, "").trim();
       const tClean = (kb.title || "").toLowerCase().trim();
       const rawCmd = (kb.cmd || "").toLowerCase().trim();
 
       if (qLower === rawCmd || qLower === cClean || qLower === tClean) return true;
+      if (cClean.length >= 2 && (qLower === "/" + cClean || qLower === cClean)) return true;
       if (cClean.length >= 3 && qWords.includes(cClean)) return true;
       if (tClean.length >= 5 && qLower.includes(tClean)) return true;
 
@@ -54551,14 +55389,19 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return false;
     });
 
-    // ── Command 1: /don_entry & Interactive Form Connection ──
+    // ── Command 1: /don_entry & Offline Donation Form ──
     const isDonEntryTrigger = (
       qLower === "/don_entry" || qLower === "don_entry" || qLower === "/don entry" ||
       qLower === "/donation update" || qLower === "donation update" ||
       qLower === "/donner" || qLower === "donner" || qLower === "/donor" || qLower === "donor" ||
       qLower === "/offline donation" || qLower === "offline donation" ||
       qLower.startsWith("/donation update") || qLower.startsWith("/don_entry") ||
-      (matchedKb && (matchedKb.attachedFormId || matchedKb.cmd === "/don_entry" || (matchedKb.title && matchedKb.title.toLowerCase().includes("offline donation"))))
+      (matchedKb && (
+        matchedKb.attachedFormId === "builtin_offline_donation" ||
+        matchedKb.cmd === "/don_entry" ||
+        (matchedKb.storageDestination === "donations" && matchedKb.roleAccess === "donation_collector") ||
+        (matchedKb.title && matchedKb.title.toLowerCase().includes("offline donation"))
+      ))
     );
 
     if (isDonEntryTrigger) {
@@ -54592,7 +55435,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           };
         }
       }
-    } else if (qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" || qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" || qLower === "/donationsummary" || qLower === "/donationsumary" || (matchedKb && (matchedKb.id === "kb_donationsummary" || matchedKb.title.toLowerCase().includes("donation summary")))) {
+    } else if (
+      qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" || qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" || qLower === "/donationsummary" || qLower === "/donationsumary" ||
+      (matchedKb && (
+        matchedKb.id === "kb_donationsummary" ||
+        matchedKb.actionType === "donation_summary" ||
+        (matchedKb.actionType === "summary" && (!matchedKb.summaryType || matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations")) ||
+        (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary"))
+      ))
+    ) {
       if (!isDonationCollector) {
         botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonation summaries and financial metrics are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
       } else {
@@ -54643,7 +55494,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           botReply = `❌ **Failed to fetch donation summary**: ${err.message}`;
         }
       }
-    } else if (qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" || qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" || qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" || qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" || (matchedKb && (matchedKb.id === "kb_donerlist" || matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))) {
+    } else if (
+      qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" || qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" || qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" || qLower === "/donor list" || qLower === "donor list" || qLower === "/donner list" ||
+      (matchedKb && (
+        matchedKb.id === "kb_donerlist" ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
+        (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
+      ))
+    ) {
       if (!isDonationCollector) {
         botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonor registries and person-wise collections are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
       } else {
@@ -54696,7 +55554,16 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       } else {
         botReply = `🔐 **Please Log In to Check Your Application Status**\n\nFor security and privacy, please log in with your registered mobile number on the website.\n\n• 👉 **Option 1**: Log in using the **Login** button at top right.\n• 👉 **Option 2**: Type your **Transaction ID (e.g. VG-7, EDU26-2)** or **10-digit Mobile Number** directly below to verify.`;
       }
-    } else if (qLower === "/edu_all" || qLower === "edu_all" || qLower === "/edu all" || qLower === "edu all" || qLower === "/education all" || qLower === "education all" || qLower === "/education_all" || (matchedKb && (matchedKb.id === "kb_all" || (matchedKb.cmd && matchedKb.cmd.toLowerCase().includes("all")) || (matchedKb.title && matchedKb.title.toLowerCase().includes("summary of all"))))) {
+    } else if (
+      qLower === "/edu_all" || qLower === "edu_all" || qLower === "/edu all" || qLower === "edu all" || qLower === "/education all" || qLower === "education all" || qLower === "/education_all" ||
+      (matchedKb && (
+        matchedKb.id === "kb_all" ||
+        matchedKb.actionType === "registrations_summary" ||
+        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "registrations" || matchedKb.summaryType === "all")) ||
+        (matchedKb.cmd && matchedKb.cmd.toLowerCase().includes("all")) ||
+        (matchedKb.title && matchedKb.title.toLowerCase().includes("summary of all"))
+      ))
+    ) {
       // ── Trigger Live ALL Summary Card with Target Events Scoping ──
       if (!isAnyAdmin) {
         botReply = C.chatbotAdminRestrictedMsg || `🔒 **Access Restricted**\n\nRegistration summaries, Vibhag counts, and committee metrics are restricted to authorized Committee Admins.\n\n👉 If you are a Committee Admin, please enter your **10-digit Authorized Mobile Number** to unlock.`;
@@ -54757,7 +55624,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           tplId: matchedKb?.attachedWhatsAppTplId
         };
       }
-    } else if (qLower === "/edu_pending" || qLower === "edu_pending" || qLower === "/edu pending" || qLower === "/education pending" || qLower === "education pending" || qLower === "/education_pending" || (matchedKb && (matchedKb.id === "kb_pending" || matchedKb.cmd.includes("pending")))) {
+    } else if (
+      qLower === "/edu_pending" || qLower === "edu_pending" || qLower === "/edu pending" || qLower === "/education pending" || qLower === "education pending" || qLower === "/education_pending" ||
+      (matchedKb && (
+        matchedKb.id === "kb_pending" ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType === "pending") ||
+        (matchedKb.cmd && matchedKb.cmd.includes("pending"))
+      ))
+    ) {
       // ── Trigger Live Pending Registrations List ──
       if (!isAnyAdmin) {
         botReply = `🔒 **Access Restricted**\n\nPending review lists are restricted to authorized Committee Admins.\n\n👉 If you are a Committee Admin, please enter your **10-digit Authorized Mobile Number** to unlock this list.`;
@@ -54785,7 +55659,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           botReply = `🎉 No pending applications found${userSessionScope === "vibhag" ? ` in ${sessionVibhag}` : ""}! All applications have been reviewed.`;
         }
       }
-    } else if (qLower === "/edu_approved" || qLower === "edu_approved" || qLower === "/edu approved" || qLower === "/education approved" || qLower === "education approved" || qLower === "/education_approved" || (matchedKb && (matchedKb.id === "kb_approved" || matchedKb.cmd.includes("approved")))) {
+    } else if (
+      qLower === "/edu_approved" || qLower === "edu_approved" || qLower === "/edu approved" || qLower === "/education approved" || qLower === "education approved" || qLower === "/education_approved" ||
+      (matchedKb && (
+        matchedKb.id === "kb_approved" ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType === "approved") ||
+        (matchedKb.cmd && matchedKb.cmd.includes("approved"))
+      ))
+    ) {
       // ── Trigger Live Approved Registrations List ──
       if (!isAnyAdmin) {
         botReply = `🔒 **Access Restricted**\n\nApproved application registries are restricted to authorized Committee Admins.\n\n👉 If you are a Committee Admin, please enter your **10-digit Authorized Mobile Number** to unlock this list.`;
@@ -54809,7 +55690,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           botReply = `ℹ️ No approved applications recorded yet${userSessionScope === "vibhag" ? ` in ${sessionVibhag}` : ""}.`;
         }
       }
-    } else if (matchedKb && matchedKb.connectedSubWorkspaceId) {
+    } else if (matchedKb && (matchedKb.connectedSubWorkspaceId || matchedKb.actionType === "workspace")) {
       // ── Connected Sub-Workspace Invitee Dispatch Workflow ──
       const targetEvId = matchedKb.connectedEventId || "";
       const targetDocId = matchedKb.connectedSubWorkspaceId || "invite";
