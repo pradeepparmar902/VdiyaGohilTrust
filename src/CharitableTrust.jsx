@@ -1386,9 +1386,12 @@ const fbSave = async (content, idToken) => {
 
 const formatEventTitle = (evIdOrTitle, eventsList = []) => {
   if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
-  if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
+  const s = String(evIdOrTitle).trim().toLowerCase();
+  if (s === "ev_donor_data" || s === "donor data" || s.includes("donor data")) return "All Community Donors";
+  if (s === "education2026" || s === "edu26" || s.includes("edu") || s.includes("felicitation") || s.includes("education 2026")) return "Education Felicitation 2026";
+  if (s === "6thdec" || s.includes("6th") || s.includes("mahaparinirvan")) return "6th Dec Mahaparinirvan Diwas";
   if (Array.isArray(eventsList)) {
-    const evObj = eventsList.find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase())));
+    const evObj = eventsList.find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === s) || (e.code && String(e.code).toLowerCase() === s)));
     if (evObj && evObj.title) return evObj.title;
   }
   return String(evIdOrTitle);
@@ -1983,6 +1986,7 @@ const fbFetchRegistrations = async (idToken, forceProvider = null) => {
   if (typeof window !== 'undefined' && list.length > 0) {
     window.__MMP_REGS_CACHE__ = list;
     window.__MMP_ALL_REGS_RAW__ = list;
+    try { localStorage.setItem("mmp_cached_registrations", JSON.stringify(list)); } catch(e){}
   }
   return list;
 };
@@ -60594,11 +60598,13 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
   }, [messages, isOpen]);
 
   const ensureRegistrations = async () => {
-    let sourceList = (typeof window !== 'undefined' && window.__MMP_ALL_REGS_RAW__ && window.__MMP_ALL_REGS_RAW__.length > 0)
+    let sourceList = (typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__) && window.__MMP_ALL_REGS_RAW__.length > 0)
       ? window.__MMP_ALL_REGS_RAW__
-      : ((typeof window !== 'undefined' && window.__MMP_REGS_CACHE__ && window.__MMP_REGS_CACHE__.length > 0)
+      : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_REGS_CACHE__) && window.__MMP_REGS_CACHE__.length > 0)
           ? window.__MMP_REGS_CACHE__
-          : ((regs && regs.length > 0) ? regs : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem("mmp_cached_registrations") || "[]") : [])));
+          : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_INVITE_REGS__) && window.__MMP_INVITE_REGS__.length > 0)
+              ? window.__MMP_INVITE_REGS__
+              : ((regs && regs.length > 0) ? regs : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem("mmp_cached_registrations") || "[]") : []))));
 
     if (!sourceList || sourceList.length === 0) {
       try {
@@ -60622,6 +60628,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         if (typeof window !== 'undefined') {
           window.__MMP_REGS_CACHE__ = sourceList;
           window.__MMP_ALL_REGS_RAW__ = sourceList;
+          try { localStorage.setItem("mmp_cached_registrations", JSON.stringify(sourceList)); } catch(e){}
         }
         setRegsLoaded(true);
       } catch (e) {
@@ -60653,11 +60660,18 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
   const resolveEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle) return "";
-    if (evIdOrTitle === "all") return "All Events Combined";
-    if (evIdOrTitle === "ev_donor_data" || evIdOrTitle === "Donor Data" || String(evIdOrTitle).toLowerCase().includes("donor data")) return "All Community Donors";
-    if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
-    const evObj = (C?.events || []).find(e => e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase()));
+    const s = String(evIdOrTitle).trim().toLowerCase();
+    if (s === "all") return "All Events Combined";
+    if (s === "ev_donor_data" || s === "donor data" || s.includes("donor data")) return "All Community Donors";
+    if (s === "education2026" || s === "edu26" || s.includes("edu") || s.includes("felicitation") || s.includes("education 2026")) return "Education Felicitation 2026";
+    if (s === "6thdec" || s.includes("6th") || s.includes("mahaparinirvan")) return "6th Dec Mahaparinirvan Diwas";
+    if (s === "blood" || s.includes("blood")) return "Annual Blood Donation Camp";
+    if (s === "tree" || s.includes("tree")) return "Monsoon Tree Plantation Drive";
+    if (s === "scholar" || s.includes("scholar")) return "Scholarship Distribution Ceremony";
+    const evObj = (C?.events || []).find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === s) || (e.code && String(e.code).toLowerCase() === s)));
     if (evObj && evObj.title) return evObj.title;
+    const formObj = (C?.forms || []).find(f => f && (f.id === evIdOrTitle || f.name === evIdOrTitle || (f.id && String(f.id).toLowerCase() === s)));
+    if (formObj && formObj.name) return formObj.name;
     return evIdOrTitle;
   };
   const formatEventTitle = resolveEventTitle;
@@ -60675,20 +60689,33 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
       const rFormId = String(r.formId || r.formName || "").toLowerCase().trim();
       const rEvId = String(r.eventId || '').toLowerCase().trim();
-      const rEvName = String(r.eventName || r.eventTitle || r.program || r.purpose || r.title || '').toLowerCase().trim();
-      const combined = `${rFormId} ${rEvId} ${rEvName}`.toLowerCase();
+      const rEvCode = String(r.eventCode || r["Event Code"] || "").toLowerCase().trim();
+      const rEvName = String(r["Event Name"] || r.eventName || r.eventTitle || r.program || r.purpose || r.title || r["Event"] || '').toLowerCase().trim();
+      const rTxn = String(r['Transaction ID'] || r.transactionId || r.txnId || r.receiptNo || '').toUpperCase().trim();
+      const combined = `${rFormId} ${rEvId} ${rEvCode} ${rEvName}`.toLowerCase();
 
       return targetEventIds.some(target => {
         const tClean = String(target).toLowerCase().trim();
         if (!tClean || tClean === 'all') return true;
-        if (r.eventId === target || rEvId === tClean || rFormId === tClean) return true;
-        if (tClean.includes('edu') || tClean.includes('education') || tClean === 'edu26') {
+        if (r.eventId === target || rEvId === tClean || rEvCode === tClean || rFormId === tClean || (r.formName && r.formName.toLowerCase() === tClean)) return true;
+
+        // Check if target is Education 2026 / EDU26 or a form representing Education 2026
+        const isEduTarget = tClean === 'edu26' || tClean.includes('edu') || tClean.includes('education') || tClean.includes('felicitation') || (
+          (C?.forms || []).some(f => (f.id === target || String(f.id).toLowerCase() === tClean) && String(f.name || '').toLowerCase().includes('edu'))
+        );
+
+        if (isEduTarget) {
           const isEduEv = combined.includes('edu') || combined.includes('felicitation') || combined.includes('vidya') || combined.includes('student') || combined.includes('education');
-          const isEduTxn = String(r['Transaction ID'] || r.transactionId || '').toUpperCase().startsWith('VG-') || String(r['Transaction ID'] || r.transactionId || '').toUpperCase().startsWith('EDU');
-          const hasStudent = Boolean(r['Stream / Class'] || r['Stream'] || r['Stream / Standard'] || r['Standard'] || r.stream || r['Course'] || r['% Obtained'] || r.studentName);
+          const isEduTxn = rTxn.startsWith('VG-') || rTxn.startsWith('EDU') || rTxn.startsWith('EDU26');
+          const hasStudent = Boolean(
+            r['Stream / Class'] || r['Stream'] || r['Stream Group'] || r['Stream / Standard'] || 
+            r['Standard'] || r.stream || r['Course'] || r['% Obtained'] || r['Obtained Marks'] || 
+            r['Out Of Marks'] || r['School / College Name'] || r.studentName
+          );
           return isEduEv || isEduTxn || hasStudent;
         }
-        if (tClean.includes("6th") && (combined.includes("6th") || combined.includes("dec"))) return true;
+
+        if (tClean.includes("6th") && (combined.includes("6th") || combined.includes("dec") || rTxn.startsWith("6TH"))) return true;
 
         const tokens = tClean.split(/[\s_/-]+/).filter(w => w.length > 2 && w !== 'event' && w !== 'program');
         if (tokens.length > 0) {
@@ -60939,6 +60966,34 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
         }
 
+        if (targetRegs.length === 0) {
+          const fallbackPool = (typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__) && window.__MMP_ALL_REGS_RAW__.length > 0)
+            ? window.__MMP_ALL_REGS_RAW__
+            : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_REGS_CACHE__) && window.__MMP_REGS_CACHE__.length > 0) ? window.__MMP_REGS_CACHE__ : []);
+          if (fallbackPool.length > 0) {
+            if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
+              targetRegs = filterRegsByKbTargetEvents(fallbackPool, scopedEvents);
+            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+              targetRegs = filterRegsByKbTargetEvents(fallbackPool, [attachedFId]);
+            } else {
+              targetRegs = fallbackPool;
+            }
+          }
+        }
+
+        // Safety net: if target is Education 2026 or EDU26 and targetRegs is empty, pull all education items from current pool
+        if (targetRegs.length === 0) {
+          const isEduTarget = (attachedFId && (String(attachedFId).toLowerCase().includes("edu") || String(attachedFId).toLowerCase() === "edu26")) ||
+            scopedEvents.some(s => {
+              const str = String(s).toLowerCase();
+              return str.includes("edu") || str.includes("felicitation") || str === "edu26";
+            });
+          if (isEduTarget) {
+            const pool = (currentRegs && currentRegs.length > 0) ? currentRegs : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__)) ? window.__MMP_ALL_REGS_RAW__ : []);
+            targetRegs = pool.filter(r => !r.deleted && !r.isDeleted && r.status !== "Deleted");
+          }
+        }
+
         const vibhagMap = {};
         let approved = 0, pending = 0, rejected = 0;
         targetRegs.forEach(r => {
@@ -60957,8 +61012,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           else vibhagMap[v].pending++;
         });
 
-        const formLabel = attachedFId && attachedFId !== "all"
-          ? ((C.forms || []).find(f => f.id === attachedFId || f.name === attachedFId)?.name || (C.events || []).find(e => e.id === attachedFId)?.title || attachedFId)
+        const formLabel = (attachedFId && attachedFId !== "all")
+          ? formatEventTitle(attachedFId)
           : (scopedEvents.length === 1 && scopedEvents[0] !== "all" ? formatEventTitle(scopedEvents[0]) : "All Forms");
 
         botType = "donation_summary_card";
@@ -61114,9 +61169,54 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
         }
 
-        const formLabel = attachedFId && attachedFId !== "all"
-          ? ((C.forms || []).find(f => f.id === attachedFId || f.name === attachedFId)?.name || (C.events || []).find(e => e.id === attachedFId)?.title || attachedFId)
-          : (scopedEvents.length === 1 && scopedEvents[0] !== "all" ? formatEventTitle(scopedEvents[0]) : "");
+        if (targetRegs.length === 0) {
+          const fallbackPool = (typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__) && window.__MMP_ALL_REGS_RAW__.length > 0)
+            ? window.__MMP_ALL_REGS_RAW__
+            : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_REGS_CACHE__) && window.__MMP_REGS_CACHE__.length > 0)
+                ? window.__MMP_REGS_CACHE__
+                : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_INVITE_REGS__) && window.__MMP_INVITE_REGS__.length > 0)
+                    ? window.__MMP_INVITE_REGS__
+                    : ((regs && regs.length > 0) ? regs : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem("mmp_cached_registrations") || "[]") : []))));
+          if (fallbackPool.length > 0) {
+            if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
+              targetRegs = filterRegsByKbTargetEvents(fallbackPool, scopedEvents);
+            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+              targetRegs = filterRegsByKbTargetEvents(fallbackPool, [attachedFId]);
+            } else {
+              targetRegs = fallbackPool;
+            }
+          }
+        }
+
+        // Safety net: if target is Education 2026 or EDU26 and targetRegs is empty, pull all education items from current pool
+        if (targetRegs.length === 0) {
+          const isEduTarget = (attachedFId && (String(attachedFId).toLowerCase().includes("edu") || String(attachedFId).toLowerCase() === "edu26")) ||
+            scopedEvents.some(s => {
+              const str = String(s).toLowerCase();
+              return str.includes("edu") || str.includes("felicitation") || str === "edu26";
+            });
+          if (isEduTarget) {
+            const pool = (currentRegs && currentRegs.length > 0) ? currentRegs : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__)) ? window.__MMP_ALL_REGS_RAW__ : []);
+            targetRegs = pool.filter(r => !r.deleted && !r.isDeleted && r.status !== "Deleted");
+          }
+        }
+
+        // Final safety net: if target is Education 2026 or EDU26 and targetRegs is empty, pull all education items from current pool
+        if (targetRegs.length === 0) {
+          const isEduTarget = (attachedFId && (String(attachedFId).toLowerCase().includes("edu") || String(attachedFId).toLowerCase() === "edu26")) ||
+            scopedEvents.some(s => {
+              const str = String(s).toLowerCase();
+              return str.includes("edu") || str.includes("felicitation") || str === "edu26";
+            });
+          if (isEduTarget) {
+            const pool = (currentRegs && currentRegs.length > 0) ? currentRegs : ((typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__)) ? window.__MMP_ALL_REGS_RAW__ : []);
+            targetRegs = pool.filter(r => !r.deleted && !r.isDeleted && r.status !== "Deleted");
+          }
+        }
+
+        const formLabel = (attachedFId && attachedFId !== "all")
+          ? formatEventTitle(attachedFId)
+          : (scopedEvents.length === 1 && scopedEvents[0] !== "all" ? formatEventTitle(scopedEvents[0]) : (scopedEvents.length > 1 ? `${scopedEvents.length} Events` : ""));
 
         if (targetRegs.length === 0) {
           botReply = `📋 **No submissions found${formLabel ? ` for "${formLabel}"` : " in the database"}.**`;
