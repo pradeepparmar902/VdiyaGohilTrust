@@ -1683,6 +1683,31 @@ export const getRegRowValue = (row, k) => {
   return "-";
 };
 
+export function getDonationRowValue(d, k) {
+  if (!d) return "-";
+  if (k === "name") return d.donorName || d.name || d.fullName || d["Full Name"] || "-";
+  if (k === "vibhag") return d.vibhag || d.vibhagNumber || d["Vibhag"] || "-";
+  if (k === "amount") return d.amount !== undefined && d.amount !== null ? String(d.amount) : "0";
+  if (k === "purpose") return d.purpose || d.program || d.eventName || d.eventTitle || "-";
+  if (k === "receiptNo") return d.receiptNo || d.receiptNumber || d.transactionId || d.id || "-";
+  if (k === "date") return d.date || (d.createdAt ? new Date(d.createdAt).toLocaleDateString("en-IN") : "-");
+  if (k === "paymentMode") return d.paymentMode || d.paymentMethod || (d.isOffline ? "Offline" : "Online") || "-";
+  if (k === "mobile") return d.mobile || d.phone || d.phoneNumber || "-";
+  if (d[k] !== undefined && d[k] !== null && String(d[k]).trim() !== "") {
+    return typeof d[k] === "object" ? JSON.stringify(d[k]) : String(d[k]);
+  }
+  const lowK = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const [propKey, propVal] of Object.entries(d)) {
+    if (propKey.toLowerCase().replace(/[^a-z0-9]/g, "") === lowK && propVal !== undefined && propVal !== null && String(propVal).trim() !== "") {
+      return typeof propVal === "object" ? JSON.stringify(propVal) : String(propVal);
+    }
+  }
+  return "-";
+}
+if (typeof window !== "undefined") {
+  window.getDonationRowValue = getDonationRowValue;
+}
+
 export const getDistinctEventOptions = (C = {}) => {
   const events = [];
   const seenKeys = new Set();
@@ -26085,28 +26110,6 @@ export const getFieldDynamicLabels = (key, allFields = []) => {
   return { enLabel, guLabel, fullLabel: f ? f.label : key };
 };
 
-export const getDonationRowValue = (d, k) => {
-  if (!d) return "-";
-  if (k === "name") return d.donorName || d.name || d.fullName || d["Full Name"] || "-";
-  if (k === "vibhag") return d.vibhag || d.vibhagNumber || d["Vibhag"] || "-";
-  if (k === "amount") return d.amount !== undefined && d.amount !== null ? String(d.amount) : "0";
-  if (k === "purpose") return d.purpose || d.program || d.eventName || d.eventTitle || "-";
-  if (k === "receiptNo") return d.receiptNo || d.receiptNumber || d.transactionId || d.id || "-";
-  if (k === "date") return d.date || (d.createdAt ? new Date(d.createdAt).toLocaleDateString("en-IN") : "-");
-  if (k === "paymentMode") return d.paymentMode || d.paymentMethod || (d.isOffline ? "Offline" : "Online") || "-";
-  if (k === "mobile") return d.mobile || d.phone || d.phoneNumber || "-";
-  if (d[k] !== undefined && d[k] !== null && String(d[k]).trim() !== "") {
-    return typeof d[k] === "object" ? JSON.stringify(d[k]) : String(d[k]);
-  }
-  const lowK = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
-  for (const [propKey, propVal] of Object.entries(d)) {
-    if (propKey.toLowerCase().replace(/[^a-z0-9]/g, "") === lowK && propVal !== undefined && propVal !== null && String(propVal).trim() !== "") {
-      return typeof propVal === "object" ? JSON.stringify(propVal) : String(propVal);
-    }
-  }
-  return "-";
-};
-
 export const renderDonationFieldValue = (d, k) => {
   if (!d) return "-";
   if (k === "amount") {
@@ -30534,11 +30537,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                                 const primaryDonDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === primaryDonGroupKey);
                                 const primaryDonLabel = primaryDonDef ? primaryDonDef.shortLabel : primaryDonGroupKey;
+                                const { enLabel: primaryDonEn, guLabel: primaryDonGu } = getFieldDynamicLabels(primaryDonGroupKey, DONATION_AVAILABLE_FIELDS);
 
                                 const donGroupMap = {};
                                 previewFilteredDonations.forEach(d => {
-                                  const raw = String(d.vibhag || d.vibhagNumber || d.program || "General / Main").trim();
-                                  const val = raw || "General / Main";
+                                  const raw = getDonationRowValue(d, primaryDonGroupKey);
+                                  const val = (raw && String(raw).trim() !== "" && raw !== "-") ? String(raw).trim() : "General / Other";
                                   const amt = parseFloat(d.amount) || 0;
                                   if (!donGroupMap[val]) donGroupMap[val] = { count: 0, total: 0 };
                                   donGroupMap[val].count++;
@@ -30559,7 +30563,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
                                   const isGu = (kbForm.tableLang || "gu") === "gu";
                                   const isTableFormat = (kbForm.layoutFormat || "table") === "table";
-                                  const primaryGrpLabel = primaryDonGroupKey === "vibhag" ? (isGu ? "વિભાગ" : "Vibhag") : primaryDonLabel;
+                                  const primaryGrpLabel = isGu ? primaryDonGu : primaryDonEn;
 
                                   let previewText = "";
                                   if (isTableFormat) {
@@ -30604,8 +30608,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                     previewText += "```\n";
                                     if (donGroupList.length > 15) {
                                       previewText += isGu
-                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} વિભાગ\n`
-                                        : `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} ${primaryDonGu}\n`
+                                        : `... and ${donGroupList.length - 15} more ${primaryDonEn.toLowerCase()}s\n`;
                                     }
                                   } else {
                                     previewText += isGu
@@ -30623,15 +30627,57 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                     });
                                     if (donGroupList.length > 15) {
                                       previewText += isGu
-                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} વિભાગ\n`
-                                        : `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} ${primaryDonGu}\n`
+                                        : `... and ${donGroupList.length - 15} more ${primaryDonEn.toLowerCase()}s\n`;
                                     }
                                   }
 
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
                                   previewText += isGu
-                                    ? `💰 *કુલ દાન રકમ: ₹${toGujDigits(Number(previewTotalAmt).toLocaleString('en-IN'))}/- (કુલ ${toGujDigits(previewFilteredDonations.length)} દાતા, ${toGujDigits(donGroupList.length)} વિભાગ)*\n`
-                                    : `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}* (${donGroupList.length} distinct ${primaryDonLabel})\n`;
+                                    ? `💰 *કુલ દાન રકમ: ₹${toGujDigits(Number(previewTotalAmt).toLocaleString('en-IN'))}/- (કુલ ${toGujDigits(previewFilteredDonations.length)} દાતા, ${toGujDigits(donGroupList.length)} ${primaryDonGu})*\n`
+                                    : `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}* (${donGroupList.length} distinct ${primaryDonEn})\n`;
+                                  return previewText;
+                                }
+
+                                const isTableFormat = (kbForm.layoutFormat || "table") === "table";
+                                const isGu = (kbForm.tableLang || "gu") === "gu";
+
+                                if (isTableFormat) {
+                                  let previewText = isGu ? `📋 *દાતા યાદી કોષ્ટક (Donor Registry Table):*\n` : `📋 *Donor Registry Table:*\n`;
+                                  previewText += "```\n";
+                                  const colMeta = curDonCols.map(k => {
+                                    const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k, DONATION_AVAILABLE_FIELDS);
+                                    return { key: k, title: isGu ? cGu : cEn };
+                                  });
+                                  const hSr = isGu ? "ક્રમ" : "Sr.";
+                                  if (colMeta.length === 2) {
+                                    previewText += `${padCol(hSr, 4)} ${padCol(colMeta[0].title.slice(0, 18), 18)} ${colMeta[1].title}\n`;
+                                    previewText += `-----------------------------------\n`;
+                                    previewFilteredDonations.slice(0, 15).forEach((d, idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      const v0 = String(getDonationRowValue(d, colMeta[0].key) || "-").slice(0, 17);
+                                      const v1 = String(getDonationRowValue(d, colMeta[1].key) || "-");
+                                      previewText += `${padCol(sr, 4)} ${padCol(v0, 18)} ${v1}\n`;
+                                    });
+                                  } else {
+                                    const headerLine = [padCol(hSr, 4), ...colMeta.map((c, i) => i === colMeta.length - 1 ? c.title : padCol(c.title.slice(0, 12), 12))].join(" ");
+                                    previewText += `${headerLine}\n-----------------------------------\n`;
+                                    previewFilteredDonations.slice(0, 15).forEach((d, idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      const vals = colMeta.map((c, i) => {
+                                        const val = String(getDonationRowValue(d, c.key) || "-");
+                                        return i === colMeta.length - 1 ? val : padCol(val.slice(0, 11), 12);
+                                      });
+                                      previewText += `${[padCol(sr, 4), ...vals].join(" ")}\n`;
+                                    });
+                                  }
+                                  previewText += `-----------------------------------\n`;
+                                  previewText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(isGu ? toGujDigits(previewFilteredDonations.length) : String(previewFilteredDonations.length), 6)} ${isGu ? "કુલ દાતા" : "Grand Total"}\n`;
+                                  previewText += "```\n";
+                                  previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  previewText += isGu
+                                    ? `💰 *કુલ દાન રકમ: ₹${toGujDigits(Number(previewTotalAmt).toLocaleString('en-IN'))}/- (કુલ ${toGujDigits(previewFilteredDonations.length)} દાતા)*\n`
+                                    : `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}*\n`;
                                   return previewText;
                                 }
 
@@ -57811,8 +57857,12 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
   const {
     totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount,
     vibhagBreakdown, eventLabel, donors, summaryType,
-    customWaHeader, customWaAppeal, customWaSignatory, customWaIncludeQr, customWaUpiId
+    customWaHeader, customWaAppeal, customWaSignatory, customWaIncludeQr, customWaUpiId,
+    primaryGroupKey, primaryGroupLabel, primaryGroupGuLabel
   } = summaryData;
+
+  const groupDisplayLabel = primaryGroupGuLabel || primaryGroupLabel || "વિભાગ";
+  const groupDisplayLabelEn = primaryGroupLabel || "Vibhag";
 
   const activeFields = (Array.isArray(summaryData.selectedFields) && summaryData.selectedFields.length > 0)
     ? summaryData.selectedFields
@@ -57938,7 +57988,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
       msg += `🟠 *Offline / રોકડ:* ₹${offlineAmount.toLocaleString('en-IN')} (${offlineCount} entries)\n`;
       if ((vibhagBreakdown || []).length > 0) {
         msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-        msg += `📍 *વિભાગ વાર વિગત:*\n`;
+        msg += `📍 *${groupDisplayLabel} વાર વિગત:*\n`;
         vibhagBreakdown.forEach(([vName, vData]) => {
           msg += `• *${vName}*: ₹${vData.total.toLocaleString('en-IN')} (${vData.count} દાતા)\n`;
         });
@@ -57952,7 +58002,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
           const numGu = toGujDigits(idx + 1);
           const parts = [];
           activeFields.forEach(fKey => {
-            if (fKey === "name") parts.push(d.name || "દાતાશ્રી");
+            if (fKey === "name") parts.push(d.name || d.donorName || d.fullName || "દાતાશ્રી");
             else if (fKey === "amount") parts.push(`₹${Number(d.amount || 0).toLocaleString('en-IN')}/-`);
             else if (fKey === "vibhag" && d.vibhag) parts.push(`(${d.vibhag})`);
             else if (fKey === "receiptNo" && (d.receiptNo || d.internalReceiptNo)) parts.push(`[${d.receiptNo || d.internalReceiptNo}]`);
@@ -58085,7 +58135,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
             gap: 6
           }}
         >
-          <span>📍 Vibhag Breakdown</span>
+          <span>📍 {groupDisplayLabelEn} Breakdown</span>
         </button>
       </div>
 
@@ -58093,13 +58143,13 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
         <>
           {/* Vibhag Wise Breakdown Table */}
           <div style={{fontSize:".75rem",fontWeight:800,color:"#334155",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>
-            📍 Vibhag-Wise Breakdown:
+            📍 {groupDisplayLabelEn}-Wise Breakdown:
           </div>
           <div style={{maxHeight:200,overflowY:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
               <thead>
                 <tr style={{background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",color:"#475569",textAlign:"left"}}>
-                  <th style={{padding:"6px 8px"}}>Vibhag</th>
+                  <th style={{padding:"6px 8px"}}>{groupDisplayLabelEn}</th>
                   <th style={{padding:"6px 8px",textAlign:"center"}}>Donors</th>
                   <th style={{padding:"6px 8px",textAlign:"right"}}>Amount (₹)</th>
                 </tr>
@@ -61452,6 +61502,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           let onlineCount = 0, offlineCount = 0;
           const vibhagMap = {};
 
+          const activeDonFields = (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0)
+            ? matchedKb.selectedFields
+            : ["name", "amount", "vibhag"];
+          const donFieldActions = matchedKb?.fieldActions || {};
+          const primaryDonGroupKey = activeDonFields.find(k => ["group_count", "distinct_group", "distinct_count"].includes(donFieldActions[k]))
+            || (activeDonFields.includes("vibhag") ? "vibhag" : activeDonFields[0]);
+          const { enLabel: primaryDonGroupEn, guLabel: primaryDonGroupGu } = getFieldDynamicLabels(primaryDonGroupKey, DONATION_AVAILABLE_FIELDS);
+
           allDonations.forEach(d => {
             const amt = parseFloat(d.amount) || 0;
             totalAmt += amt;
@@ -61464,7 +61522,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
               onlineCount++;
             }
 
-            let v = String(d.vibhag || d.vibhagNumber || d.program || "General / Main").trim();
+            const rawVal = getDonationRowValue(d, primaryDonGroupKey);
+            let v = (rawVal && String(rawVal).trim() !== "" && rawVal !== "-") ? String(rawVal).trim() : "General / Other";
             if (!vibhagMap[v]) vibhagMap[v] = { total: 0, count: 0, offlineAmt: 0, onlineAmt: 0 };
             vibhagMap[v].total += amt;
             vibhagMap[v].count += 1;
@@ -61477,6 +61536,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             ? matchedKb.customWaAppeal.trim()
             : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary${eventLabel ? ` (${eventLabel})` : ""}**:`);
           cardData = {
+            primaryGroupKey: primaryDonGroupKey,
+            primaryGroupLabel: primaryDonGroupEn,
+            primaryGroupGuLabel: primaryDonGroupGu,
             columnOrder: matchedKb?.columnOrder || "count_first",
             tableLang: matchedKb?.tableLang || "gu",
             layoutFormat: matchedKb?.layoutFormat || "table",
@@ -61491,8 +61553,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             vibhagBreakdown: Object.entries(vibhagMap).sort((a, b) => b[1].total - a[1].total),
             donors: allDonations,
             summaryType: matchedKb?.summaryType || "donation",
-            selectedFields: (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0) ? matchedKb.selectedFields : ["name", "amount", "vibhag"],
-            fieldActions: matchedKb?.fieldActions || {},
+            selectedFields: activeDonFields,
+            fieldActions: donFieldActions,
             tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_summary",
             customWaHeader: matchedKb?.customWaHeader,
             customWaAppeal: matchedKb?.customWaAppeal,
