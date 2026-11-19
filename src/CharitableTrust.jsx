@@ -60642,7 +60642,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       if (r.deleted === true || r.deleted === "true" || r.isDeleted === true || r.isTrash === true || r.inTrash === true || r.status === "Deleted" || r.Status === "Deleted") {
         return false;
       }
-      if ((r.isGlobalGuest === true && !r.eventId && !r.eventName) || (r.formId === "global_guest_directory" && !r.eventId && !r.eventName && !r.targetTemplateId && (!Array.isArray(r.assignedDocTypes) || r.assignedDocTypes.length === 0))) {
+      if (r.formId === "global_guest_directory" && !r.eventId && !r.eventName && !r.targetTemplateId && (!Array.isArray(r.assignedDocTypes) || r.assignedDocTypes.length === 0)) {
         return false;
       }
       return true;
@@ -60670,23 +60670,25 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
     return regsList.filter(r => {
       if (!r) return false;
-      if (r.deleted === true || r.isDeleted === true || r.Status === "Deleted" || r.status === "Deleted") return false;
-      if ((r.isGlobalGuest === true && !r.eventId && !r.eventName) || (r.formId === "global_guest_directory" && !r.eventId && !r.eventName && !r.targetTemplateId && (!Array.isArray(r.assignedDocTypes) || r.assignedDocTypes.length === 0))) return false;
+      if (r.deleted === true || r.deleted === "true" || r.isDeleted === true || r.isTrash === true || r.inTrash === true || r.status === "Deleted" || r.Status === "Deleted") return false;
+      if (r.formId === "global_guest_directory" && !r.eventId && !r.eventName && !r.targetTemplateId && (!Array.isArray(r.assignedDocTypes) || r.assignedDocTypes.length === 0)) return false;
 
+      const rFormId = String(r.formId || r.formName || "").toLowerCase().trim();
       const rEvId = String(r.eventId || '').toLowerCase().trim();
       const rEvName = String(r.eventName || r.eventTitle || r.program || r.purpose || r.title || '').toLowerCase().trim();
-      const combined = `${rEvId} ${rEvName}`.toLowerCase();
+      const combined = `${rFormId} ${rEvId} ${rEvName}`.toLowerCase();
 
       return targetEventIds.some(target => {
         const tClean = String(target).toLowerCase().trim();
         if (!tClean || tClean === 'all') return true;
-        if (r.eventId === target || rEvId === tClean) return true;
-        if (tClean.includes('education') || tClean === 'education2026' || tClean === 'edu26') {
-          const isEduEv = combined.includes('education') || combined.includes('felicitation') || combined.includes('vidya') || combined.includes('student');
-          const isEduTxn = String(r['Transaction ID'] || '').toUpperCase().startsWith('VG-') || String(r['Transaction ID'] || '').toUpperCase().startsWith('EDU');
-          const hasStudent = Boolean(r['Stream / Class'] || r['Stream'] || r['Course'] || r['% Obtained'] || r.studentName);
+        if (r.eventId === target || rEvId === tClean || rFormId === tClean) return true;
+        if (tClean.includes('edu') || tClean.includes('education') || tClean === 'edu26') {
+          const isEduEv = combined.includes('edu') || combined.includes('felicitation') || combined.includes('vidya') || combined.includes('student') || combined.includes('education');
+          const isEduTxn = String(r['Transaction ID'] || r.transactionId || '').toUpperCase().startsWith('VG-') || String(r['Transaction ID'] || r.transactionId || '').toUpperCase().startsWith('EDU');
+          const hasStudent = Boolean(r['Stream / Class'] || r['Stream'] || r['Stream / Standard'] || r['Standard'] || r.stream || r['Course'] || r['% Obtained'] || r.studentName);
           return isEduEv || isEduTxn || hasStudent;
         }
+        if (tClean.includes("6th") && (combined.includes("6th") || combined.includes("dec"))) return true;
 
         const tokens = tClean.split(/[\s_/-]+/).filter(w => w.length > 2 && w !== 'event' && w !== 'program');
         if (tokens.length > 0) {
@@ -60926,20 +60928,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         // Form Submissions Summary Flow (Live Database Data)
         let targetRegs = currentRegs;
         const attachedFId = matchedKb?.attachedFormId;
-        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
-          const fLow = attachedFId.toLowerCase().trim();
-          targetRegs = targetRegs.filter(r => {
-            const rF = String(r.formId || r.formName || "").toLowerCase().trim();
-            const rE = String(r.eventId || "").toLowerCase().trim();
-            return rF === fLow || (r.formName && r.formName.toLowerCase() === fLow) || rE === fLow;
-          });
-        }
         const scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
           const s = String(t || '').trim().toLowerCase();
           return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
         });
+
         if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
+        } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+          targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
         }
 
         const vibhagMap = {};
@@ -61106,20 +61103,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         // Form Person-wise Submissions Registry Flow (Live Database Data)
         let targetRegs = currentRegs;
         const attachedFId = matchedKb?.attachedFormId;
-        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
-          const fLow = attachedFId.toLowerCase().trim();
-          targetRegs = targetRegs.filter(r => {
-            const rF = String(r.formId || r.formName || "").toLowerCase().trim();
-            const rE = String(r.eventId || "").toLowerCase().trim();
-            return rF === fLow || (r.formName && r.formName.toLowerCase() === fLow) || rE === fLow;
-          });
-        }
         const scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
           const s = String(t || '').trim().toLowerCase();
           return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
         });
+
         if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
+        } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+          targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
         }
 
         const formLabel = attachedFId && attachedFId !== "all"
