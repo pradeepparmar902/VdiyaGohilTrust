@@ -27490,7 +27490,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
       customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
       customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
       attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
-      storageDestination: kbForm.storageDestination || "donations",
+      storageDestination: kbForm.storageDestination || (kbForm.actionType === "form" ? "registrations" : "donations"),
       selectedFields: (Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0) ? kbForm.selectedFields : ["name", "amount", "vibhag"],
       fieldActions: kbForm.fieldActions || {
         name: "distinct_count",
@@ -29197,6 +29197,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   newObj.summaryType = "donation";
                                 }
                               } else if (cap.type === "form") {
+                                newObj.storageDestination = "registrations";
+                                newObj.roleAccess = "public";
+                                newObj.adminOnly = false;
                                 if (newObj.attachedFormId === "builtin_offline_donation") {
                                   newObj.attachedFormId = "";
                                 }
@@ -30861,6 +30864,56 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </div>
                           </div>
                         </div>
+
+                        {/* Form Selector for Interactive Entry */}
+                        {kbForm.summaryType === "offline_form" && (
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>📋</span> Choose Form to Present in Chatbot:
+                              </label>
+                              <span style={{fontSize:".7rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                {kbForm.attachedFormId ? `Attached: ${kbForm.attachedFormId}` : "Please Select a Form"}
+                              </span>
+                            </div>
+                            <p style={{fontSize:".74rem",color:"#64748B",margin:"0 0 10px 0"}}>
+                              Select which registration form from Form Builder should appear inside the chatbot when this command or button is clicked:
+                            </p>
+                            <select
+                              value={kbForm.attachedFormId || ""}
+                              onChange={e => {
+                                const selId = e.target.value;
+                                const formObj = (C?.forms || []).find(f => f.id === selId);
+                                const evId = formObj?.eventId || formObj?.eventCode;
+                                setKbForm({
+                                  ...kbForm,
+                                  attachedFormId: selId,
+                                  storageDestination: formObj?.destination || "registrations",
+                                  targetEventIds: evId ? [evId] : (kbForm.targetEventIds || ["all"])
+                                });
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: "1.5px solid #16A34A",
+                                fontSize: ".82rem",
+                                fontWeight: 800,
+                                background: "white",
+                                color: "#0F172A",
+                                cursor: "pointer"
+                              }}
+                            >
+                              <option value="">-- Choose from available forms in Form Builder --</option>
+                              {(C?.forms || []).map(f => (
+                                <option key={f.id} value={f.id}>
+                                  📝 {f.name || f.title || f.id} ({Array.isArray(f.fields) ? f.fields.length : 0} fields)
+                                </option>
+                              ))}
+                              <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
+                            </select>
+                          </div>
+                        )}
 
                         {/* 2. FORM & EVENT CONNECTION (FILTER STRICTLY FOR SPECIFIC EVENT / FORM ONLY) */}
                         <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
@@ -62114,13 +62167,20 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
       if (!isPermitted) {
         botReply = `🔒 **Access Restricted**\n\nThis action / form is restricted to **${reqRole === "donation_collector" ? "Donation Collectors" : reqRole === "vibhag_admin" ? "Vibhag Admins" : "Super Admins"}**.\n\n👉 Please enter your authorized mobile number to unlock.`;
-      } else if (matchedKb.attachedFormId) {
+      } else if (matchedKb.attachedFormId || matchedKb.summaryType === "offline_form") {
+        const scopedEvents = matchedKb?.targetEventIds || ["all"];
         const formDef = matchedKb.attachedFormId === "builtin_offline_donation"
           ? { name: "Offline Donation Entry", id: "builtin_offline_donation" }
-          : ((C.forms || []).find(f => f.id === matchedKb.attachedFormId || f.name === matchedKb.attachedFormId) || { name: matchedKb.title, id: matchedKb.attachedFormId });
+          : ((C.forms || []).find(f => (
+              f.id === matchedKb.attachedFormId || 
+              f.name === matchedKb.attachedFormId ||
+              (f.id && String(f.id).toLowerCase() === String(matchedKb.attachedFormId).toLowerCase()) ||
+              (f.eventId && scopedEvents.includes(f.eventId)) ||
+              (f.eventCode && scopedEvents.includes(f.eventCode)) ||
+              (scopedEvents.some(ev => String(f.name || '').toLowerCase().includes(String(ev).toLowerCase()) || String(f.id || '').toLowerCase().includes(String(ev).toLowerCase())))
+            )) || (C.events || []).map(ev => (C.forms || []).find(f => f.id === ev.formId)).filter(Boolean)[0] || { name: matchedKb.title, id: matchedKb.attachedFormId });
 
-        const scopedEvents = matchedKb?.targetEventIds || ["all"];
-        let defaultPurpose = "General Donation";
+        let defaultPurpose = matchedKb.actionType === "form" ? (formDef?.name || "Event Registration") : "General Donation";
         let defaultEventCode = "GEN";
         if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
           const evOpt = getDistinctEventOptions(C).find(e => e.id === scopedEvents[0] || e.code === scopedEvents[0] || e.title === scopedEvents[0]);
@@ -62138,10 +62198,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         botReply = matchedKb.title ? `📝 **${matchedKb.title}**` : "Please fill out the form below:";
         cardData = {
           formDef,
-          destination: matchedKb.storageDestination || "donations",
-          introTitle: matchedKb.title,
+          destination: matchedKb.storageDestination || (matchedKb.actionType === "form" ? "registrations" : "donations"),
+          introTitle: matchedKb.title || formDef?.name,
           introText: matchedKb.answer,
-          attachedFormId: matchedKb.attachedFormId,
+          attachedFormId: matchedKb.attachedFormId || formDef?.id,
           attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId,
           defaultPurpose,
           defaultEventCode,
