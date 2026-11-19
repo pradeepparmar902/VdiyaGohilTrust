@@ -1562,6 +1562,32 @@ export const FORM_AVAILABLE_FIELDS = [
     ]
   },
   {
+    key: "obtainedMarks",
+    shortLabel: "Obtained Marks",
+    label: "Obtained Marks (મેળવેલ ગુણ)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" },
+      { id: "distinct", label: "Distinct" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "avg", label: "Average" },
+      { id: "sum", label: "Sum" }
+    ]
+  },
+  {
+    key: "outOfMarks",
+    shortLabel: "Out Of Marks",
+    label: "Out Of Marks (કુલ ગુણ)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" },
+      { id: "distinct", label: "Distinct" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct_group", label: "Distinct / Group" }
+    ]
+  },
+  {
     key: "school",
     shortLabel: "School / College",
     label: "School / College Name (શાળા / કોલેજ)",
@@ -1620,14 +1646,35 @@ export const getRegRowValue = (row, k) => {
   if (k === "mobile") return row["Mobile Number"] || row.mobile || row.phone || row["Contact Number"] || row["WhatsApp Number"] || "-";
   if (k === "stream") return row["Stream / Class"] || row["Stream"] || row.stream || row["Standard"] || row["Course"] || "-";
   if (k === "percentage") return row["% Obtained"] || row["Percentage"] || row.percentage || row["Marks"] || "-";
+  if (k === "obtainedMarks" || k === "obtained_marks" || k === "marks" || k === "Obtained Marks" || k === "obtained") {
+    return row["Obtained Marks"] || row.obtainedMarks || row["Marks Obtained"] || row.marks || "-";
+  }
+  if (k === "outOfMarks" || k === "out_of_marks" || k === "totalMarks" || k === "Out Of Marks" || k === "outOf") {
+    return row["Out Of Marks"] || row.outOfMarks || row["Total Marks"] || row.totalMarks || "-";
+  }
   if (k === "school") return row["School / College Name"] || row["School / College"] || row.school || row["College"] || "-";
   if (k === "status") return row["Status"] || row.status || "Verified";
   if (k === "txnId") return row["Transaction ID"] || row.transactionId || row.id || "-";
   if (k === "date") return row._submittedAt ? new Date(row._submittedAt).toLocaleDateString("en-IN") : (row.date || "-");
+  if (typeof window !== "undefined" && window.__MMP_FORMS_FIELD_MAP__ && window.__MMP_FORMS_FIELD_MAP__[k]) {
+    const labelKey = window.__MMP_FORMS_FIELD_MAP__[k];
+    if (row[labelKey] !== undefined && row[labelKey] !== null && String(row[labelKey]).trim() !== "") {
+      return String(row[labelKey]);
+    }
+  }
   if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
     return typeof row[k] === "object" ? JSON.stringify(row[k]) : String(row[k]);
   }
-  const lowK = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const lowClean = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (lowClean.includes("obtained") && lowClean.includes("mark")) {
+    const m = row["Obtained Marks"] || row.obtainedMarks || row["Marks Obtained"] || row.marks;
+    if (m !== undefined && m !== null && String(m).trim() !== "") return String(m);
+  }
+  if (lowClean.includes("outof") || (lowClean.includes("out") && lowClean.includes("mark"))) {
+    const m = row["Out Of Marks"] || row.outOfMarks || row["Total Marks"] || row.totalMarks;
+    if (m !== undefined && m !== null && String(m).trim() !== "") return String(m);
+  }
+  const lowK = lowClean;
   for (const [propKey, propVal] of Object.entries(row)) {
     if (propKey.toLowerCase().replace(/[^a-z0-9]/g, "") === lowK && propVal !== undefined && propVal !== null && String(propVal).trim() !== "") {
       return typeof propVal === "object" ? JSON.stringify(propVal) : String(propVal);
@@ -25970,10 +26017,38 @@ const padCol = (str, len, alignRight = false) => {
   return alignRight ? pad + s : s + pad;
 };
 
+export const resolveFormColKey = (k, allFields = []) => {
+  if (!k) return "";
+  const fields = (allFields && allFields.length > 0) ? allFields : (typeof FORM_AVAILABLE_FIELDS !== "undefined" ? FORM_AVAILABLE_FIELDS : []);
+  const direct = fields.find(f => f.key === k);
+  if (direct) return direct.key;
+  const kClean = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const match = fields.find(f => {
+    if (f.key && f.key.toLowerCase().replace(/[^a-z0-9]/g, "") === kClean) return true;
+    if (f.fieldLabel && f.fieldLabel.toLowerCase().replace(/[^a-z0-9]/g, "") === kClean) return true;
+    if (f.dataKey && f.dataKey.toLowerCase().replace(/[^a-z0-9]/g, "") === kClean) return true;
+    if (f.id && f.id === k) return true;
+    if (f.shortLabel && f.shortLabel.toLowerCase().replace(/[^a-z0-9]/g, "") === kClean) return true;
+    if (f.label && f.label.toLowerCase().includes(kClean)) return true;
+    return false;
+  });
+  if (match) return match.key;
+  // Specific fallback alias mappings
+  if (kClean.includes("obtained") && kClean.includes("mark")) return "obtainedMarks";
+  if (kClean.includes("outof") || (kClean.includes("out") && kClean.includes("mark"))) return "outOfMarks";
+  if (kClean === "name" || kClean.includes("student") || kClean.includes("applicant")) return "name";
+  if (kClean.includes("vibhag")) return "vibhag";
+  if (kClean.includes("mobile") || kClean.includes("phone")) return "mobile";
+  if (kClean.includes("stream") || kClean.includes("standard") || kClean.includes("class")) return "stream";
+  if (kClean.includes("percentage") || kClean.includes("percent")) return "percentage";
+  return k;
+};
+
 export const getFieldDynamicLabels = (key, allFields = []) => {
-  const f = (allFields && allFields.find(x => x.key === key)) || 
-            (typeof FORM_AVAILABLE_FIELDS !== 'undefined' && FORM_AVAILABLE_FIELDS.find(x => x.key === key)) ||
-            (typeof DONATION_AVAILABLE_FIELDS !== 'undefined' && DONATION_AVAILABLE_FIELDS.find(x => x.key === key));
+  const normKey = resolveFormColKey(key, allFields);
+  const f = (allFields && allFields.find(x => x.key === key || x.key === normKey)) || 
+            (typeof FORM_AVAILABLE_FIELDS !== 'undefined' && FORM_AVAILABLE_FIELDS.find(x => x.key === key || x.key === normKey)) ||
+            (typeof DONATION_AVAILABLE_FIELDS !== 'undefined' && DONATION_AVAILABLE_FIELDS.find(x => x.key === key || x.key === normKey));
   let enLabel = f ? (f.shortLabel || f.label || key) : key;
   if (enLabel.includes('(')) {
     enLabel = enLabel.split('(')[0].trim();
@@ -25990,6 +26065,10 @@ export const getFieldDynamicLabels = (key, allFields = []) => {
       vibhag: "વિભાગ",
       stream: "ધોરણ / પ્રવાહ",
       percentage: "ટકાવારી",
+      obtainedMarks: "મેળવેલ ગુણ",
+      outOfMarks: "કુલ ગુણ",
+      "Obtained Marks": "મેળવેલ ગુણ",
+      "Out Of Marks": "કુલ ગુણ",
       school: "શાળા / કોલેજ",
       status: "મંજૂરી સ્થિતિ",
       txnId: "અરજી ક્રમાંક",
@@ -26001,7 +26080,7 @@ export const getFieldDynamicLabels = (key, allFields = []) => {
       date: "તારીખ",
       paymentMode: "ચૂકવણી મોડ"
     };
-    guLabel = dict[key] || enLabel;
+    guLabel = dict[normKey] || dict[key] || enLabel;
   }
   return { enLabel, guLabel, fullLabel: f ? f.label : key };
 };
@@ -26959,11 +27038,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
       form.fields.forEach(f => {
         const rawLabel = String(f.label || f.name || f.title || "").trim();
         if (!rawLabel) return;
-        const key = f.dataKey || f.id || rawLabel;
+        const key = f.dataKey || rawLabel || f.id;
+
+        if (typeof window !== "undefined") {
+          window.__MMP_FORMS_FIELD_MAP__ = window.__MMP_FORMS_FIELD_MAP__ || {};
+          if (f.id) window.__MMP_FORMS_FIELD_MAP__[f.id] = rawLabel;
+          if (f.dataKey) window.__MMP_FORMS_FIELD_MAP__[f.dataKey] = rawLabel;
+          window.__MMP_FORMS_FIELD_MAP__[key] = rawLabel;
+        }
 
         const alreadyExists = list.some(item => 
           item.key.toLowerCase() === key.toLowerCase() || 
           item.key.toLowerCase() === rawLabel.toLowerCase() ||
+          (item.fieldLabel && item.fieldLabel.toLowerCase() === rawLabel.toLowerCase()) ||
           item.label.toLowerCase().includes(rawLabel.toLowerCase()) ||
           rawLabel.toLowerCase().includes(item.shortLabel.toLowerCase())
         );
@@ -26976,11 +27063,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
             label: `${rawLabel} (${form.name || 'Form Field'})`,
             defaultAction: "show",
             allowedActions: [
+              { id: "show", label: "Show" },
+              { id: "distinct", label: "Distinct" },
               { id: "distinct_group", label: "Distinct / Group" },
               { id: "group_count", label: "Group with Count" },
-              { id: "distinct_count", label: "Distinct / count" },
-              { id: "distinct", label: "Distinct" },
-              { id: "show", label: "Show" }
+              { id: "distinct_count", label: "Distinct / count" }
             ]
           });
         }
@@ -27035,7 +27122,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const activeFormGroupKey = useMemo(() => {
     const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
     const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-      ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+      ? kbForm.selectedFields.map(k => resolveFormColKey(k, formAvailableFields)).filter(k => formAvailableFields.some(f => f.key === k))
       : [];
     const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
 
@@ -30983,6 +31070,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                             {/* Column Order, Language & WhatsApp Format Controls */}
                             {(() => {
+                              const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                              const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                ? kbForm.selectedFields.map(k => resolveFormColKey(k, formAvailableFields)).filter(k => formAvailableFields.some(f => f.key === k))
+                                : [];
+                              const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+                              const isRegistryMode = kbForm.summaryType === "registry" || kbForm.summaryType === "donor_list";
+                              const hasExplicitGroupWithCount = curCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count");
+                              const hasGroupAction = curCols.some(k => {
+                                const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
+                                return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                              });
+                              const isGroupedView = !isRegistryMode && (hasExplicitGroupWithCount || (curCols.length === 1 && hasGroupAction));
+
                               const { enLabel: primaryEn, guLabel: primaryGu } = getFieldDynamicLabels(activeFormGroupKey, formAvailableFields);
                               const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
                               const isGu = (kbForm.tableLang || "gu") === "gu";
@@ -31002,46 +31102,113 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   {/* 1. Dynamic Column Order Selector */}
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>↕️ Column Order:</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const nextCols = ["count", "group", "approved", "pending", "share"];
-                                        setKbForm({ ...kbForm, columnOrder: "count_first", groupedCols: nextCols });
-                                      }}
-                                      style={{
-                                        padding: "4px 10px",
-                                        borderRadius: 5,
-                                        border: isCountFirst ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
-                                        background: isCountFirst ? "#16A34A" : "white",
-                                        color: isCountFirst ? "white" : "#334155",
-                                        fontSize: ".73rem",
-                                        fontWeight: 800,
-                                        cursor: "pointer",
-                                        boxShadow: isCountFirst ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
-                                      }}
-                                    >
-                                      🔢 Count 1st, {primaryEn} 2nd
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const nextCols = ["group", "count", "approved", "pending", "share"];
-                                        setKbForm({ ...kbForm, columnOrder: "group_first", groupedCols: nextCols });
-                                      }}
-                                      style={{
-                                        padding: "4px 10px",
-                                        borderRadius: 5,
-                                        border: !isCountFirst ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
-                                        background: !isCountFirst ? "#16A34A" : "white",
-                                        color: !isCountFirst ? "white" : "#334155",
-                                        fontSize: ".73rem",
-                                        fontWeight: 800,
-                                        cursor: "pointer",
-                                        boxShadow: !isCountFirst ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
-                                      }}
-                                    >
-                                      📍 {primaryEn} 1st, Count 2nd
-                                    </button>
+                                    {isGroupedView ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextCols = ["count", "group", "approved", "pending", "share"];
+                                            setKbForm({ ...kbForm, columnOrder: "count_first", groupedCols: nextCols });
+                                          }}
+                                          style={{
+                                            padding: "4px 10px",
+                                            borderRadius: 5,
+                                            border: isCountFirst ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                            background: isCountFirst ? "#16A34A" : "white",
+                                            color: isCountFirst ? "white" : "#334155",
+                                            fontSize: ".73rem",
+                                            fontWeight: 800,
+                                            cursor: "pointer",
+                                            boxShadow: isCountFirst ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                          }}
+                                        >
+                                          🔢 Count 1st, {primaryEn} 2nd
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextCols = ["group", "count", "approved", "pending", "share"];
+                                            setKbForm({ ...kbForm, columnOrder: "group_first", groupedCols: nextCols });
+                                          }}
+                                          style={{
+                                            padding: "4px 10px",
+                                            borderRadius: 5,
+                                            border: !isCountFirst ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                            background: !isCountFirst ? "#16A34A" : "white",
+                                            color: !isCountFirst ? "white" : "#334155",
+                                            fontSize: ".73rem",
+                                            fontWeight: 800,
+                                            cursor: "pointer",
+                                            boxShadow: !isCountFirst ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                          }}
+                                        >
+                                          📍 {primaryEn} 1st, Count 2nd
+                                        </button>
+                                      </>
+                                    ) : (
+                                      (() => {
+                                        const c0 = curCols[0];
+                                        const c1 = curCols[1];
+                                        const { enLabel: c0En, guLabel: c0Gu } = getFieldDynamicLabels(c0, formAvailableFields);
+                                        const { enLabel: c1En, guLabel: c1Gu } = c1 ? getFieldDynamicLabels(c1, formAvailableFields) : { enLabel: "", guLabel: "" };
+                                        const c0Title = isGu ? c0Gu : c0En;
+                                        const c1Title = isGu ? c1Gu : c1En;
+                                        if (!c1) {
+                                          return (
+                                            <span style={{fontSize:".74rem",color:"#15803D",fontWeight:700}}>
+                                              📍 {c0Title}
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setKbForm({
+                                                  ...kbForm,
+                                                  selectedFields: [c0, c1, ...curCols.slice(2)]
+                                                });
+                                              }}
+                                              style={{
+                                                padding: "4px 10px",
+                                                borderRadius: 5,
+                                                border: "1.5px solid #16A34A",
+                                                background: "#16A34A",
+                                                color: "white",
+                                                fontSize: ".73rem",
+                                                fontWeight: 800,
+                                                cursor: "pointer",
+                                                boxShadow: "0 1px 3px rgba(22,163,74,0.25)"
+                                              }}
+                                            >
+                                              📍 {c0Title} 1st, {c1Title} 2nd
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setKbForm({
+                                                  ...kbForm,
+                                                  selectedFields: [c1, c0, ...curCols.slice(2)]
+                                                });
+                                              }}
+                                              style={{
+                                                padding: "4px 10px",
+                                                borderRadius: 5,
+                                                border: "1px solid #CBD5E1",
+                                                background: "white",
+                                                color: "#334155",
+                                                fontSize: ".73rem",
+                                                fontWeight: 800,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              🔄 Swap: {c1Title} 1st, {c0Title} 2nd
+                                            </button>
+                                          </>
+                                        );
+                                      })()
+                                    )}
                                   </div>
 
                                   {/* 2. Language Selector */}
@@ -31142,7 +31309,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   {(() => {
                                     const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
                                     const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                      ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                      ? kbForm.selectedFields.map(k => resolveFormColKey(k, formAvailableFields)).filter(k => formAvailableFields.some(f => f.key === k))
                                       : [];
                                     const curSelectedList = validSelected.length > 0 ? validSelected : defaultFieldKeys;
 
@@ -31311,16 +31478,17 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               {(() => {
                                 const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
                                 const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                  ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                  ? kbForm.selectedFields.map(k => resolveFormColKey(k, formAvailableFields)).filter(k => formAvailableFields.some(f => f.key === k))
                                   : [];
                                 const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
 
+                                const isRegistryMode = kbForm.summaryType === "registry" || kbForm.summaryType === "donor_list";
+                                const hasExplicitGroupWithCount = curCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count");
                                 const hasGroupAction = curCols.some(k => {
                                   const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
                                   return act === "group_count" || act === "distinct_group" || act === "distinct_count";
                                 });
-                                const isPersonMode = curCols.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
-                                const isGroupedView = hasGroupAction && (!isPersonMode || curCols.length === 1 || curCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
+                                const isGroupedView = !isRegistryMode && (hasExplicitGroupWithCount || (curCols.length === 1 && hasGroupAction));
 
                                 const primaryGroupKey = curCols.find(k => {
                                   const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
@@ -31607,7 +31775,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                             ))
                                           )}
                                         </tbody>
-                                        {isGroupedView && (
+                                        {isGroupedView ? (
                                           <tfoot>
                                             <tr style={{background:"#F1F5F9",borderTop:"2px solid #CBD5E1",fontWeight:800,color:"#0F172A"}}>
                                               <td style={{padding:"6px 10px"}}>-</td>
@@ -31644,6 +31812,22 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                                   );
                                                 }
                                                 return null;
+                                              })}
+                                            </tr>
+                                          </tfoot>
+                                        ) : (
+                                          <tfoot>
+                                            <tr style={{background:"#F1F5F9",borderTop:"2px solid #CBD5E1",fontWeight:800,color:"#0F172A"}}>
+                                              <td style={{padding:"6px 10px"}}>-</td>
+                                              {curCols.map((k, idx) => {
+                                                if (idx === 0) {
+                                                  return (
+                                                    <td key={k} style={{padding:"6px 10px",color:"#15803D"}}>
+                                                      {isGu ? `કુલ અરજીઓ (Grand Total): ${toGujDigits(totCount)}` : `Grand Total: ${totCount} Submissions`}
+                                                    </td>
+                                                  );
+                                                }
+                                                return <td key={k} style={{padding:"6px 10px",color:"#64748B"}}>-</td>;
                                               })}
                                             </tr>
                                           </tfoot>
@@ -31702,16 +31886,17 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               {(() => {
                                 const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
                                 const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                  ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                  ? kbForm.selectedFields.map(k => resolveFormColKey(k, formAvailableFields)).filter(k => formAvailableFields.some(f => f.key === k))
                                   : [];
                                 const activeF = validSelected.length > 0 ? validSelected : defaultFieldKeys;
 
+                                const isRegistryMode = kbForm.summaryType === "registry" || kbForm.summaryType === "donor_list";
+                                const hasExplicitGroupWithCount = activeF.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count");
                                 const hasGroupAction = activeF.some(k => {
                                   const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
                                   return act === "group_count" || act === "distinct_group" || act === "distinct_count";
                                 });
-                                const isPersonMode = activeF.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
-                                const isGrouped = hasGroupAction && (!isPersonMode || activeF.length === 1 || activeF.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
+                                const isGrouped = !isRegistryMode && (hasExplicitGroupWithCount || (activeF.length === 1 && hasGroupAction));
 
                                 const primaryGroupKey = activeF.find(k => {
                                   const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
@@ -31808,28 +31993,80 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   }
                                 }
 
-                                // Person-wise list mode
-                                let pText = isGu ? `📋 *અરજી યાદી (Live Database Submissions):*\n` : `📋 *Submissions Registry:*\n`;
-                                previewFilteredRegistrations.slice(0, 10).forEach((r, idx) => {
-                                  const num = isGu ? toGujDigits(idx + 1) : (idx + 1);
-                                  const parts = [];
-                                  if (activeF.includes("name")) parts.push(`*${getRegRowValue(r, "name")}*`);
-                                  if (activeF.includes("vibhag")) parts.push(`(${getRegRowValue(r, "vibhag")})`);
-                                  if (activeF.includes("stream")) parts.push(`• ${getRegRowValue(r, "stream")}`);
-                                  if (activeF.includes("percentage") && getRegRowValue(r, "percentage") !== "-") parts.push(`[${getRegRowValue(r, "percentage")}%]`);
-                                  if (activeF.includes("status")) parts.push(`[Status: ${getRegRowValue(r, "status")}]`);
-                                  if (activeF.includes("mobile")) parts.push(`📱 ${getRegRowValue(r, "mobile")}`);
-                                  if (activeF.includes("txnId") && getRegRowValue(r, "txnId") !== "-") parts.push(`ID: ${getRegRowValue(r, "txnId")}`);
-                                  pText += `${num}. ${parts.join(" ")}\n`;
-                                });
-                                if (previewFilteredRegistrations.length > 10) {
-                                  pText += `... and ${previewFilteredRegistrations.length - 10} more applicants\n`;
+                                // Person-wise list mode (Dynamic Columns)
+                                if (isTableFormat) {
+                                  let tText = isGu
+                                    ? `📋 *અરજી યાદી કોષ્ટક (Submissions Registry Table):*\n`
+                                    : `📋 *Submissions Registry Table:*\n`;
+                                  tText += "```\n";
+                                  const colMeta = activeF.map(k => {
+                                    const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k, formAvailableFields);
+                                    return { key: k, title: isGu ? cGu : cEn };
+                                  });
+                                  const hSr = isGu ? "ક્રમ" : "Sr.";
+                                  if (colMeta.length === 2) {
+                                    tText += `${padCol(hSr, 4)} ${padCol(colMeta[0].title.slice(0, 18), 18)} ${colMeta[1].title}\n`;
+                                    tText += `-----------------------------------\n`;
+                                    previewFilteredRegistrations.slice(0, 15).forEach((r, idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      const v0 = String(getRegRowValue(r, colMeta[0].key) || "-").slice(0, 17);
+                                      const v1 = String(getRegRowValue(r, colMeta[1].key) || "-");
+                                      tText += `${padCol(sr, 4)} ${padCol(v0, 18)} ${v1}\n`;
+                                    });
+                                  } else {
+                                    const headerLine = [padCol(hSr, 4), ...colMeta.map((c, i) => i === colMeta.length - 1 ? c.title : padCol(c.title.slice(0, 12), 12))].join(" ");
+                                    tText += `${headerLine}\n-----------------------------------\n`;
+                                    previewFilteredRegistrations.slice(0, 15).forEach((r, idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      const vals = colMeta.map((c, i) => {
+                                        const val = String(getRegRowValue(r, c.key) || "-");
+                                        return i === colMeta.length - 1 ? val : padCol(val.slice(0, 11), 12);
+                                      });
+                                      tText += `${[padCol(sr, 4), ...vals].join(" ")}\n`;
+                                    });
+                                  }
+                                  tText += `-----------------------------------\n`;
+                                  tText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(totCntDisplay, 6)} ${isGu ? "કુલ અરજીઓ" : "Grand Total"}\n`;
+                                  tText += "```\n";
+                                  if (previewFilteredRegistrations.length > 15) {
+                                    tText += isGu
+                                      ? `... અને અન્ય ${toGujDigits(previewFilteredRegistrations.length - 15)} અરજીઓ\n`
+                                      : `... and ${previewFilteredRegistrations.length - 15} more submissions\n`;
+                                  }
+                                  tText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  tText += isGu
+                                    ? `📊 *કુલ અરજીઓ (Grand Total): ${totCntDisplay}*\n`
+                                    : `📊 *Grand Total Submissions: ${totCntDisplay}*\n`;
+                                  return tText;
+                                } else {
+                                  let pText = isGu ? `📋 *અરજી યાદી (Live Database Submissions):*\n` : `📋 *Submissions Registry:*\n`;
+                                  previewFilteredRegistrations.slice(0, 15).forEach((r, idx) => {
+                                    const num = isGu ? toGujDigits(idx + 1) : (idx + 1);
+                                    const parts = [];
+                                    activeF.forEach(k => {
+                                      const val = getRegRowValue(r, k);
+                                      if (!val || val === "-") return;
+                                      const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k, formAvailableFields);
+                                      const colName = isGu ? cGu : cEn;
+                                      if (k === "name") {
+                                        parts.push(`*${val}*`);
+                                      } else {
+                                        parts.push(`[${colName}: ${val}]`);
+                                      }
+                                    });
+                                    pText += `${num}. ${parts.join(" ")}\n`;
+                                  });
+                                  if (previewFilteredRegistrations.length > 15) {
+                                    pText += isGu
+                                      ? `... અને અન્ય ${toGujDigits(previewFilteredRegistrations.length - 15)} અરજીઓ\n`
+                                      : `... and ${previewFilteredRegistrations.length - 15} more applicants\n`;
+                                  }
+                                  pText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  pText += isGu 
+                                    ? `📊 *કુલ અરજી સંખ્યા (Grand Total): ${totCntDisplay}*\n`
+                                    : `📊 *Grand Total Submissions: ${totCntDisplay}*\n`;
+                                  return pText;
                                 }
-                                pText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                pText += isGu 
-                                  ? `📋 *કુલ અરજી સંખ્યા: ${toGujDigits(previewFilteredRegistrations.length)}*\n`
-                                  : `📋 *Total Submissions count ${previewFilteredRegistrations.length}*\n`;
-                                return pText;
                               })()}
                               {kbForm.customWaSignatory ? `${kbForm.customWaSignatory}\n\n` : ""}
                               {`🌐 *Live Portal:* https://mmp-cwc.com`}
@@ -58360,21 +58597,65 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
           ? `📊 *કુલ અરજીઓ (Grand Total): ${toGujDigits(count)}* (${toGujDigits(donorData.groupBreakdown.length)} વિવિધ ${primaryGrp} માં)\r\n`
           : `📊 *Grand Total Submissions: ${count}* (across ${donorData.groupBreakdown.length} distinct ${primaryGrp}s)\r\n`;
       } else {
-        msg += `📋 *અરજી યાદી (${filtered.length} Submissions):*\r\n`;
-        filtered.forEach((d, idx) => {
-          const numGu = toGujDigits(idx + 1);
-          const parts = [];
-          if (activeFields.includes("name")) parts.push(d.name || "Applicant");
-          if (activeFields.includes("vibhag") && d.vibhag) parts.push(`(${d.vibhag})`);
-          if (activeFields.includes("stream") && d.stream) parts.push(`• ${d.stream}`);
-          if (activeFields.includes("percentage") && d.percentage) parts.push(`[${d.percentage}%]`);
-          if (activeFields.includes("status") && d.status) parts.push(`[${d.status}]`);
-          if (activeFields.includes("mobile") && d.mobile) parts.push(`📱 ${d.mobile}`);
-          if (activeFields.includes("txnId") && (d.txnId || d.receiptNo)) parts.push(`ID: ${d.txnId || d.receiptNo}`);
-          msg += `${numGu}. ${parts.join(" ")}\r\n`;
-        });
+        const isGu = (donorData.tableLang || donorData.matchedKb?.tableLang || "gu") === "gu";
+        const isTableFormat = (donorData.layoutFormat || donorData.matchedKb?.layoutFormat || "table") === "table";
+        if (isTableFormat) {
+          msg += isGu
+            ? `📋 *અરજી યાદી કોષ્ટક (Submissions Registry Table):*\r\n`
+            : `📋 *Submissions Registry Table:*\r\n`;
+          msg += "```\r\n";
+          const colMeta = activeFields.map(k => {
+            const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k);
+            return { key: k, title: isGu ? cGu : cEn };
+          });
+          const hSr = isGu ? "ક્રમ" : "Sr.";
+          if (colMeta.length === 2) {
+            msg += `${padCol(hSr, 4)} ${padCol(colMeta[0].title.slice(0, 18), 18)} ${colMeta[1].title}\r\n`;
+            msg += `-----------------------------------\r\n`;
+            filtered.forEach((d, idx) => {
+              const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+              const v0 = String(getRegRowValue(d, colMeta[0].key) || "-").slice(0, 17);
+              const v1 = String(getRegRowValue(d, colMeta[1].key) || "-");
+              msg += `${padCol(sr, 4)} ${padCol(v0, 18)} ${v1}\r\n`;
+            });
+          } else {
+            const headerLine = [padCol(hSr, 4), ...colMeta.map((c, i) => i === colMeta.length - 1 ? c.title : padCol(c.title.slice(0, 12), 12))].join(" ");
+            msg += `${headerLine}\r\n-----------------------------------\r\n`;
+            filtered.forEach((d, idx) => {
+              const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+              const vals = colMeta.map((c, i) => {
+                const val = String(getRegRowValue(d, c.key) || "-");
+                return i === colMeta.length - 1 ? val : padCol(val.slice(0, 11), 12);
+              });
+              msg += `${[padCol(sr, 4), ...vals].join(" ")}\r\n`;
+            });
+          }
+          msg += `-----------------------------------\r\n`;
+          msg += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(isGu ? toGujDigits(filtered.length) : String(filtered.length), 6)} ${isGu ? "કુલ અરજીઓ" : "Grand Total"}\r\n`;
+          msg += "```\r\n";
+        } else {
+          msg += isGu ? `📋 *અરજી યાદી (${toGujDigits(filtered.length)} Submissions):*\r\n` : `📋 *Submissions Registry (${filtered.length} Submissions):*\r\n`;
+          filtered.forEach((d, idx) => {
+            const numGu = isGu ? toGujDigits(idx + 1) : (idx + 1);
+            const parts = [];
+            activeFields.forEach(k => {
+              const val = getRegRowValue(d, k);
+              if (!val || val === "-") return;
+              const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k);
+              const colName = isGu ? cGu : cEn;
+              if (k === "name") {
+                parts.push(`*${val}*`);
+              } else {
+                parts.push(`[${colName}: ${val}]`);
+              }
+            });
+            msg += `${numGu}. ${parts.join(" ")}\r\n`;
+          });
+        }
         msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
-        msg += `📋 *Total Submissions count ${filtered.length}*\r\n`;
+        msg += isGu 
+          ? `📊 *કુલ અરજી સંખ્યા (Grand Total): ${toGujDigits(filtered.length)}*\r\n`
+          : `📊 *Total Submissions count ${filtered.length}*\r\n`;
       }
 
       if (signatory) msg += signatory + "\r\n";
@@ -58499,7 +58780,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div>
           <div style={{fontSize:".84rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
-            <span>📋</span> Donor Registry ({filtered.length} of {donors.length})
+            <span>📋</span> {donorData.isFormMode ? `Submissions Registry (${filtered.length} Entries)` : `Donor Registry (${filtered.length} of ${donors.length})`}
           </div>
           {donorData.eventLabel && (
             <div style={{fontSize:".72rem",color:"#2563EB",fontWeight:800,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
@@ -58509,21 +58790,41 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
           )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {!donorData.isFormMode && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPosterMapperModal(true)}
+                style={{padding:"3px 8px",borderRadius:5,background:"#EFF6FF",border:"1px solid #93C5FD",color:"#1D4ED8",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                title="Drag and drop variables to position Name & Amount on poster"
+              >
+                <span>🎯</span> Adjust Positions
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPosterTplUploadModal(true)}
+                style={{padding:"3px 8px",borderRadius:5,background:"#F0FDF4",border:"1px solid #86EFAC",color:"#15803D",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                title="Upload or change Appreciation Certificate background template"
+              >
+                <span>🎨</span> Poster Template
+              </button>
+            </>
+          )}
           <button
             type="button"
-            onClick={() => setShowPosterMapperModal(true)}
-            style={{padding:"3px 8px",borderRadius:5,background:"#EFF6FF",border:"1px solid #93C5FD",color:"#1D4ED8",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-            title="Drag and drop variables to position Name & Amount on poster"
+            onClick={handleCopyWhatsApp}
+            style={{padding:"3px 8px",borderRadius:5,background:copied ? "#DCFCE7" : "#F1F5F9",border:copied ? "1px solid #16A34A" : "1px solid #CBD5E1",color:copied ? "#166534" : "#334155",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+            title="Copy formatted registry message for WhatsApp"
           >
-            <span>🎯</span> Adjust Positions
+            <span>{copied ? "✅" : "📋"}</span> {copied ? "Copied!" : "Copy WhatsApp"}
           </button>
           <button
             type="button"
-            onClick={() => setShowPosterTplUploadModal(true)}
-            style={{padding:"3px 8px",borderRadius:5,background:"#F0FDF4",border:"1px solid #86EFAC",color:"#15803D",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-            title="Upload or change Appreciation Certificate background template"
+            onClick={handleShareWhatsApp}
+            style={{padding:"3px 8px",borderRadius:5,background:"#25D366",color:"white",border:"none",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+            title="Share directly via WhatsApp"
           >
-            <span>🎨</span> Poster Template
+            <span>📱</span> Share
           </button>
           <button
             type="button"
@@ -58534,7 +58835,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
             <span>💬</span> WhatsApp Editor
           </button>
           <span style={{fontSize:".78rem",fontWeight:800,color:"#15803D"}}>
-            {donorData.isFormMode ? `📋 ${donorData.totalAmount || donors.length} Submissions` : `₹${donorData.totalAmount.toLocaleString('en-IN')} Total`}
+            {donorData.isFormMode ? `📋 ${filtered.length} Submissions` : `₹${donorData.totalAmount.toLocaleString('en-IN')} Total`}
           </span>
         </div>
       </div>
@@ -58622,129 +58923,191 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
         </div>
       )}
 
-      <div style={{maxHeight:220,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
-        {filtered.map((d, di) => {
-          const isOff = d.isOffline || d.paymentMode === "Offline" || String(d.paymentMethod || "").toLowerCase().includes("offline");
-          return (
-            <div key={di} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 10px",fontSize:".76rem"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                <div style={{fontWeight:800,color:"#0F172A"}}>
-                  {di + 1}. {d.name}
-                  {(d.nameGu || d.donorNameGu) && (
-                    <span style={{display:"block",fontSize:".74rem",color:"#15803D",fontWeight:700,marginTop:2}}>
-                      {d.nameGu || d.donorNameGu}
+      <div style={{maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+        {donorData.isFormMode ? (
+          filtered.map((d, di) => {
+            const applicantName = d.name || d["Full Name"] || d.studentName || "Applicant";
+            const applicantMobile = d.mobile || d.phone || d["Mobile Number"];
+            const cleanMobile = applicantMobile ? String(applicantMobile).replace(/\D/g, '').slice(-10) : "";
+            const isApp = String(d.status || "").toLowerCase().includes("app") || String(d.status || "").toLowerCase().includes("verif");
+            const activeFields = (donorData.selectedFields && donorData.selectedFields.length > 0)
+              ? donorData.selectedFields
+              : ["name", "vibhag", "mobile", "stream"];
+            return (
+              <div key={di} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 10px",fontSize:".76rem"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{fontWeight:800,color:"#0F172A"}}>
+                    {di + 1}. {applicantName}
+                  </div>
+                  {d.status && (
+                    <span style={{
+                      fontSize:".66rem",
+                      padding:"1px 6px",
+                      borderRadius:4,
+                      fontWeight:700,
+                      background: isApp ? "#DCFCE7" : "#FEF3C7",
+                      color: isApp ? "#15803D" : "#B45309"
+                    }}>
+                      {d.status}
                     </span>
                   )}
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontWeight:800,color:"#15803D",fontSize:".82rem"}}>₹{Number(d.amount).toLocaleString('en-IN')}</span>
+                {/* Dynamic values for selectedFields */}
+                <div style={{display:"flex",gap:6,color:"#334155",fontSize:".72rem",flexWrap:"wrap",alignItems:"center"}}>
+                  {activeFields.filter(k => k !== "name" && k !== "status").map(k => {
+                    const val = getRegRowValue(d, k);
+                    if (!val || val === "-") return null;
+                    const { enLabel: cEn, guLabel: cGu } = getFieldDynamicLabels(k);
+                    const label = (donorData.tableLang || "gu") === "gu" ? cGu : cEn;
+                    return (
+                      <span key={k} style={{background:"#E2E8F0",padding:"2px 6px",borderRadius:4,fontWeight:600}}>
+                        <strong>{label}:</strong> {val}
+                      </span>
+                    );
+                  })}
+                </div>
+                {/* Action buttons */}
+                {cleanMobile && (
+                  <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,borderTop:"1px dashed #E2E8F0",paddingTop:4}}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const waUrl = `https://api.whatsapp.com/send?phone=91${cleanMobile}`;
+                        window.open(waUrl, "_blank");
+                      }}
+                      style={{padding:"3px 8px",borderRadius:4,background:"#25D366",color:"white",border:"none",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                    >
+                      <span>📱</span> WhatsApp Applicant (+91 {cleanMobile})
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          filtered.map((d, di) => {
+            const isOff = d.isOffline || d.paymentMode === "Offline" || String(d.paymentMethod || "").toLowerCase().includes("offline");
+            return (
+              <div key={di} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 10px",fontSize:".76rem"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                  <div style={{fontWeight:800,color:"#0F172A"}}>
+                    {di + 1}. {d.name}
+                    {(d.nameGu || d.donorNameGu) && (
+                      <span style={{display:"block",fontSize:".74rem",color:"#15803D",fontWeight:700,marginTop:2}}>
+                        {d.nameGu || d.donorNameGu}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontWeight:800,color:"#15803D",fontSize:".82rem"}}>₹{Number(d.amount).toLocaleString('en-IN')}</span>
+                    <button
+                      type="button"
+                      onClick={() => setActivePosterDonor(d)}
+                      style={{background:"#F0FDF4",border:"1px solid #86EFAC",color:"#166534",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:3}}
+                      title="View, download, or share Certificate of Appreciation poster for this donor"
+                    >
+                      <span>🖼️</span> Poster
+                    </button>
+                    <button
+                      onClick={() => {
+                        const customWordDict = C?.gujaratiWordDictionary || {};
+                        setEditingDonation(d);
+                        setEditFormData({
+                          name: d.name || "",
+                          nameGu: d.nameGu || transliterateEnglishToGujaratiPhonetic(d.name || "", customWordDict),
+                          amount: d.amount || "",
+                          date: d.date || new Date().toISOString().split('T')[0],
+                          vibhag: d.vibhag || "10 MAHALAXMI",
+                          vibhagGu: d.vibhagGu || (String(d.vibhag || "").toLowerCase().includes("outside") ? "મુંબઈ બહાર / સામાન્ય" : transliterateEnglishToGujaratiPhonetic(d.vibhag || "", customWordDict)),
+                          purpose: d.purpose || d.program || "Education Felicitation 2026",
+                          eventCode: d.eventCode || "EDU26",
+                          receiptNo: d.receiptNo || d.internalReceiptNo || d.id || "",
+                          paymentMode: d.paymentMode || (d.isOffline ? "Offline" : "Online"),
+                          status: d.status || "Verified",
+                          pan: d.pan || "",
+                          phone: d.phone || "",
+                          email: d.email || "",
+                          remarks: d.remarks || d.Remarks || ""
+                        });
+                      }}
+                      style={{background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",gap:2}}
+                      title="Edit complete record & Gujarati translation"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Delete donation entry for "${d.name}" (₹${d.amount})?`)) return;
+                        try {
+                          const targetId = d._docId || d.id;
+                          await fbDeleteDonation(targetId, auth?.idToken);
+                          alert("✅ Donation deleted.");
+                          if (onRefresh) onRefresh();
+                        } catch(err) {
+                          alert("Failed to delete: " + err.message);
+                        }
+                      }}
+                      style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",fontSize:".68rem",padding:"2px 5px",borderRadius:4,cursor:"pointer",fontWeight:700}}
+                      title="Delete donation"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,color:"#64748B",fontSize:".7rem",flexWrap:"wrap"}}>
+                  <span>📅 {d.date}</span>
+                  <span>📍 {d.vibhag || d.program || "General"}</span>
+                  <span style={{background:isOff?"#FFEDD5":"#DCFCE7",color:isOff?"#C2410C":"#15803D",padding:"0 4px",borderRadius:4,fontWeight:700}}>{isOff ? "Offline" : "Online"}</span>
+                  <span>Receipt: <strong>{d.receiptNo || d.internalReceiptNo || d.id}</strong></span>
+                  {(d.phone || d.mobile) && (
+                    <span style={{color:"#15803D",fontWeight:700}}>📱 +91 {String(d.phone || d.mobile).replace(/\D/g,'').slice(-10)}</span>
+                  )}
+                </div>
+
+                {/* Individual Donor Actions Bar: WhatsApp, Save Poster to drive, Copy Message, Preview */}
+                <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,flexWrap:"wrap",borderTop:"1px dashed #E2E8F0",paddingTop:6}}>
+                  <button
+                    type="button"
+                    onClick={() => handleDirectDonorWhatsApp(d)}
+                    style={{padding:"4px 9px",borderRadius:5,background:"#25D366",color:"white",border:"none",fontSize:".7rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 1px 4px rgba(37,211,102,0.3)"}}
+                    title={`Directly send WhatsApp to ${d.name} (${d.phone || d.mobile || 'No mobile'})`}
+                  >
+                    <span>💬</span> WhatsApp
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDirectDonorSavePoster(d)}
+                    disabled={savingPosterId === (d._docId || d.id || d.name)}
+                    style={{padding:"4px 9px",borderRadius:5,background:"#0D4B5E",color:"white",border:"none",fontSize:".7rem",fontWeight:800,cursor:savingPosterId === (d._docId || d.id || d.name) ? "wait" : "pointer",display:"flex",alignItems:"center",gap:4}}
+                    title="Directly download / save this donor's certificate poster to local drive"
+                  >
+                    <span>📥</span> {savingPosterId === (d._docId || d.id || d.name) ? "Saving..." : "Save Poster"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDirectDonorCopyMsg(d)}
+                    style={{padding:"4px 8px",borderRadius:5,background:"#F1F5F9",color:"#334155",border:"1px solid #CBD5E1",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                    title="Copy individual thank you message for this donor"
+                  >
+                    <span>{copiedIndividualId === (d._docId || d.id || d.name) ? "✓ Copied!" : "📋 Copy"}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setActivePosterDonor(d)}
-                    style={{background:"#F0FDF4",border:"1px solid #86EFAC",color:"#166534",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:3}}
-                    title="View, download, or share Certificate of Appreciation poster for this donor"
+                    style={{padding:"4px 8px",borderRadius:5,background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                    title="Full screen view and adjustments for this poster"
                   >
-                    <span>🖼️</span> Poster
-                  </button>
-                  <button
-                    onClick={() => {
-                      const customWordDict = C?.gujaratiWordDictionary || {};
-                      setEditingDonation(d);
-                      setEditFormData({
-                        name: d.name || "",
-                        nameGu: d.nameGu || transliterateEnglishToGujaratiPhonetic(d.name || "", customWordDict),
-                        amount: d.amount || "",
-                        date: d.date || new Date().toISOString().split('T')[0],
-                        vibhag: d.vibhag || "10 MAHALAXMI",
-                        vibhagGu: d.vibhagGu || (String(d.vibhag || "").toLowerCase().includes("outside") ? "મુંબઈ બહાર / સામાન્ય" : transliterateEnglishToGujaratiPhonetic(d.vibhag || "", customWordDict)),
-                        purpose: d.purpose || d.program || "Education Felicitation 2026",
-                        eventCode: d.eventCode || "EDU26",
-                        receiptNo: d.receiptNo || d.internalReceiptNo || d.id || "",
-                        paymentMode: d.paymentMode || (d.isOffline ? "Offline" : "Online"),
-                        status: d.status || "Verified",
-                        pan: d.pan || "",
-                        phone: d.phone || "",
-                        email: d.email || "",
-                        remarks: d.remarks || d.Remarks || ""
-                      });
-                    }}
-                    style={{background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",gap:2}}
-                    title="Edit complete record & Gujarati translation"
-                  >
-                    ✏️ Edit
-                  </button>
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (!window.confirm(`Delete donation entry for "${d.name}" (₹${d.amount})?`)) return;
-                      try {
-                        const targetId = d._docId || d.id;
-                        await fbDeleteDonation(targetId, auth?.idToken);
-                        alert("✅ Donation deleted.");
-                        if (onRefresh) onRefresh();
-                      } catch(err) {
-                        alert("Failed to delete: " + err.message);
-                      }
-                    }}
-                    style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",fontSize:".68rem",padding:"2px 5px",borderRadius:4,cursor:"pointer",fontWeight:700}}
-                    title="Delete donation"
-                  >
-                    🗑️
+                    <span>👁️</span> Preview
                   </button>
                 </div>
               </div>
-              <div style={{display:"flex",gap:8,color:"#64748B",fontSize:".7rem",flexWrap:"wrap"}}>
-                <span>📅 {d.date}</span>
-                <span>📍 {d.vibhag || d.program || "General"}</span>
-                <span style={{background:isOff?"#FFEDD5":"#DCFCE7",color:isOff?"#C2410C":"#15803D",padding:"0 4px",borderRadius:4,fontWeight:700}}>{isOff ? "Offline" : "Online"}</span>
-                <span>Receipt: <strong>{d.receiptNo || d.internalReceiptNo || d.id}</strong></span>
-                {(d.phone || d.mobile) && (
-                  <span style={{color:"#15803D",fontWeight:700}}>📱 +91 {String(d.phone || d.mobile).replace(/\D/g,'').slice(-10)}</span>
-                )}
-              </div>
-
-              {/* Individual Donor Actions Bar: WhatsApp, Save Poster to drive, Copy Message, Preview */}
-              <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,flexWrap:"wrap",borderTop:"1px dashed #E2E8F0",paddingTop:6}}>
-                <button
-                  type="button"
-                  onClick={() => handleDirectDonorWhatsApp(d)}
-                  style={{padding:"4px 9px",borderRadius:5,background:"#25D366",color:"white",border:"none",fontSize:".7rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 1px 4px rgba(37,211,102,0.3)"}}
-                  title={`Directly send WhatsApp to ${d.name} (${d.phone || d.mobile || 'No mobile'})`}
-                >
-                  <span>💬</span> WhatsApp
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDirectDonorSavePoster(d)}
-                  disabled={savingPosterId === (d._docId || d.id || d.name)}
-                  style={{padding:"4px 9px",borderRadius:5,background:"#0D4B5E",color:"white",border:"none",fontSize:".7rem",fontWeight:800,cursor:savingPosterId === (d._docId || d.id || d.name) ? "wait" : "pointer",display:"flex",alignItems:"center",gap:4}}
-                  title="Directly download / save this donor's certificate poster to local drive"
-                >
-                  <span>📥</span> {savingPosterId === (d._docId || d.id || d.name) ? "Saving..." : "Save Poster"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDirectDonorCopyMsg(d)}
-                  style={{padding:"4px 8px",borderRadius:5,background:"#F1F5F9",color:"#334155",border:"1px solid #CBD5E1",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-                  title="Copy individual thank you message for this donor"
-                >
-                  <span>{copiedIndividualId === (d._docId || d.id || d.name) ? "✓ Copied!" : "📋 Copy"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActivePosterDonor(d)}
-                  style={{padding:"4px 8px",borderRadius:5,background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-                  title="Full screen view and adjustments for this poster"
-                >
-                  <span>👁️</span> Preview
-                </button>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #E2E8F0",display:"flex",flexDirection:"column",gap:8}}>
@@ -61226,29 +61589,37 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             ? matchedKb.customWaAppeal.trim()
             : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Submissions Registry${formLabel ? ` — ${formLabel}` : ""} (${targetRegs.length} Entries Recorded)**:`);
 
-          const mappedItems = targetRegs.map((r, idx) => ({
-            id: r.id || r._docId || `REG-${idx + 1}`,
-            name: getRegRowValue(r, "name"),
-            amount: getRegRowValue(r, "amount") || "",
-            vibhag: getRegRowValue(r, "vibhag"),
-            mobile: getRegRowValue(r, "mobile"),
-            stream: getRegRowValue(r, "stream"),
-            percentage: getRegRowValue(r, "percentage"),
-            school: getRegRowValue(r, "school"),
-            status: getRegRowValue(r, "status"),
-            txnId: getRegRowValue(r, "txnId"),
-            date: getRegRowValue(r, "date"),
-            receiptNo: getRegRowValue(r, "txnId"),
-            ...r
-          }));
-
           const activeFields = (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0)
-            ? matchedKb.selectedFields
+            ? matchedKb.selectedFields.map(k => resolveFormColKey(k)).filter(Boolean)
             : ["name", "vibhag", "mobile", "stream"];
           const fieldActions = matchedKb?.fieldActions || {};
+          const isRegistryMode = matchedKb?.summaryType === "registry" || matchedKb?.summaryType === "donor_list";
+          const hasExplicitGroupWithCount = activeFields.some(k => fieldActions[k] === "group_count");
           const hasGroupAction = activeFields.some(k => ["group_count", "distinct_group", "distinct_count"].includes(fieldActions[k]));
           const isPersonMode = activeFields.includes("name") && (fieldActions["name"] === "show" || !fieldActions["name"]);
-          const isGroupedView = hasGroupAction && (!isPersonMode || activeFields.length === 1 || activeFields.some(k => fieldActions[k] === "group_count"));
+          const isGroupedView = !isRegistryMode && (hasExplicitGroupWithCount || (activeFields.length === 1 && hasGroupAction));
+
+          const mappedItems = targetRegs.map((r, idx) => {
+            const item = {
+              id: r.id || r._docId || `REG-${idx + 1}`,
+              name: getRegRowValue(r, "name"),
+              amount: getRegRowValue(r, "amount") || "",
+              vibhag: getRegRowValue(r, "vibhag"),
+              mobile: getRegRowValue(r, "mobile"),
+              stream: getRegRowValue(r, "stream"),
+              percentage: getRegRowValue(r, "percentage"),
+              school: getRegRowValue(r, "school"),
+              status: getRegRowValue(r, "status"),
+              txnId: getRegRowValue(r, "txnId"),
+              date: getRegRowValue(r, "date"),
+              receiptNo: getRegRowValue(r, "txnId"),
+              ...r
+            };
+            activeFields.forEach(k => {
+              item[k] = getRegRowValue(r, k);
+            });
+            return item;
+          });
 
           const primaryGroupKey = activeFields.find(k => ["group_count", "distinct_group", "distinct_count"].includes(fieldActions[k]))
             || (activeFields.includes("vibhag") ? "vibhag" : activeFields[0]);
