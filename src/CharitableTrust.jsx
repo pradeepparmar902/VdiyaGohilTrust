@@ -1402,6 +1402,7 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "distinct_count",
     allowedActions: [
       { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1409,10 +1410,12 @@ export const DONATION_AVAILABLE_FIELDS = [
     key: "vibhag",
     shortLabel: "Vibhag",
     label: "Vibhag (વિભાગ)",
-    defaultAction: "distinct",
+    defaultAction: "distinct_group",
     allowedActions: [
-      { id: "distinct", label: "Distinct" },
       { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1423,8 +1426,10 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "sum",
     allowedActions: [
       { id: "sum", label: "Sum" },
-      { id: "show", label: "Show" },
-      { id: "avg", label: "Average" }
+      { id: "avg", label: "Average" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "show", label: "Show" }
     ]
   },
   {
@@ -1434,6 +1439,7 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "distinct_count",
     allowedActions: [
       { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1444,7 +1450,10 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "show",
     allowedActions: [
       { id: "show", label: "Show" },
-      { id: "distinct_count", label: "Distinct / count" }
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" }
     ]
   },
   {
@@ -1454,6 +1463,9 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "distinct_split",
     allowedActions: [
       { id: "distinct_split", label: "Distinct / Split" },
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1464,6 +1476,8 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "distinct_group",
     allowedActions: [
       { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
       { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
@@ -1475,6 +1489,8 @@ export const DONATION_AVAILABLE_FIELDS = [
     defaultAction: "show",
     allowedActions: [
       { id: "show", label: "Show" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "masked", label: "Masked" }
     ]
   }
@@ -1488,6 +1504,7 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "distinct_count",
     allowedActions: [
       { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1495,10 +1512,12 @@ export const FORM_AVAILABLE_FIELDS = [
     key: "vibhag",
     shortLabel: "Vibhag",
     label: "Vibhag (વિભાગ)",
-    defaultAction: "distinct",
+    defaultAction: "distinct_group",
     allowedActions: [
-      { id: "distinct", label: "Distinct" },
       { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1510,6 +1529,7 @@ export const FORM_AVAILABLE_FIELDS = [
     allowedActions: [
       { id: "show", label: "Show" },
       { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "masked", label: "Masked" }
     ]
   },
@@ -1520,6 +1540,8 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "distinct_group",
     allowedActions: [
       { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
       { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
@@ -1531,7 +1553,9 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "show",
     allowedActions: [
       { id: "show", label: "Show" },
-      { id: "avg", label: "Average" }
+      { id: "avg", label: "Average" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" }
     ]
   },
   {
@@ -1541,6 +1565,9 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "show",
     allowedActions: [
       { id: "show", label: "Show" },
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
       { id: "distinct", label: "Distinct" }
     ]
   },
@@ -1551,6 +1578,8 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "distinct_group",
     allowedActions: [
       { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
       { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
@@ -1562,6 +1591,7 @@ export const FORM_AVAILABLE_FIELDS = [
     defaultAction: "distinct_count",
     allowedActions: [
       { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" },
       { id: "show", label: "Show" }
     ]
   },
@@ -1571,7 +1601,11 @@ export const FORM_AVAILABLE_FIELDS = [
     label: "Submission Date (તારીખ)",
     defaultAction: "show",
     allowedActions: [
-      { id: "show", label: "Show" }
+      { id: "show", label: "Show" },
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "group_count", label: "Group with Count" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "distinct", label: "Distinct" }
     ]
   }
 ];
@@ -26664,6 +26698,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
           defaultAction: "distinct_count",
           allowedActions: [
             { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct", label: "Distinct" },
             { id: "show", label: "Show" }
           ]
         },
@@ -26671,10 +26706,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
           key: "vibhag",
           shortLabel: "Vibhag",
           label: "Vibhag (વિભાગ)",
-          defaultAction: "distinct",
+          defaultAction: "distinct_group",
           allowedActions: [
-            { id: "distinct", label: "Distinct" },
             { id: "distinct_group", label: "Distinct / Group" },
+            { id: "group_count", label: "Group with Count" },
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct", label: "Distinct" },
             { id: "show", label: "Show" }
           ]
         },
@@ -26686,6 +26723,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
           allowedActions: [
             { id: "show", label: "Show" },
             { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct", label: "Distinct" },
             { id: "masked", label: "Masked" }
           ]
         },
@@ -26696,6 +26734,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
           defaultAction: "distinct_group",
           allowedActions: [
             { id: "distinct_group", label: "Distinct / Group" },
+            { id: "group_count", label: "Group with Count" },
+            { id: "distinct_count", label: "Distinct / count" },
             { id: "distinct", label: "Distinct" },
             { id: "show", label: "Show" }
           ]
@@ -26707,6 +26747,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
           defaultAction: "distinct_count",
           allowedActions: [
             { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct", label: "Distinct" },
             { id: "show", label: "Show" }
           ]
         },
@@ -26716,7 +26757,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
           label: "Submission Date (તારીખ)",
           defaultAction: "show",
           allowedActions: [
-            { id: "show", label: "Show" }
+            { id: "show", label: "Show" },
+            { id: "distinct_group", label: "Distinct / Group" },
+            { id: "group_count", label: "Group with Count" },
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct", label: "Distinct" }
           ]
         }
       ];
@@ -26790,10 +26835,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
             label: `${rawLabel} (${form.name || 'Form Field'})`,
             defaultAction: "show",
             allowedActions: [
-              { id: "show", label: "Show" },
-              { id: "distinct", label: "Distinct" },
+              { id: "distinct_group", label: "Distinct / Group" },
+              { id: "group_count", label: "Group with Count" },
               { id: "distinct_count", label: "Distinct / count" },
-              { id: "distinct_group", label: "Distinct / Group" }
+              { id: "distinct", label: "Distinct" },
+              { id: "show", label: "Show" }
             ]
           });
         }
@@ -29369,138 +29415,218 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                               {/* SAMPLE EXTRACTED OUTPUT PREVIEW TABLE */}
                               <div style={{marginTop:12,background:"#F8FAFC",border:"1.5px dashed #059669",borderRadius:8,padding:12}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
-                                  <div style={{fontSize:".76rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
-                                    <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
-                                  </div>
-                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                    <span style={{fontSize:".68rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                      {(kbForm.selectedFields || ["name", "amount", "vibhag"]).length} Columns Selected
-                                    </span>
-                                    <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                      {previewFilteredDonations.length} {previewFilteredDonations.length === 1 ? 'Record' : 'Records'} Extracted
-                                    </span>
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const defaultDonCols = ["name", "amount", "vibhag"];
+                                  const curDonCols = (Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0)
+                                    ? kbForm.selectedFields
+                                    : defaultDonCols;
+                                  const hasDonGroupAction = curDonCols.some(k => {
+                                    const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || DONATION_AVAILABLE_FIELDS.find(f => f.key === k)?.defaultAction;
+                                    return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                  });
+                                  const isDonPersonMode = curDonCols.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
+                                  const isDonGroupedView = hasDonGroupAction && (!isDonPersonMode || curDonCols.length === 1 || curDonCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
 
-                                <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
-                                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
-                                    <thead style={{position:"sticky",top:0,zIndex:1}}>
-                                      <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
-                                        <th style={{padding:"6px 10px",width:36}}>sr.</th>
-                                        {(kbForm.selectedFields || ["name", "amount", "vibhag"]).map(k => {
-                                          const fDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === k);
-                                          return (
-                                            <th key={k} style={{padding:"6px 10px",textAlign: k === "amount" ? "right" : "left"}}>
-                                              {fDef ? fDef.shortLabel : k}
-                                            </th>
-                                          );
-                                        })}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {previewFilteredDonations.length === 0 ? (
-                                        <tr>
-                                          <td colSpan={(kbForm.selectedFields || ["name", "amount", "vibhag"]).length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
-                                            No donation records found matching the selected event code(s).
-                                          </td>
-                                        </tr>
-                                      ) : (
-                                        previewFilteredDonations.slice(0, 15).map((row, ri) => (
-                                          <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
-                                            <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                            {(kbForm.selectedFields || ["name", "amount", "vibhag"]).map(k => {
-                                              if (k === "amount") {
-                                                const amt = Number(row.amount || 0);
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
-                                                    ₹{amt.toLocaleString('en-IN')}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "paymentMode") {
-                                                const isOff = row.isOffline || row.paymentMode === "Offline" || String(row.paymentMethod || "").toLowerCase().includes("offline");
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px"}}>
-                                                    <span style={{fontSize:".68rem",background:isOff ? "#FFEDD5" : "#DCFCE7",color:isOff ? "#C2410C" : "#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
-                                                      {isOff ? "Offline" : "Online"}
-                                                    </span>
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "name") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>
-                                                    {row.name || row.donorName || "-"}
-                                                    {(row.nameGu || row.donorNameGu) && (
-                                                      <span style={{fontSize:".68rem",color:"#047857",display:"block"}}>
-                                                        {row.nameGu || row.donorNameGu}
-                                                      </span>
-                                                    )}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "vibhag") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
-                                                    {row.vibhag || row.vibhagNumber || "-"}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "receiptNo") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",color:"#475569",fontFamily:"monospace"}}>
-                                                    {row.receiptNo || row.internalReceiptNo || row.id || "-"}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "date") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",color:"#64748B"}}>
-                                                    {row.date || (row._submittedAt ? new Date(row._submittedAt).toISOString().split('T')[0] : "-")}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "purpose") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
-                                                    {row.purpose || row.program || row.eventName || "-"}
-                                                  </td>
-                                                );
-                                              }
-                                              if (k === "mobile") {
-                                                return (
-                                                  <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
-                                                    {row.mobile || row.phone ? `+91 ${String(row.mobile || row.phone).replace(/\D/g,'').slice(-10)}` : "-"}
-                                                  </td>
-                                                );
-                                              }
-                                              return (
-                                                <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
-                                                  {row[k] || "-"}
+                                  const primaryDonGroupKey = curDonCols.find(k => {
+                                    const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || DONATION_AVAILABLE_FIELDS.find(f => f.key === k)?.defaultAction;
+                                    return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                  }) || (curDonCols.includes("vibhag") ? "vibhag" : curDonCols[0]);
+
+                                  const primaryDonDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === primaryDonGroupKey);
+                                  const primaryDonLabel = primaryDonDef ? primaryDonDef.shortLabel : primaryDonGroupKey;
+
+                                  const donGroupMap = {};
+                                  previewFilteredDonations.forEach(d => {
+                                    const raw = String(d.vibhag || d.vibhagNumber || d.program || "General / Main").trim();
+                                    const val = raw || "General / Main";
+                                    const amt = parseFloat(d.amount) || 0;
+                                    if (!donGroupMap[val]) donGroupMap[val] = { count: 0, total: 0 };
+                                    donGroupMap[val].count++;
+                                    donGroupMap[val].total += amt;
+                                  });
+                                  const donGroupList = Object.entries(donGroupMap).sort((a, b) => b[1].total - a[1].total);
+
+                                  return (
+                                    <>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
+                                        <div style={{fontSize:".76rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
+                                          <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
+                                        </div>
+                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                          <span style={{fontSize:".68rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                            {curDonCols.length} Columns Selected
+                                          </span>
+                                          <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                            {isDonGroupedView ? `${donGroupList.length} Distinct ${primaryDonLabel}s (${previewFilteredDonations.length} Total)` : `${previewFilteredDonations.length} Records Extracted`}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
+                                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
+                                          <thead style={{position:"sticky",top:0,zIndex:1}}>
+                                            <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
+                                              <th style={{padding:"6px 10px",width:36}}>sr.</th>
+                                              {isDonGroupedView ? (
+                                                <>
+                                                  <th style={{padding:"6px 10px"}}>{primaryDonLabel}</th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>Donors Count (દાતાઓ)</th>
+                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Total Amount (દાન રકમ ₹)</th>
+                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Average (સરેરાશ ₹)</th>
+                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Share % (હિસ્સો)</th>
+                                                </>
+                                              ) : (
+                                                curDonCols.map(k => {
+                                                  const fDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === k);
+                                                  return (
+                                                    <th key={k} style={{padding:"6px 10px",textAlign: k === "amount" ? "right" : "left"}}>
+                                                      {fDef ? fDef.shortLabel : k}
+                                                    </th>
+                                                  );
+                                                })
+                                              )}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {previewFilteredDonations.length === 0 ? (
+                                              <tr>
+                                                <td colSpan={isDonGroupedView ? 6 : curDonCols.length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
+                                                  No donation records found matching the selected event code(s).
                                                 </td>
-                                              );
-                                            })}
-                                          </tr>
-                                        ))
-                                      )}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr style={{background:"#F8FAFC",borderTop:"2px solid #CBD5E1"}}>
-                                        <td colSpan={(kbForm.selectedFields || ["name", "amount", "vibhag"]).length + 1} style={{padding:"8px 10px",color:"#065F46",fontWeight:800,fontSize:".8rem"}}>
-                                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
-                                            <span>Total Donation ₹{previewTotalAmt.toLocaleString('en-IN')}/- count {previewFilteredDonations.length}</span>
-                                            {previewFilteredDonations.length > 15 && (
-                                              <span style={{fontSize:".7rem",color:"#64748B",fontWeight:600}}>
-                                                (Showing first 15 of {previewFilteredDonations.length} records)
-                                              </span>
+                                              </tr>
+                                            ) : isDonGroupedView ? (
+                                              donGroupList.slice(0, 20).map(([val, stats], ri) => {
+                                                const pct = previewTotalAmt > 0 ? ((stats.total / previewTotalAmt) * 100).toFixed(1) : "0";
+                                                const avg = stats.count > 0 ? Math.round(stats.total / stats.count) : 0;
+                                                return (
+                                                  <tr key={val} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                                    <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                                    <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                    <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                      {stats.count} દાતા
+                                                    </td>
+                                                    <td style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
+                                                      ₹{stats.total.toLocaleString('en-IN')}
+                                                    </td>
+                                                    <td style={{padding:"6px 10px",textAlign:"right",color:"#475569"}}>
+                                                      ₹{avg.toLocaleString('en-IN')}
+                                                    </td>
+                                                    <td style={{padding:"6px 10px",textAlign:"right",color:"#64748B",fontWeight:700}}>
+                                                      {pct}%
+                                                    </td>
+                                                  </tr>
+                                                );
+                                              })
+                                            ) : (
+                                              previewFilteredDonations.slice(0, 15).map((row, ri) => (
+                                                <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                                  <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                                  {curDonCols.map(k => {
+                                                    if (k === "amount") {
+                                                      const amt = Number(row.amount || 0);
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
+                                                          ₹{amt.toLocaleString('en-IN')}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "paymentMode") {
+                                                      const isOff = row.isOffline || row.paymentMode === "Offline" || String(row.paymentMethod || "").toLowerCase().includes("offline");
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px"}}>
+                                                          <span style={{fontSize:".68rem",background:isOff ? "#FFEDD5" : "#DCFCE7",color:isOff ? "#C2410C" : "#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                                            {isOff ? "Offline" : "Online"}
+                                                          </span>
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "name") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>
+                                                          {row.name || row.donorName || "-"}
+                                                          {(row.nameGu || row.donorNameGu) && (
+                                                            <span style={{fontSize:".68rem",color:"#047857",display:"block"}}>
+                                                              {row.nameGu || row.donorNameGu}
+                                                            </span>
+                                                          )}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "vibhag") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
+                                                          {row.vibhag || row.vibhagNumber || "-"}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "receiptNo") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",color:"#475569",fontFamily:"monospace"}}>
+                                                          {row.receiptNo || row.internalReceiptNo || row.id || "-"}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "date") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",color:"#64748B"}}>
+                                                          {row.date || (row._submittedAt ? new Date(row._submittedAt).toISOString().split('T')[0] : "-")}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "purpose") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
+                                                          {row.purpose || row.program || row.eventName || "-"}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    if (k === "mobile") {
+                                                      return (
+                                                        <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
+                                                          {row.mobile || row.phone ? `+91 ${String(row.mobile || row.phone).replace(/\D/g,'').slice(-10)}` : "-"}
+                                                        </td>
+                                                      );
+                                                    }
+                                                    return (
+                                                      <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
+                                                        {row[k] || "-"}
+                                                      </td>
+                                                    );
+                                                  })}
+                                                </tr>
+                                              ))
                                             )}
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
+                                          </tbody>
+                                          <tfoot>
+                                            <tr style={{background:"#F8FAFC",borderTop:"2px solid #CBD5E1"}}>
+                                              <td colSpan={isDonGroupedView ? 6 : curDonCols.length + 1} style={{padding:"8px 10px",color:"#065F46",fontWeight:800,fontSize:".8rem"}}>
+                                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
+                                                  <span>
+                                                    Total Donation ₹{previewTotalAmt.toLocaleString('en-IN')}/- count {previewFilteredDonations.length}
+                                                    {isDonGroupedView ? ` (across ${donGroupList.length} distinct ${primaryDonLabel})` : ""}
+                                                  </span>
+                                                  {isDonGroupedView ? (
+                                                    donGroupList.length > 20 && (
+                                                      <span style={{fontSize:".7rem",color:"#64748B",fontWeight:600}}>
+                                                        (Showing top 20 of {donGroupList.length} {primaryDonLabel.toLowerCase()}s in preview)
+                                                      </span>
+                                                    )
+                                                  ) : (
+                                                    previewFilteredDonations.length > 15 && (
+                                                      <span style={{fontSize:".7rem",color:"#64748B",fontWeight:600}}>
+                                                        (Showing first 15 of {previewFilteredDonations.length} records)
+                                                      </span>
+                                                    )
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          </tfoot>
+                                        </table>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </>
                           )}
@@ -29742,15 +29868,61 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   return summaryText;
                                 }
 
+                                const defaultDonCols = ["name", "amount", "vibhag"];
+                                const curDonCols = activeF.length > 0 ? activeF : defaultDonCols;
+                                const hasDonGroupAction = curDonCols.some(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || DONATION_AVAILABLE_FIELDS.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                });
+                                const isDonPersonMode = curDonCols.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
+                                const isDonGroupedView = hasDonGroupAction && (!isDonPersonMode || curDonCols.length === 1 || curDonCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
+
+                                const primaryDonGroupKey = curDonCols.find(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || DONATION_AVAILABLE_FIELDS.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                }) || (curDonCols.includes("vibhag") ? "vibhag" : curDonCols[0]);
+
+                                const primaryDonDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === primaryDonGroupKey);
+                                const primaryDonLabel = primaryDonDef ? primaryDonDef.shortLabel : primaryDonGroupKey;
+
+                                const donGroupMap = {};
+                                previewFilteredDonations.forEach(d => {
+                                  const raw = String(d.vibhag || d.vibhagNumber || d.program || "General / Main").trim();
+                                  const val = raw || "General / Main";
+                                  const amt = parseFloat(d.amount) || 0;
+                                  if (!donGroupMap[val]) donGroupMap[val] = { count: 0, total: 0 };
+                                  donGroupMap[val].count++;
+                                  donGroupMap[val].total += amt;
+                                });
+                                const donGroupList = Object.entries(donGroupMap).sort((a, b) => b[1].total - a[1].total);
+
                                 // Person-wise Donor Registry Mode (Live Database Data)
-                                let previewText = `📋 *દાતાઓની યાદી (Live Database Scope):*\n`;
                                 if (previewFilteredDonations.length === 0) {
+                                  let previewText = `📋 *દાતાઓની યાદી (Live Database Scope):*\n`;
                                   previewText += `(No donation entries recorded yet for selected event scope)\n`;
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
                                   previewText += `💰 *Total Donation 0/- count 0*\n`;
                                   return previewText;
                                 }
 
+                                if (isDonGroupedView) {
+                                  let previewText = `📍 *${primaryDonLabel} વાર વિગત & દાન ગણતરી:*\n`;
+                                  const groupsToShow = donGroupList.slice(0, 15);
+                                  groupsToShow.forEach(([val, stats], idx) => {
+                                    const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦', '૧૧', '૧૨', '૧૩', '૧૪', '૧૫'][idx] || `${idx + 1}`;
+                                    previewText += `${gujNum}. *${val}* — ₹${Number(stats.total).toLocaleString('en-IN')}/- (${stats.count} દાતા — count: ${stats.count})\n`;
+                                  });
+
+                                  if (donGroupList.length > 15) {
+                                    previewText += `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                  }
+
+                                  previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  previewText += `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}* (${donGroupList.length} distinct ${primaryDonLabel})\n`;
+                                  return previewText;
+                                }
+
+                                let previewText = `📋 *દાતાઓની યાદી (Live Database Scope):*\n`;
                                 const recordsToShow = previewFilteredDonations.slice(0, 10);
                                 recordsToShow.forEach((d, idx) => {
                                   const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦'][idx] || `${idx + 1}`;
@@ -29771,7 +29943,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 }
 
                                 previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                previewText += `💰 *Total Donation ${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}*\n`;
+                                previewText += `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}*\n`;
                                 return previewText;
                               })()}
                               {`━━━━━━━━━━━━━━━━━━━━━\n`}
@@ -30277,98 +30449,162 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                             {/* EXTRACTED OUTPUT PREVIEW TABLE WITH LIVE SUBMISSION RECORDS */}
                             <div style={{marginTop:12,background:"#F8FAFC",border:"1.5px dashed #16A34A",borderRadius:8,padding:12}}>
-                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
-                                <div style={{fontSize:".76rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                                  <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
-                                </div>
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                    {(() => {
-                                      const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
-                                      const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                        ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
-                                        : [];
-                                      const curList = validSelected.length > 0 ? validSelected : defaultFieldKeys;
-                                      return curList.length;
-                                    })()} Columns Selected
-                                  </span>
-                                  <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                    {previewFilteredRegistrations.length} {previewFilteredRegistrations.length === 1 ? 'Record' : 'Records'} Extracted
-                                  </span>
-                                </div>
-                              </div>
+                              {(() => {
+                                const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                  ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                  : [];
+                                const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
 
-                              <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
-                                <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
-                                  <thead style={{position:"sticky",top:0,zIndex:1}}>
-                                    <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
-                                      <th style={{padding:"6px 10px",width:36}}>sr.</th>
-                                      {(() => {
-                                        const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
-                                        const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                          ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
-                                          : [];
-                                        const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
-                                        return curCols.map(k => {
-                                        const fDef = formAvailableFields.find(f => f.key === k);
-                                        return (
-                                          <th key={k} style={{padding:"6px 10px"}}>
-                                            {fDef ? fDef.shortLabel : k}
-                                          </th>
-                                        );
-                                      });
-                                    })()}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {previewFilteredRegistrations.length === 0 ? (
-                                      <tr>
-                                        <td colSpan={(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
-                                          No submissions recorded yet matching the selected form / event.
-                                        </td>
-                                      </tr>
-                                    ) : (
-                                      previewFilteredRegistrations.slice(0, 15).map((row, ri) => (
-                                        <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
-                                          <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                          {(() => {
-                                            const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
-                                            const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                              ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
-                                              : [];
-                                            const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
-                                            return curCols.map(k => {
-                                              const val = getRegRowValue(row, k);
-                                              if (k === "status") {
-                                                const isApp = val === "Approved" || val === "Verified";
+                                const hasGroupAction = curCols.some(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                });
+                                const isPersonMode = curCols.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
+                                const isGroupedView = hasGroupAction && (!isPersonMode || curCols.length === 1 || curCols.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
+
+                                const primaryGroupKey = curCols.find(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                }) || (curCols.includes("vibhag") ? "vibhag" : curCols[0]);
+
+                                const primaryDef = formAvailableFields.find(f => f.key === primaryGroupKey);
+                                const primaryLabel = primaryDef ? primaryDef.shortLabel : primaryGroupKey;
+
+                                const groupMap = {};
+                                previewFilteredRegistrations.forEach(r => {
+                                  const raw = getRegRowValue(r, primaryGroupKey);
+                                  const val = (raw && String(raw).trim() !== "" && raw !== "-") ? String(raw).trim() : "General / Other";
+                                  if (!groupMap[val]) {
+                                    groupMap[val] = { count: 0, approved: 0, pending: 0, rows: [] };
+                                  }
+                                  groupMap[val].count++;
+                                  const s = String(r.Status || r.status || "").toLowerCase();
+                                  if (s.includes("app") || s.includes("verif")) groupMap[val].approved++;
+                                  else groupMap[val].pending++;
+                                  groupMap[val].rows.push(r);
+                                });
+
+                                const groupList = Object.entries(groupMap).sort((a, b) => {
+                                  if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+                                  return a[0].localeCompare(b[0], undefined, { numeric: true });
+                                });
+
+                                return (
+                                  <>
+                                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
+                                      <div style={{fontSize:".76rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                        <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
+                                      </div>
+                                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                        <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                          {curCols.length} Columns Selected
+                                        </span>
+                                        <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                          {isGroupedView ? `${groupList.length} Distinct ${primaryLabel}s (${previewFilteredRegistrations.length} Total)` : `${previewFilteredRegistrations.length} Records Extracted`}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
+                                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
+                                        <thead style={{position:"sticky",top:0,zIndex:1}}>
+                                          <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
+                                            <th style={{padding:"6px 10px",width:36}}>sr.</th>
+                                            {isGroupedView ? (
+                                              <>
+                                                <th style={{padding:"6px 10px"}}>{primaryLabel}</th>
+                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Submissions Count (અરજી સંખ્યા)</th>
+                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Approved (મંજૂર)</th>
+                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Pending (બાકી)</th>
+                                                <th style={{padding:"6px 10px",textAlign:"right"}}>Share % (હિસ્સો)</th>
+                                              </>
+                                            ) : (
+                                              curCols.map(k => {
+                                                const fDef = formAvailableFields.find(f => f.key === k);
                                                 return (
-                                                  <td key={k} style={{padding:"6px 10px"}}>
-                                                    <span style={{fontSize:".68rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
-                                                      {val}
-                                                    </span>
-                                                  </td>
+                                                  <th key={k} style={{padding:"6px 10px"}}>
+                                                    {fDef ? fDef.shortLabel : k}
+                                                  </th>
                                                 );
-                                              }
+                                              })
+                                            )}
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {previewFilteredRegistrations.length === 0 ? (
+                                            <tr>
+                                              <td colSpan={isGroupedView ? 6 : curCols.length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
+                                                No submissions recorded yet matching the selected form / event.
+                                              </td>
+                                            </tr>
+                                          ) : isGroupedView ? (
+                                            groupList.slice(0, 20).map(([val, stats], ri) => {
+                                              const pct = previewFilteredRegistrations.length > 0 ? ((stats.count / previewFilteredRegistrations.length) * 100).toFixed(1) : "0";
                                               return (
-                                                <td key={k} style={{padding:"6px 10px",color: k === "name" ? "#0F172A" : "#475569",fontWeight: k === "name" ? 700 : 500}}>
-                                                  {val}
-                                                </td>
+                                                <tr key={val} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                                  <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                                  <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                  <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                    {stats.count} અરજી
+                                                  </td>
+                                                  <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{stats.approved}</span>
+                                                  </td>
+                                                  <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    <span style={{fontSize:".68rem",background:"#FEF3C7",color:"#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{stats.pending}</span>
+                                                  </td>
+                                                  <td style={{padding:"6px 10px",textAlign:"right",color:"#64748B",fontWeight:700}}>{pct}%</td>
+                                                </tr>
                                               );
-                                            });
-                                          })()}
-                                        </tr>
-                                      ))
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
+                                            })
+                                          ) : (
+                                            previewFilteredRegistrations.slice(0, 15).map((row, ri) => (
+                                              <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                                <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                                {curCols.map(k => {
+                                                  const val = getRegRowValue(row, k);
+                                                  if (k === "status") {
+                                                    const isApp = val === "Approved" || val === "Verified";
+                                                    return (
+                                                      <td key={k} style={{padding:"6px 10px"}}>
+                                                        <span style={{fontSize:".68rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                                          {val}
+                                                        </span>
+                                                      </td>
+                                                    );
+                                                  }
+                                                  return (
+                                                    <td key={k} style={{padding:"6px 10px",color: k === "name" ? "#0F172A" : "#475569",fontWeight: k === "name" ? 700 : 500}}>
+                                                      {val}
+                                                    </td>
+                                                  );
+                                                })}
+                                              </tr>
+                                            ))
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
 
-                              <div style={{marginTop:8,fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                <span>Total Submissions count {previewFilteredRegistrations.length}</span>
-                                {previewFilteredRegistrations.length > 15 && (
-                                  <span style={{color:"#64748B",fontWeight:600}}>(Showing first 15 records in preview)</span>
-                                )}
-                              </div>
+                                    <div style={{marginTop:8,fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                      <span>
+                                        Total Submissions count {previewFilteredRegistrations.length}
+                                        {isGroupedView ? ` (across ${groupList.length} distinct ${primaryLabel})` : ""}
+                                      </span>
+                                      {isGroupedView ? (
+                                        groupList.length > 20 && (
+                                          <span style={{color:"#64748B",fontWeight:600}}>(Showing top 20 of {groupList.length} {primaryLabel.toLowerCase()}s in preview)</span>
+                                        )
+                                      ) : (
+                                        previewFilteredRegistrations.length > 15 && (
+                                          <span style={{color:"#64748B",fontWeight:600}}>(Showing first 15 records in preview)</span>
+                                        )
+                                      )}
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
@@ -30424,45 +30660,91 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
                                   : [];
                                 const activeF = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+
+                                const hasGroupAction = activeF.some(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                });
+                                const isPersonMode = activeF.includes("name") && ((kbForm.fieldActions && kbForm.fieldActions["name"]) === "show" || !(kbForm.fieldActions && kbForm.fieldActions["name"]));
+                                const isGroupedView = hasGroupAction && (!isPersonMode || activeF.length === 1 || activeF.some(k => (kbForm.fieldActions && kbForm.fieldActions[k]) === "group_count"));
+
+                                const primaryGroupKey = activeF.find(k => {
+                                  const act = (kbForm.fieldActions && kbForm.fieldActions[k]) || formAvailableFields.find(f => f.key === k)?.defaultAction;
+                                  return act === "group_count" || act === "distinct_group" || act === "distinct_count";
+                                }) || (activeF.includes("vibhag") ? "vibhag" : activeF[0]);
+
+                                const primaryDef = formAvailableFields.find(f => f.key === primaryGroupKey);
+                                const primaryLabel = primaryDef ? primaryDef.shortLabel : primaryGroupKey;
+
+                                const groupMap = {};
+                                previewFilteredRegistrations.forEach(r => {
+                                  const raw = getRegRowValue(r, primaryGroupKey);
+                                  const val = (raw && String(raw).trim() !== "" && raw !== "-") ? String(raw).trim() : "General / Other";
+                                  if (!groupMap[val]) {
+                                    groupMap[val] = { count: 0, rows: [] };
+                                  }
+                                  groupMap[val].count++;
+                                  groupMap[val].rows.push(r);
+                                });
+
+                                const groupList = Object.entries(groupMap).sort((a, b) => {
+                                  if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+                                  return a[0].localeCompare(b[0], undefined, { numeric: true });
+                                });
+
                                 if (kbForm.summaryType !== "donor_list") {
                                   // Form Submissions Summary Mode (Live Database Data)
                                   let approvedCount = 0, pendingCount = 0, rejectedCount = 0;
-                                  const vMap = {};
                                   previewFilteredRegistrations.forEach(r => {
                                     const s = String(r.Status || r.status || "Pending").trim();
                                     if (s === "Approved" || s === "Verified") approvedCount++;
                                     else if (s === "Disapproved" || s === "Rejected") rejectedCount++;
                                     else pendingCount++;
-                                    const v = getRegRowValue(r, "vibhag");
-                                    vMap[v] = (vMap[v] || 0) + 1;
                                   });
 
                                   let summaryText = `📊 *MMP અરજી વિગત & સમરી (Live Database Scope)*\n`;
                                   summaryText += `📋 *કુલ અરજીઓ:* ${previewFilteredRegistrations.length}\n`;
                                   summaryText += `🟢 *Approved:* ${approvedCount} | 🟡 *Pending:* ${pendingCount} | 🔴 *Rejected:* ${rejectedCount}\n`;
-                                  const vList = Object.entries(vMap).sort((a, b) => b[1] - a[1]);
-                                  if (vList.length > 0) {
+                                  if (groupList.length > 0) {
                                     summaryText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                    summaryText += `📍 *વિભાગ વાર વિગત:*\n`;
-                                    vList.slice(0, 6).forEach(([vName, vCount]) => {
-                                      summaryText += `• *${vName}*: ${vCount} અરજી\n`;
+                                    summaryText += `📍 *${primaryLabel} વાર વિગત & ગણતરી:*\n`;
+                                    groupList.slice(0, 15).forEach(([vName, vData]) => {
+                                      summaryText += `• *${vName}*: ${vData.count} અરજી (count: ${vData.count})\n`;
                                     });
-                                    if (vList.length > 6) {
-                                      summaryText += `... and ${vList.length - 6} more vibhags\n`;
+                                    if (groupList.length > 15) {
+                                      summaryText += `... and ${groupList.length - 15} more ${primaryLabel.toLowerCase()}s\n`;
                                     }
                                   }
                                   return summaryText;
                                 }
 
                                 // Person-wise Submissions Registry Mode (Live Database Data)
-                                let previewText = `📋 *અરજી યાદી (Live Database Submissions):*\n`;
                                 if (previewFilteredRegistrations.length === 0) {
+                                  let previewText = `📋 *અરજી યાદી (Live Database Submissions):*\n`;
                                   previewText += `(No submissions recorded yet for selected form / event)\n`;
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
                                   previewText += `📋 *Total Submissions count 0*\n`;
                                   return previewText;
                                 }
 
+                                if (isGroupedView) {
+                                  let previewText = `📋 *${primaryLabel} વાર અરજી ગણતરી (Live Submissions Count):*\n`;
+                                  const groupsToShow = groupList.slice(0, 20);
+                                  groupsToShow.forEach(([val, stats], idx) => {
+                                    const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦', '૧૧', '૧૨', '૧૩', '૧૪', '૧૫', '૧૬', '૧૭', '૧૮', '૧૯', '૨૦'][idx] || `${idx + 1}`;
+                                    previewText += `${gujNum}. *${val}* — ${stats.count} અરજી (count: ${stats.count})\n`;
+                                  });
+
+                                  if (groupList.length > 20) {
+                                    previewText += `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                  }
+
+                                  previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  previewText += `📋 *Total Submissions count ${previewFilteredRegistrations.length}* (${groupList.length} distinct ${primaryLabel})\n`;
+                                  return previewText;
+                                }
+
+                                let previewText = `📋 *અરજી યાદી (Live Database Submissions):*\n`;
                                 const recordsToShow = previewFilteredRegistrations.slice(0, 10);
                                 recordsToShow.forEach((r, idx) => {
                                   const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦'][idx] || `${idx + 1}`;
@@ -56338,7 +56620,19 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
     msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
 
     // 4. Content Block (Dynamic Selected Fields vs Vibhag breakdown)
-    if (viewMode === "vibhag") {
+    const isForm = summaryData.summaryType === "form_summary" || summaryData.isFormMode;
+    if (isForm) {
+      msg += `📊 *MMP અરજી વિગત & સમરી${eventLabel ? ` (${eventLabel})` : ""}*\n`;
+      msg += `📋 *કુલ અરજીઓ:* ${totalCount}\n`;
+      msg += `🟢 *Approved:* ${onlineAmount} | 🟡 *Pending:* ${offlineAmount}\n`;
+      if ((vibhagBreakdown || []).length > 0) {
+        msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `📍 *વિભાગ વાર વિગત & ગણતરી:*\n`;
+        vibhagBreakdown.forEach(([vName, vData]) => {
+          msg += `• *${vName}*: ${vData.count} અરજી (count: ${vData.count})\n`;
+        });
+      }
+    } else if (viewMode === "vibhag") {
       msg += `📊 *MMP દાન વિગત & કલેક્શન સમરી${eventLabel ? ` (${eventLabel})` : ""}*\n`;
       msg += `💰 *કુલ દાન રકમ:* ₹${totalAmount.toLocaleString('en-IN')}\n`;
       msg += `👥 *કુલ દાતાઓ:* ${totalCount}\n`;
@@ -56931,6 +57225,47 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       ? "https://pradeepparmar902.github.io/MY_Community_Website/"
       : "https://mmp-cwc.com";
 
+    if (donorData.isFormMode) {
+      const header = customHeader || (tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\r\n         [NGO]\r\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\r\n☸~~~~~~~~~~~~~~~~~☸`);
+      const appeal = customAppeal || (tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "અરજીઓ અને નોંધણીની વિગત નીચે મુજબ છે:");
+      const signatory = customSignatory || (tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. સેન્ટ્રલ વર્કિંગ કમિટી");
+
+      let msg = "";
+      if (header && header.trim()) msg += header.trim() + "\r\n\r\n";
+      if (appeal && appeal.trim()) msg += appeal.trim() + "\r\n\r\n";
+      msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
+
+      if (donorData.isGroupedView && donorData.groupBreakdown && donorData.groupBreakdown.length > 0) {
+        msg += `📋 *${getFieldShortName(donorData.primaryGroupKey || "vibhag")} વાર અરજી ગણતરી (Submissions Count):*\r\n`;
+        donorData.groupBreakdown.forEach(([val, stats], idx) => {
+          const numGu = toGujDigits(idx + 1);
+          msg += `${numGu}. *${val}* — ${stats.count} અરજી (count: ${stats.count})\r\n`;
+        });
+        msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
+        msg += `📋 *Total Submissions count ${donorData.totalAmount || donors.length}* (${donorData.groupBreakdown.length} distinct ${getFieldShortName(donorData.primaryGroupKey || "vibhag")})\r\n`;
+      } else {
+        msg += `📋 *અરજી યાદી (${filtered.length} Submissions):*\r\n`;
+        filtered.forEach((d, idx) => {
+          const numGu = toGujDigits(idx + 1);
+          const parts = [];
+          if (activeFields.includes("name")) parts.push(d.name || "Applicant");
+          if (activeFields.includes("vibhag") && d.vibhag) parts.push(`(${d.vibhag})`);
+          if (activeFields.includes("stream") && d.stream) parts.push(`• ${d.stream}`);
+          if (activeFields.includes("percentage") && d.percentage) parts.push(`[${d.percentage}%]`);
+          if (activeFields.includes("status") && d.status) parts.push(`[${d.status}]`);
+          if (activeFields.includes("mobile") && d.mobile) parts.push(`📱 ${d.mobile}`);
+          if (activeFields.includes("txnId") && (d.txnId || d.receiptNo)) parts.push(`ID: ${d.txnId || d.receiptNo}`);
+          msg += `${numGu}. ${parts.join(" ")}\r\n`;
+        });
+        msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
+        msg += `📋 *Total Submissions count ${filtered.length}*\r\n`;
+      }
+
+      if (signatory) msg += signatory + "\r\n";
+      msg += `🌐 *Live Portal:* ${portalUrl}`;
+      return msg;
+    }
+
     if (exportFormat === "gujarati") {
       const header = customHeader || (tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸`);
       const appeal = customAppeal || (tpls.gujaratiAppeal !== undefined ? tpls.gujaratiAppeal : "સુજ્ઞ જ્ઞાતિજનો વિદ્યાર્થી ને પ્રોત્સાહિત કરવા અને તેમનું મનોબળ વધારવા આયોજિત શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણગૌરવ પુરસ્કાર માટે દાન ના પ્રવાહ ની અપેક્ષા છે તેથી આપ પણ આપની ઈચ્છા અનુસાર દાન આપી શકો છો.\nહાલમાં આવેલું દાન અને દાતા ઓના નામ નીચે પ્રમાણે છે.");
@@ -57082,7 +57417,9 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
           >
             <span>💬</span> WhatsApp Editor
           </button>
-          <span style={{fontSize:".78rem",fontWeight:800,color:"#15803D"}}>₹{donorData.totalAmount.toLocaleString('en-IN')} Total</span>
+          <span style={{fontSize:".78rem",fontWeight:800,color:"#15803D"}}>
+            {donorData.isFormMode ? `📋 ${donorData.totalAmount || donors.length} Submissions` : `₹${donorData.totalAmount.toLocaleString('en-IN')} Total`}
+          </span>
         </div>
       </div>
 
@@ -59620,13 +59957,44 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             ...r
           }));
 
+          const activeFields = (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0)
+            ? matchedKb.selectedFields
+            : ["name", "vibhag", "mobile", "stream"];
+          const fieldActions = matchedKb?.fieldActions || {};
+          const hasGroupAction = activeFields.some(k => ["group_count", "distinct_group", "distinct_count"].includes(fieldActions[k]));
+          const isPersonMode = activeFields.includes("name") && (fieldActions["name"] === "show" || !fieldActions["name"]);
+          const isGroupedView = hasGroupAction && (!isPersonMode || activeFields.length === 1 || activeFields.some(k => fieldActions[k] === "group_count"));
+
+          const primaryGroupKey = activeFields.find(k => ["group_count", "distinct_group", "distinct_count"].includes(fieldActions[k]))
+            || (activeFields.includes("vibhag") ? "vibhag" : activeFields[0]);
+
+          const formGroupMap = {};
+          targetRegs.forEach(r => {
+            const raw = getRegRowValue(r, primaryGroupKey);
+            const val = (raw && String(raw).trim() !== "" && raw !== "-") ? String(raw).trim() : "Other / Unspecified";
+            if (!formGroupMap[val]) formGroupMap[val] = { count: 0, approved: 0, pending: 0, rows: [] };
+            formGroupMap[val].count++;
+            const s = String(r.Status || r.status || "").toLowerCase();
+            if (s.includes("app") || s.includes("verif")) formGroupMap[val].approved++;
+            else formGroupMap[val].pending++;
+            formGroupMap[val].rows.push(r);
+          });
+          const groupBreakdown = Object.entries(formGroupMap).sort((a, b) => {
+            if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+            return a[0].localeCompare(b[0], undefined, { numeric: true });
+          });
+
           cardData = {
+            isFormMode: true,
+            isGroupedView,
+            primaryGroupKey,
+            groupBreakdown,
             eventLabel: formLabel,
             targetEventIds: scopedEvents,
             donors: mappedItems,
             totalAmount: mappedItems.length,
-            selectedFields: (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0) ? matchedKb.selectedFields : ["name", "vibhag", "mobile", "stream"],
-            fieldActions: matchedKb?.fieldActions || {},
+            selectedFields: activeFields,
+            fieldActions: fieldActions,
             tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_list",
             customWaHeader: matchedKb?.customWaHeader,
             customWaAppeal: matchedKb?.customWaAppeal,
