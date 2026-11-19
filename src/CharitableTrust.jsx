@@ -30476,6 +30476,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       ? `📍 *${primaryGrpLabel} વાર વિગત & દાન સમરી (કોષ્ટક):*\n`
                                       : `📍 *${primaryGrpLabel}-wise Donation Summary Table:*\n`;
                                     previewText += "```\n";
+                                    const totDonCnt = isGu ? toGujDigits(previewFilteredDonations.length) : String(previewFilteredDonations.length);
+                                    const totDonAmtFormatted = "₹" + (isGu ? toGujDigits(Number(previewTotalAmt).toLocaleString('en-IN')) : Number(previewTotalAmt).toLocaleString('en-IN'));
+
                                     if (isCountFirst) {
                                       const hSr = isGu ? "ક્રમ" : "Sr.";
                                       const hCnt = isGu ? "દાતા" : "Donors";
@@ -30489,6 +30492,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         const amt = "₹" + (isGu ? toGujDigits(stats.total) : stats.total.toLocaleString('en-IN'));
                                         previewText += `${padCol(sr, 4)} ${padCol(cnt, 5)} ${padCol(amt, 9)} ${val}\n`;
                                       });
+                                      previewText += `-----------------------------------\n`;
+                                      previewText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(totDonCnt, 5)} ${padCol(totDonAmtFormatted, 9)} ${isGu ? "કુલ દાન" : "Grand Total"}\n`;
                                     } else {
                                       const hSr = isGu ? "ક્રમ" : "Sr.";
                                       const hVib = primaryGrpLabel;
@@ -30502,6 +30507,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         const amt = "₹" + (isGu ? toGujDigits(stats.total) : stats.total.toLocaleString('en-IN'));
                                         previewText += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${padCol(cnt, 5)} ${amt}\n`;
                                       });
+                                      previewText += `-----------------------------------\n`;
+                                      previewText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(isGu ? "કુલ દાન" : "Grand Total", 16)} ${padCol(totDonCnt, 5)} ${totDonAmtFormatted}\n`;
                                     }
                                     previewText += "```\n";
                                     if (donGroupList.length > 15) {
@@ -31724,6 +31731,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 });
                                 const groupList = Object.entries(groupMap).sort((a, b) => b[1].count - a[1].count);
 
+                                const totalFormSubmissions = previewFilteredRegistrations.length;
+                                const totCntDisplay = isGu ? toGujDigits(totalFormSubmissions) : String(totalFormSubmissions);
+
                                 if (isGrouped) {
                                   if (isTableFormat) {
                                     let tText = isGu
@@ -31741,6 +31751,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
                                         tText += `${padCol(sr, 4)} ${padCol(cnt, 6)} ${val}\n`;
                                       });
+                                      tText += `-----------------------------------\n`;
+                                      tText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(totCntDisplay, 6)} ${isGu ? "કુલ અરજીઓ" : "Grand Total"}\n`;
                                     } else {
                                       const hSr = isGu ? "ક્રમ" : "Sr.";
                                       const hGrp = isGu ? primaryGuLabel : primaryEnLabel;
@@ -31752,11 +31764,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
                                         tText += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${cnt}\n`;
                                       });
+                                      tText += `-----------------------------------\n`;
+                                      tText += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(isGu ? "કુલ અરજીઓ" : "Grand Total", 16)} ${totCntDisplay}\n`;
                                     }
-                                    tText += "```";
+                                    tText += "```\n";
                                     if (groupList.length > 15) {
-                                      tText += `\n... and ${groupList.length - 15} more ${primaryEnLabel.toLowerCase()}s`;
+                                      tText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(groupList.length - 15)} ${primaryGuLabel}\n`
+                                        : `... and ${groupList.length - 15} more ${primaryEnLabel.toLowerCase()}s\n`;
                                     }
+                                    tText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                    tText += isGu
+                                      ? `📊 *કુલ અરજીઓ (Grand Total): ${totCntDisplay}* (${toGujDigits(groupList.length)} વિવિધ ${primaryGuLabel} માં)\n`
+                                      : `📊 *Grand Total Submissions: ${totCntDisplay}* (across ${groupList.length} distinct ${primaryEnLabel}s)\n`;
                                     return tText;
                                   } else {
                                     let lText = isGu
@@ -31772,8 +31792,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       }
                                     });
                                     if (groupList.length > 15) {
-                                      lText += `... and ${groupList.length - 15} more ${primaryEnLabel.toLowerCase()}s`;
+                                      lText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(groupList.length - 15)} ${primaryGuLabel}\n`
+                                        : `... and ${groupList.length - 15} more ${primaryEnLabel.toLowerCase()}s\n`;
                                     }
+                                    lText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                    lText += isGu
+                                      ? `📊 *કુલ અરજીઓ (Grand Total): ${totCntDisplay}* (${toGujDigits(groupList.length)} વિવિધ ${primaryGuLabel} માં)\n`
+                                      : `📊 *Grand Total Submissions: ${totCntDisplay}* (across ${groupList.length} distinct ${primaryEnLabel}s)\n`;
                                     return lText;
                                   }
                                 }
@@ -31801,7 +31827,6 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   : `📋 *Total Submissions count ${previewFilteredRegistrations.length}*\n`;
                                 return pText;
                               })()}
-                              {`━━━━━━━━━━━━━━━━━━━━━\n`}
                               {kbForm.customWaSignatory ? `${kbForm.customWaSignatory}\n\n` : ""}
                               {`🌐 *Live Portal:* https://mmp-cwc.com`}
                             </div>
@@ -58278,6 +58303,9 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
             ? `📋 *${primaryGrp} વાર અરજી ગણતરી (લાઈવ સમરી કોષ્ટક):*\r\n`
             : `📋 *${primaryGrp}-wise Submissions Summary Table:*\r\n`;
           msg += "```\r\n";
+          const totFormCount = count;
+          const totFormCntStr = isGu ? toGujDigits(totFormCount) : String(totFormCount);
+
           if (isCountFirst) {
             const hSr = isGu ? "ક્રમ" : "Sr.";
             const hCnt = isGu ? "અરજી" : "Count";
@@ -58289,6 +58317,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
               const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
               msg += `${padCol(sr, 4)} ${padCol(cnt, 6)} ${val}\r\n`;
             });
+            msg += `-----------------------------------\r\n`;
+            msg += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(totFormCntStr, 6)} ${isGu ? "કુલ અરજીઓ" : "Grand Total"}\r\n`;
           } else {
             const hSr = isGu ? "ક્રમ" : "Sr.";
             const hVib = primaryGrp;
@@ -58300,6 +58330,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
               const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
               msg += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${cnt}\r\n`;
             });
+            msg += `-----------------------------------\r\n`;
+            msg += `${padCol(isGu ? "કુલ" : "Tot.", 4)} ${padCol(isGu ? "કુલ અરજીઓ" : "Grand Total", 16)} ${totFormCntStr}\r\n`;
           }
           msg += "```\r\n";
         } else {
@@ -58321,8 +58353,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
         }
         msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
         msg += isGu
-          ? `📋 *કુલ અરજીઓ: ${toGujDigits(donorData.totalAmount || donors.length)}* (${toGujDigits(donorData.groupBreakdown.length)} ${primaryGrp})\r\n`
-          : `📋 *Total Submissions count ${donorData.totalAmount || donors.length}* (${donorData.groupBreakdown.length} distinct ${primaryGrp})\r\n`;
+          ? `📊 *કુલ અરજીઓ (Grand Total): ${toGujDigits(count)}* (${toGujDigits(donorData.groupBreakdown.length)} વિવિધ ${primaryGrp} માં)\r\n`
+          : `📊 *Grand Total Submissions: ${count}* (across ${donorData.groupBreakdown.length} distinct ${primaryGrp}s)\r\n`;
       } else {
         msg += `📋 *અરજી યાદી (${filtered.length} Submissions):*\r\n`;
         filtered.forEach((d, idx) => {
