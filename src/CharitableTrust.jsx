@@ -25826,6 +25826,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
       return C?.customDonationEventCodes || [];
     }
   });
+  const [hiddenEventCodes, setHiddenEventCodes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("trust_hidden_donation_event_codes");
+      return saved ? JSON.parse(saved) : (C?.hiddenDonationEventCodes || []);
+    } catch(e) {
+      return C?.hiddenDonationEventCodes || [];
+    }
+  });
   const [newEventCodeInput, setNewEventCodeInput] = useState("");
 
   useEffect(() => {
@@ -25855,6 +25863,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
     // 1. Extract strictly from verified recorded donations in database
     validDons.forEach(d => {
       const code = resolveRecordEventCode(d).trim().toUpperCase();
+      if (hiddenEventCodes.includes(code)) return; // Exclude user-hidden/removed event code badges
       const rawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim();
       const title = rawTitle && rawTitle.toLowerCase() !== "general" && rawTitle.toUpperCase() !== code
         ? rawTitle
@@ -25882,7 +25891,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
     // 2. Allow manually added / upcoming event codes (for events that have not received any donations yet)
     (customEventCodes || []).forEach(manualCode => {
       const cleanC = String(manualCode).trim().toUpperCase();
-      if (!cleanC) return;
+      if (!cleanC || hiddenEventCodes.includes(cleanC)) return;
       if (!codeMap.has(cleanC)) {
         codeMap.set(cleanC, {
           code: cleanC,
@@ -25895,11 +25904,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
     });
 
     return Array.from(codeMap.values());
-  }, [recordedDonations, customEventCodes]);
+  }, [recordedDonations, customEventCodes, hiddenEventCodes]);
 
   const handleAddCustomEventCode = () => {
     const clean = (newEventCodeInput || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     if (!clean) return alert("Please enter an event code (e.g. 6THDEC, EDU26, BLOOD).");
+    
+    // If it was previously hidden, unhide it
+    if (hiddenEventCodes.includes(clean)) {
+      const nextHidden = hiddenEventCodes.filter(c => c !== clean);
+      setHiddenEventCodes(nextHidden);
+      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
+      if (C) C.hiddenDonationEventCodes = nextHidden;
+    }
+
     if (!customEventCodes.includes(clean)) {
       const nextCodes = [...customEventCodes, clean];
       setCustomEventCodes(nextCodes);
@@ -25914,17 +25932,73 @@ function ChatbotAccessManager({ C, setC, auth }) {
     setNewEventCodeInput("");
   };
 
-  const handleRemoveCustomEventCode = (codeToRemove) => {
-    const nextCodes = customEventCodes.filter(c => c !== codeToRemove);
-    setCustomEventCodes(nextCodes);
-    try {
-      localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes));
-    } catch(e) {}
+  const handleRemoveOrHideEventBadge = (codeToRemove) => {
+    const clean = String(codeToRemove || '').trim().toUpperCase();
+    if (!clean) return;
+
+    // 1. If in customEventCodes, remove it
+    if (customEventCodes.includes(clean)) {
+      const nextCodes = customEventCodes.filter(c => c !== clean);
+      setCustomEventCodes(nextCodes);
+      try { localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes)); } catch(e) {}
+    }
+
+    // 2. Add to hiddenEventCodes so it disappears from the list
+    if (!hiddenEventCodes.includes(clean)) {
+      const nextHidden = [...hiddenEventCodes, clean];
+      setHiddenEventCodes(nextHidden);
+      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
+      if (C) C.hiddenDonationEventCodes = nextHidden;
+    }
+
+    // 3. Remove from active selection
     if (Array.isArray(kbForm.targetEventIds)) {
-      const nextTargets = kbForm.targetEventIds.filter(x => x !== codeToRemove && x !== codeToRemove.toLowerCase());
+      const nextTargets = kbForm.targetEventIds.filter(x => x !== clean && x !== clean.toLowerCase());
       setKbForm({ ...kbForm, targetEventIds: nextTargets.length === 0 ? ['all'] : nextTargets });
     }
   };
+
+  const handleRestoreHiddenCodes = () => {
+    setHiddenEventCodes([]);
+    try { localStorage.removeItem("trust_hidden_donation_event_codes"); } catch(e) {}
+    if (C) C.hiddenDonationEventCodes = [];
+  };
+
+  // Dynamically extract real donation records matching selected event codes
+  const previewFilteredDonations = useMemo(() => {
+    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
+      if (!d) return false;
+      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted" || d.Status === "Deleted") return false;
+      return true;
+    });
+
+    const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
+    if (isAll) return validDons;
+
+    return validDons.filter(d => {
+      const dEvCode = resolveRecordEventCode(d).trim().toUpperCase();
+      const dRawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim().toLowerCase();
+      const dEvId = String(d.eventId || '').trim().toUpperCase();
+      const dRawCode = String(d.eventCode || '').trim().toUpperCase();
+
+      return kbForm.targetEventIds.some(target => {
+        const tUp = String(target || '').trim().toUpperCase();
+        const tLow = tUp.toLowerCase();
+        if (!tUp || tUp === 'ALL') return true;
+        if (dEvCode === tUp || dRawCode === tUp || dEvId === tUp) return true;
+        if (tLow.includes('edu') && (dEvCode.includes('EDU') || dRawCode.includes('EDU') || dRawTitle.includes('education') || dRawTitle.includes('felicitation'))) return true;
+        if (tLow.includes('6th') && (dEvCode.includes('6TH') || dRawCode.includes('6TH') || dRawTitle.includes('6th') || dRawTitle.includes('dec') || dRawTitle.includes('mahaparinirvan'))) return true;
+        if (tLow.includes('blood') && (dEvCode.includes('BLOOD') || dRawTitle.includes('blood'))) return true;
+        if (tLow.includes('tree') && (dEvCode.includes('TREE') || dRawTitle.includes('tree'))) return true;
+        if (tLow.includes('scholar') && (dEvCode.includes('SCHOLAR') || dRawTitle.includes('scholar'))) return true;
+        return dEvCode === tUp || dRawTitle.includes(tLow);
+      });
+    });
+  }, [recordedDonations, kbForm.targetEventIds]);
+
+  const previewTotalAmt = useMemo(() => {
+    return previewFilteredDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+  }, [previewFilteredDonations]);
 
   const formatEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
@@ -26412,7 +26486,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
   };
 
   const saveKnowledgeBaseToFirebase = async (updatedKb) => {
-    const newC = { ...C, chatbotKnowledgeBase: updatedKb };
+    const newC = { 
+      ...C, 
+      chatbotKnowledgeBase: updatedKb,
+      hiddenDonationEventCodes: hiddenEventCodes,
+      customDonationEventCodes: customEventCodes
+    };
     if (setC) setC(newC);
     try {
       await fbSave(newC, auth?.idToken);
@@ -28398,6 +28477,28 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               >
                                 Clear
                               </button>
+                              {hiddenEventCodes && hiddenEventCodes.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleRestoreHiddenCodes}
+                                  style={{
+                                    background: "#FFFBEB",
+                                    color: "#B45309",
+                                    border: "1.5px dashed #F59E0B",
+                                    borderRadius: 6,
+                                    padding: "3px 8px",
+                                    fontSize: ".72rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 3
+                                  }}
+                                  title="Click to restore all removed / hidden event codes"
+                                >
+                                  <span>🔄</span> Restore ({hiddenEventCodes.length}) Hidden
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -28499,28 +28600,26 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                     )}
                                   </label>
 
-                                  {evItem.isManual && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemoveCustomEventCode(evItem.code);
-                                      }}
-                                      title="Remove this manually added event code"
-                                      style={{
-                                        background: "none",
-                                        border: "none",
-                                        color: "#EF4444",
-                                        fontSize: ".85rem",
-                                        cursor: "pointer",
-                                        padding: "0 2px",
-                                        marginLeft: 2,
-                                        fontWeight: 800
-                                      }}
-                                    >
-                                      ✕
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveOrHideEventBadge(evItem.code);
+                                    }}
+                                    title={`Remove / hide ${evItem.code} event code badge`}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: "#EF4444",
+                                      fontSize: ".85rem",
+                                      cursor: "pointer",
+                                      padding: "0 2px",
+                                      marginLeft: 3,
+                                      fontWeight: 800
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
                                 </div>
                               );
                             })}
@@ -28746,14 +28845,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   <div style={{fontSize:".76rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:6}}>
                                     <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
                                   </div>
-                                  <span style={{fontSize:".68rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                    {(kbForm.selectedFields || ["name", "amount", "vibhag"]).length} Columns Selected
-                                  </span>
+                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                    <span style={{fontSize:".68rem",background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                      {(kbForm.selectedFields || ["name", "amount", "vibhag"]).length} Columns Selected
+                                    </span>
+                                    <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                      {previewFilteredDonations.length} {previewFilteredDonations.length === 1 ? 'Record' : 'Records'} Extracted
+                                    </span>
+                                  </div>
                                 </div>
 
-                                <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white"}}>
+                                <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
                                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
-                                    <thead>
+                                    <thead style={{position:"sticky",top:0,zIndex:1}}>
                                       <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
                                         <th style={{padding:"6px 10px",width:36}}>sr.</th>
                                         {(kbForm.selectedFields || ["name", "amount", "vibhag"]).map(k => {
@@ -28767,32 +28871,103 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {[
-                                        {
-                                          name: "Pradeep Parmar",
-                                          vibhag: "15 Ramdev Nagar",
-                                          amount: "5000",
-                                          receiptNo: "RCP-1001",
-                                          date: "2026-11-15",
-                                          paymentMode: "Offline (રોકડ)",
-                                          purpose: "6th Dec Mahaparinirvan Diwas",
-                                          mobile: "9869733120"
-                                        }
-                                      ].map((row, ri) => (
-                                        <tr key={ri} style={{borderBottom:"1px solid #F1F5F9"}}>
-                                          <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                          {(kbForm.selectedFields || ["name", "amount", "vibhag"]).map(k => (
-                                            <td key={k} style={{padding:"6px 10px",textAlign: k === "amount" ? "right" : "left",fontWeight: k === "amount" ? 800 : 600,color: k === "amount" ? "#15803D" : "#0F172A"}}>
-                                              {row[k] || "-"}
-                                            </td>
-                                          ))}
+                                      {previewFilteredDonations.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={(kbForm.selectedFields || ["name", "amount", "vibhag"]).length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
+                                            No donation records found matching the selected event code(s).
+                                          </td>
                                         </tr>
-                                      ))}
+                                      ) : (
+                                        previewFilteredDonations.slice(0, 15).map((row, ri) => (
+                                          <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                            <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                            {(kbForm.selectedFields || ["name", "amount", "vibhag"]).map(k => {
+                                              if (k === "amount") {
+                                                const amt = Number(row.amount || 0);
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
+                                                    ₹{amt.toLocaleString('en-IN')}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "paymentMode") {
+                                                const isOff = row.isOffline || row.paymentMode === "Offline" || String(row.paymentMethod || "").toLowerCase().includes("offline");
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px"}}>
+                                                    <span style={{fontSize:".68rem",background:isOff ? "#FFEDD5" : "#DCFCE7",color:isOff ? "#C2410C" : "#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                                      {isOff ? "Offline" : "Online"}
+                                                    </span>
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "name") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>
+                                                    {row.name || row.donorName || "-"}
+                                                    {(row.nameGu || row.donorNameGu) && (
+                                                      <span style={{fontSize:".68rem",color:"#047857",display:"block"}}>
+                                                        {row.nameGu || row.donorNameGu}
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "vibhag") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
+                                                    {row.vibhag || row.vibhagNumber || "-"}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "receiptNo") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",color:"#475569",fontFamily:"monospace"}}>
+                                                    {row.receiptNo || row.internalReceiptNo || row.id || "-"}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "date") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",color:"#64748B"}}>
+                                                    {row.date || (row._submittedAt ? new Date(row._submittedAt).toISOString().split('T')[0] : "-")}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "purpose") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
+                                                    {row.purpose || row.program || row.eventName || "-"}
+                                                  </td>
+                                                );
+                                              }
+                                              if (k === "mobile") {
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px",color:"#475569"}}>
+                                                    {row.mobile || row.phone ? `+91 ${String(row.mobile || row.phone).replace(/\D/g,'').slice(-10)}` : "-"}
+                                                  </td>
+                                                );
+                                              }
+                                              return (
+                                                <td key={k} style={{padding:"6px 10px",color:"#334155"}}>
+                                                  {row[k] || "-"}
+                                                </td>
+                                              );
+                                            })}
+                                          </tr>
+                                        ))
+                                      )}
                                     </tbody>
                                     <tfoot>
                                       <tr style={{background:"#F8FAFC",borderTop:"2px solid #CBD5E1"}}>
                                         <td colSpan={(kbForm.selectedFields || ["name", "amount", "vibhag"]).length + 1} style={{padding:"8px 10px",color:"#065F46",fontWeight:800,fontSize:".8rem"}}>
-                                          Total Donation 5000/- count 1
+                                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
+                                            <span>Total Donation ₹{previewTotalAmt.toLocaleString('en-IN')}/- count {previewFilteredDonations.length}</span>
+                                            {previewFilteredDonations.length > 15 && (
+                                              <span style={{fontSize:".7rem",color:"#64748B",fontWeight:600}}>
+                                                (Showing first 15 of {previewFilteredDonations.length} records)
+                                              </span>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     </tfoot>
