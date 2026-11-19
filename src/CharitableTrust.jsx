@@ -26315,8 +26315,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
       return true;
     });
 
-    const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
-    if (isAll) return validDons;
+    const activeTargets = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+      const s = String(x || '').trim().toLowerCase();
+      return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+    });
+    if (activeTargets.length === 0) return validDons;
 
     return validDons.filter(d => {
       const dEvCode = resolveRecordEventCode(d).trim().toUpperCase();
@@ -26324,17 +26327,17 @@ function ChatbotAccessManager({ C, setC, auth }) {
       const dEvId = String(d.eventId || '').trim().toUpperCase();
       const dRawCode = String(d.eventCode || '').trim().toUpperCase();
 
-      return kbForm.targetEventIds.some(target => {
+      return activeTargets.some(target => {
         const tUp = String(target || '').trim().toUpperCase();
         const tLow = tUp.toLowerCase();
         if (!tUp || tUp === 'ALL') return true;
         if (dEvCode === tUp || dRawCode === tUp || dEvId === tUp) return true;
-        if (tLow.includes('edu') && (dEvCode.includes('EDU') || dRawCode.includes('EDU') || dRawTitle.includes('education') || dRawTitle.includes('felicitation'))) return true;
-        if (tLow.includes('6th') && (dEvCode.includes('6TH') || dRawCode.includes('6TH') || dRawTitle.includes('6th') || dRawTitle.includes('dec') || dRawTitle.includes('mahaparinirvan'))) return true;
+        if ((tLow.includes('6th') || tLow.includes('dec') || tLow.includes('mahaparinirvan')) && (dEvCode.includes('6TH') || dRawCode.includes('6TH') || dRawTitle.includes('6th') || dRawTitle.includes('dec') || dRawTitle.includes('mahaparinirvan') || dEvCode === '6THDEC')) return true;
+        if (tLow.includes('edu') && (dEvCode.includes('EDU') || dRawCode.includes('EDU') || dRawTitle.includes('education') || dRawTitle.includes('felicitation') || dEvCode === 'EDU26')) return true;
         if (tLow.includes('blood') && (dEvCode.includes('BLOOD') || dRawTitle.includes('blood'))) return true;
         if (tLow.includes('tree') && (dEvCode.includes('TREE') || dRawTitle.includes('tree'))) return true;
         if (tLow.includes('scholar') && (dEvCode.includes('SCHOLAR') || dRawTitle.includes('scholar'))) return true;
-        return dEvCode === tUp || dRawTitle.includes(tLow);
+        return dEvCode === tUp || (tLow.length > 2 && dRawTitle.includes(tLow));
       });
     });
   }, [recordedDonations, kbForm.targetEventIds]);
@@ -26684,7 +26687,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
       connectedEventId: kbForm.connectedEventId || "",
       connectedSubWorkspaceId: kbForm.connectedSubWorkspaceId || "",
       connectedSubWorkspaceName: kbForm.connectedSubWorkspaceName || "",
-      targetEventIds: (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.length > 0) ? kbForm.targetEventIds : ["all"]
+      targetEventIds: (() => {
+        const cleaned = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+          const s = String(x || '').trim().toLowerCase();
+          return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+        });
+        return cleaned.length > 0 ? cleaned : ["all"];
+      })()
     };
 
     let updated = [];
@@ -27843,7 +27852,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
             order: item.order || 1,
             roleAccess: item.roleAccess || (item.adminOnly ? "vibhag_admin" : "public"),
             storageDestination: item.storageDestination || "donations",
-            targetEventIds: Array.isArray(item.targetEventIds) && item.targetEventIds.length > 0 ? item.targetEventIds : ["all"],
+            targetEventIds: (() => {
+              const rawT = Array.isArray(item.targetEventIds) && item.targetEventIds.length > 0 ? item.targetEventIds : ["all"];
+              const cleaned = rawT.filter(x => {
+                const s = String(x || '').trim().toLowerCase();
+                return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+              });
+              return cleaned.length > 0 ? cleaned : ["all"];
+            })(),
             attachedWhatsAppTplId: item.attachedWhatsAppTplId || (act === "whatsapp" ? "tpl_edu_appeal" : ""),
             customWaHeader: item.customWaHeader !== undefined ? item.customWaHeader : (matchedTpl?.header || ""),
             customWaAppeal: item.customWaAppeal !== undefined ? item.customWaAppeal : (matchedTpl?.appeal || item.answer || ""),
@@ -28442,9 +28458,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </label>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) 
-                                  ? "🌐 All Events Combined" 
-                                  : `📌 Scoped to (${kbForm.targetEventIds.length} ${kbForm.targetEventIds.length === 1 ? 'Event' : 'Events'}): ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
+                                {(() => {
+                                  const displayTargets = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+                                    const s = String(x || '').trim().toLowerCase();
+                                    return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+                                  });
+                                  return displayTargets.length === 0 
+                                    ? "🌐 All Events Combined" 
+                                    : `📌 Scoped to (${displayTargets.length} ${displayTargets.length === 1 ? 'Event' : 'Events'}): ${displayTargets.map(formatEventTitle).join(", ")}`;
+                                })()}
                               </span>
                               <button
                                 type="button"
@@ -28567,7 +28589,10 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       type="checkbox"
                                       checked={isSelected}
                                       onChange={(e) => {
-                                        const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+                                        const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => {
+                                          const s = String(x || '').trim().toLowerCase();
+                                          return s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+                                        }) : [];
                                         const evKey = evItem.code;
                                         let updated = e.target.checked 
                                           ? [...cur, evKey] 
@@ -30118,9 +30143,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 </strong>
                                 {" ➔ "}
                                 <span>
-                                  {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all'))
-                                    ? "🌐 All Events Combined"
-                                    : `📌 ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
+                                  {(() => {
+                                    const displayTargets = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+                                      const s = String(x || '').trim().toLowerCase();
+                                      return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+                                    });
+                                    return displayTargets.length === 0
+                                      ? "🌐 All Events Combined"
+                                      : `📌 ${displayTargets.map(formatEventTitle).join(", ")}`;
+                                  })()}
                                 </span>
                               </span>
                             )}
@@ -30415,7 +30446,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 {actionType === "donation" && (
                                   <span style={{background:"#ECFDF5",color:"#065F46",padding:"2px 8px",borderRadius:6,fontSize:".72rem",fontWeight:800,border:"1px solid #6EE7B7"}}>
                                     💰 Donations: {item.attachedFormId === "builtin_offline_donation" ? "Offline Entry Form" : (Array.isArray(item.selectedFields) && item.selectedFields.length > 0 ? `Dynamic (${item.selectedFields.join(", ")})` : (item.summaryType === "donor_list" ? "Donor Registry" : "Vibhag Summary"))}
-                                    {Array.isArray(item.targetEventIds) && !item.targetEventIds.includes('all') && ` (${item.targetEventIds.map(formatEventTitle).join(", ")})`}
+                                    {(() => {
+                                      const validT = (Array.isArray(item.targetEventIds) ? item.targetEventIds : []).filter(x => {
+                                        const s = String(x || '').trim().toLowerCase();
+                                        return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+                                      });
+                                      return validT.length > 0 ? ` (${validT.map(formatEventTitle).join(", ")})` : "";
+                                    })()}
                                   </span>
                                 )}
                                 {actionType === "form" && (
@@ -57618,15 +57655,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return true;
     });
 
-    const isAll = !Array.isArray(targetEventIds) || targetEventIds.length === 0 || targetEventIds.includes('all');
-
-    // Check if target is "Donor Data" (ev_donor_data) or general community donations
-    const isDonorDataScope = Array.isArray(targetEventIds) && targetEventIds.some(t => {
+    // Extract valid specific targets (purging 'all', ghost tokens 'ev_donor_data', 'donor data', etc.)
+    const validTargets = (Array.isArray(targetEventIds) ? targetEventIds : []).filter(t => {
       const s = String(t || '').toLowerCase().trim();
-      return s === 'ev_donor_data' || s === 'donor data' || s.includes('donor data');
+      return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
     });
 
-    if (isAll || isDonorDataScope) {
+    // If no specific event is targeted, return all clean donations
+    if (validTargets.length === 0) {
       return cleanDonations;
     }
 
@@ -57639,28 +57675,32 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       const dRemarks = String(d.remarks || '').toLowerCase().trim();
       const combined = `${dEvId} ${dEvCode} ${dInferredCode} ${dEvName} ${dRemarks}`.toLowerCase();
 
-      return targetEventIds.some(target => {
+      return validTargets.some(target => {
         const tClean = String(target || '').toLowerCase().trim();
-        if (!tClean || tClean === 'all' || tClean === 'ev_donor_data' || tClean === 'donor data') return true;
+        if (!tClean) return false;
         
         // Exact matching on Event Code or Inferred Event Code
         if (dEvCode === tClean || dInferredCode === tClean || dEvId === tClean) return true;
         if (dEvCode && (dEvCode === tClean || dEvCode.includes(tClean) || tClean.includes(dEvCode))) return true;
 
-        if (tClean.includes('education') || tClean === 'education2026' || tClean === 'edu26') {
-          return combined.includes('education') || combined.includes('felicitation') || combined.includes('edu26') || combined.includes('vidya');
+        if (tClean === '6thdec' || tClean.includes('6th') || tClean.includes('dec') || tClean.includes('mahaparinirvan')) {
+          return dEvCode === '6thdec' || dInferredCode === '6thdec' || combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan') || combined.includes('06');
         }
 
-        if (tClean.includes('6th') || tClean.includes('dec') || tClean.includes('mahaparinirvan')) {
-          return combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan') || combined.includes('06');
+        if (tClean === 'edu26' || tClean.includes('education') || tClean === 'education2026' || tClean.includes('felicitation')) {
+          return dEvCode === 'edu26' || dInferredCode === 'edu26' || combined.includes('education') || combined.includes('felicitation') || combined.includes('edu26') || combined.includes('vidya');
         }
 
         if (tClean.includes('blood') || tClean === 'blood') {
-          return combined.includes('blood') || combined.includes('camp');
+          return dEvCode === 'blood' || dInferredCode === 'blood' || combined.includes('blood') || combined.includes('camp');
         }
 
         if (tClean.includes('tree') || tClean === 'tree') {
-          return combined.includes('monsoon') || combined.includes('tree') || combined.includes('plantation');
+          return dEvCode === 'tree' || dInferredCode === 'tree' || combined.includes('monsoon') || combined.includes('tree') || combined.includes('plantation');
+        }
+
+        if (tClean.includes('scholar') || tClean === 'scholar') {
+          return dEvCode === 'scholar' || dInferredCode === 'scholar' || combined.includes('scholar');
         }
 
         if (tClean === 'gen' || tClean === 'general' || tClean === 'general donation') {
@@ -57823,7 +57863,19 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
           // Filter strictly by target events if scoped (e.g. 6th Dec, Education 2026, or All Events)
-          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          let scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+            const s = String(t || '').trim().toLowerCase();
+            return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+          });
+          if (scopedEvents.length === 0) scopedEvents = ["all"];
+          const textToCheck = `${matchedKb?.cmd || ''} ${matchedKb?.title || ''} ${qLower}`.toLowerCase();
+          if (scopedEvents.includes('all') || scopedEvents.length === 0) {
+            if (textToCheck.includes('6th') && textToCheck.includes('dec')) {
+              scopedEvents = ["6THDEC"];
+            } else if (textToCheck.includes('edu') || textToCheck.includes('felicitation')) {
+              scopedEvents = ["EDU26"];
+            }
+          }
           const allDonations = filterDonationsByKbTargetEvents(allDonationsRaw, scopedEvents);
           const eventLabel = (scopedEvents.length === 1 && scopedEvents[0] !== "all") 
             ? formatEventTitle(scopedEvents[0]) 
@@ -57892,7 +57944,19 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
           // Filter strictly by target events if scoped (e.g. 6th Dec, Education 2026, or All Events)
-          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          let scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+            const s = String(t || '').trim().toLowerCase();
+            return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+          });
+          if (scopedEvents.length === 0) scopedEvents = ["all"];
+          const textToCheck = `${matchedKb?.cmd || ''} ${matchedKb?.title || ''} ${qLower}`.toLowerCase();
+          if (scopedEvents.includes('all') || scopedEvents.length === 0) {
+            if (textToCheck.includes('6th') && textToCheck.includes('dec')) {
+              scopedEvents = ["6THDEC"];
+            } else if (textToCheck.includes('edu') || textToCheck.includes('felicitation')) {
+              scopedEvents = ["EDU26"];
+            }
+          }
           const allDonations = filterDonationsByKbTargetEvents(allDonationsRaw, scopedEvents);
           const eventLabel = (scopedEvents.length === 1 && scopedEvents[0] !== "all") 
             ? formatEventTitle(scopedEvents[0]) 
@@ -57937,7 +58001,13 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         if (attachedCustomForm) {
           botType = "dynamic_form";
           botReply = matchedKb?.answer || `✍️ **${attachedCustomForm.name}**\n\nPlease complete the interactive form below:`;
-          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          const scopedEvents = (() => {
+            const list = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+              const s = String(t || '').trim().toLowerCase();
+              return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+            });
+            return list.length > 0 ? list : ["all"];
+          })();
           let defaultPurpose = "General Donation";
           let defaultEventCode = "GEN";
           if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
@@ -57963,7 +58033,13 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           };
         } else {
           // Standard / Built-in Offline Donation Entry Form (with scoped event defaults)
-          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          const scopedEvents = (() => {
+            const list = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+              const s = String(t || '').trim().toLowerCase();
+              return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+            });
+            return list.length > 0 ? list : ["all"];
+          })();
           let defaultPurpose = "General Donation";
           let defaultEventCode = "GEN";
           let defaultEventId = "";
