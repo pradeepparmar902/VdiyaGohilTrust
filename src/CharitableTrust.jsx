@@ -1480,6 +1480,116 @@ export const DONATION_AVAILABLE_FIELDS = [
   }
 ];
 
+export const FORM_AVAILABLE_FIELDS = [
+  {
+    key: "name",
+    shortLabel: "Name",
+    label: "Name (વિદ્યાર્થી/અરજદારનું નામ)",
+    defaultAction: "distinct_count",
+    allowedActions: [
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "show", label: "Show" }
+    ]
+  },
+  {
+    key: "vibhag",
+    shortLabel: "Vibhag",
+    label: "Vibhag (વિભાગ)",
+    defaultAction: "distinct",
+    allowedActions: [
+      { id: "distinct", label: "Distinct" },
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "show", label: "Show" }
+    ]
+  },
+  {
+    key: "mobile",
+    shortLabel: "Mobile No.",
+    label: "Mobile Number (મોબાઈલ નં.)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" },
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "masked", label: "Masked" }
+    ]
+  },
+  {
+    key: "stream",
+    shortLabel: "Stream / Class",
+    label: "Stream / Standard (ધોરણ / પ્રવાહ)",
+    defaultAction: "distinct_group",
+    allowedActions: [
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "distinct", label: "Distinct" },
+      { id: "show", label: "Show" }
+    ]
+  },
+  {
+    key: "percentage",
+    shortLabel: "Percentage",
+    label: "Percentage / Marks (ટકાવારી)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" },
+      { id: "avg", label: "Average" }
+    ]
+  },
+  {
+    key: "school",
+    shortLabel: "School / College",
+    label: "School / College Name (શાળા / કોલેજ)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" },
+      { id: "distinct", label: "Distinct" }
+    ]
+  },
+  {
+    key: "status",
+    shortLabel: "Status",
+    label: "Verification Status (મંજૂરી સ્થિતિ)",
+    defaultAction: "distinct_group",
+    allowedActions: [
+      { id: "distinct_group", label: "Distinct / Group" },
+      { id: "distinct", label: "Distinct" },
+      { id: "show", label: "Show" }
+    ]
+  },
+  {
+    key: "txnId",
+    shortLabel: "App ID / Txn",
+    label: "Application / Txn ID (અરજી ક્રમાંક)",
+    defaultAction: "distinct_count",
+    allowedActions: [
+      { id: "distinct_count", label: "Distinct / count" },
+      { id: "show", label: "Show" }
+    ]
+  },
+  {
+    key: "date",
+    shortLabel: "Date",
+    label: "Submission Date (તારીખ)",
+    defaultAction: "show",
+    allowedActions: [
+      { id: "show", label: "Show" }
+    ]
+  }
+];
+
+export const getRegRowValue = (row, k) => {
+  if (!row) return "-";
+  if (k === "name") return row["Full Name"] || row.studentName || row["Name"] || row["Submitted By"] || row.name || "-";
+  if (k === "vibhag") return row["Vibhag"] || row.vibhag || "-";
+  if (k === "mobile") return row["Mobile Number"] || row.mobile || row.phone || "-";
+  if (k === "stream") return row["Stream / Class"] || row["Stream"] || row.stream || "-";
+  if (k === "percentage") return row["% Obtained"] || row["Percentage"] || row.percentage || "-";
+  if (k === "school") return row["School / College Name"] || row["School / College"] || row.school || "-";
+  if (k === "status") return row["Status"] || row.status || "Verified";
+  if (k === "txnId") return row["Transaction ID"] || row.transactionId || row.id || "-";
+  if (k === "date") return row._submittedAt ? new Date(row._submittedAt).toLocaleDateString("en-IN") : (row.date || "-");
+  return row[k] || "-";
+};
+
 export const getDistinctEventOptions = (C = {}) => {
   const events = [];
   const seenKeys = new Set();
@@ -26161,6 +26271,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   });
 
   const [recordedDonations, setRecordedDonations] = useState([]);
+  const [recordedRegistrations, setRecordedRegistrations] = useState(() => (typeof window !== 'undefined' && Array.isArray(window.__MMP_ALL_REGS_RAW__)) ? window.__MMP_ALL_REGS_RAW__ : []);
   const [customEventCodes, setCustomEventCodes] = useState(() => {
     try {
       const saved = localStorage.getItem("trust_custom_event_codes");
@@ -26346,6 +26457,109 @@ function ChatbotAccessManager({ C, setC, auth }) {
     return previewFilteredDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
   }, [previewFilteredDonations]);
 
+  const previewDonationStats = useMemo(() => {
+    let totalAmt = 0;
+    let onlineAmt = 0, offlineAmt = 0;
+    let onlineCount = 0, offlineCount = 0;
+    const vibhagMap = {};
+
+    previewFilteredDonations.forEach(d => {
+      const amt = parseFloat(d.amount) || 0;
+      totalAmt += amt;
+      const isOff = d.isOffline || d.paymentMode === "Offline" || d.razorpay_payment_id === undefined || String(d.paymentMethod || "").toLowerCase().includes("offline");
+      if (isOff) {
+        offlineAmt += amt;
+        offlineCount++;
+      } else {
+        onlineAmt += amt;
+        onlineCount++;
+      }
+
+      let v = String(d.vibhag || d.vibhagNumber || d.program || "General").trim();
+      if (!vibhagMap[v]) vibhagMap[v] = { total: 0, count: 0 };
+      vibhagMap[v].total += amt;
+      vibhagMap[v].count += 1;
+    });
+
+    return {
+      totalAmt,
+      onlineAmt,
+      offlineAmt,
+      onlineCount,
+      offlineCount,
+      vibhagList: Object.entries(vibhagMap).sort((a, b) => b[1].total - a[1].total)
+    };
+  }, [previewFilteredDonations]);
+
+  const previewFilteredRegistrations = useMemo(() => {
+    const validRegs = (Array.isArray(recordedRegistrations) ? recordedRegistrations : []).filter(r => {
+      if (!r) return false;
+      if (r.deleted === true || r.deleted === "true" || r.isDeleted === true || r.Status === "Deleted" || r.status === "Deleted") return false;
+      return true;
+    });
+
+    const activeFormId = String(kbForm.attachedFormId || "").trim();
+    const activeTargets = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+      const s = String(x || '').trim().toLowerCase();
+      return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+    });
+
+    const isAll = (!activeFormId || activeFormId === "all" || activeFormId === "builtin_offline_donation") && activeTargets.length === 0;
+    if (isAll) return validRegs;
+
+    return validRegs.filter(r => {
+      const rFormId = String(r.formId || r.formName || "").toLowerCase().trim();
+      const rEvId = String(r.eventId || "").toLowerCase().trim();
+      const rEvName = String(r.eventName || r.eventTitle || r.program || r.title || "").toLowerCase().trim();
+      const combined = `${rFormId} ${rEvId} ${rEvName}`.toLowerCase();
+
+      if (activeFormId && activeFormId !== "all" && activeFormId !== "builtin_offline_donation") {
+        const tFormLow = activeFormId.toLowerCase().trim();
+        if (rFormId === tFormLow || (r.formName && r.formName.toLowerCase() === tFormLow) || rEvId === tFormLow) return true;
+      }
+
+      if (activeTargets.length > 0) {
+        return activeTargets.some(t => {
+          const tLow = String(t).toLowerCase().trim();
+          if (rEvId === tLow || rFormId === tLow) return true;
+          if (tLow.includes("edu") && (combined.includes("edu") || combined.includes("felicitation") || combined.includes("student"))) return true;
+          if (tLow.includes("6th") && (combined.includes("6th") || combined.includes("dec"))) return true;
+          return combined.includes(tLow);
+        });
+      }
+
+      return false;
+    });
+  }, [recordedRegistrations, kbForm.attachedFormId, kbForm.targetEventIds]);
+
+  const formAvailableFields = useMemo(() => {
+    const list = [...FORM_AVAILABLE_FIELDS];
+    const customForm = (C?.forms || []).find(f => f.id === kbForm.attachedFormId || f.name === kbForm.attachedFormId);
+    if (customForm && Array.isArray(customForm.fields)) {
+      customForm.fields.forEach(f => {
+        const lbl = (f.label || "").trim();
+        if (!lbl) return;
+        const key = f.dataKey || lbl.toLowerCase().replace(/\W+/g, "_");
+        const exists = list.some(b => b.key === key || b.label.toLowerCase().includes(lbl.toLowerCase()));
+        if (!exists) {
+          list.push({
+            key: key,
+            fieldLabel: lbl,
+            shortLabel: lbl.length > 15 ? lbl.slice(0, 15) + "..." : lbl,
+            label: lbl,
+            defaultAction: "show",
+            allowedActions: [
+              { id: "show", label: "Show" },
+              { id: "distinct", label: "Distinct" },
+              { id: "distinct_count", label: "Distinct / count" }
+            ]
+          });
+        }
+      });
+    }
+    return list;
+  }, [C?.forms, kbForm.attachedFormId]);
+
   const formatEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
     const clean = String(evIdOrTitle).trim();
@@ -26467,6 +26681,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
           window.__MMP_ALL_REGS_RAW__ = regsList;
           window.__MMP_REGS_CACHE__ = regsList;
           window.__MMP_INVITE_REGS__ = regsList;
+        }
+        if (Array.isArray(regsList)) {
+          setRecordedRegistrations(regsList);
         }
         setAllRegisteredUsers(Array.from(map.values()));
       } catch (e) {
@@ -29220,23 +29437,56 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               {`━━━━━━━━━━━━━━━━━━━━━\n`}
                               {(() => {
                                 const activeF = kbForm.selectedFields || ["name", "amount", "vibhag"];
-                                let previewText = `📋 *દાતાઓની યાદી (Sample Scoped Data):*\n`;
-                                const sampleDonors = [
-                                  { name: "Pradeep Parmar", amount: "5,000", vibhag: "15 Ramdev Nagar", rcp: "RCP-1001" },
-                                  { name: "Vinodbhai Makwana", amount: "2,500", vibhag: "01 Dadar", rcp: "RCP-1002" },
-                                  { name: "Kantilal Solanki", amount: "1,500", vibhag: "05 Kurla", rcp: "RCP-1003" }
-                                ];
-                                sampleDonors.forEach((s, idx) => {
-                                  const gujNum = ['૧', '૨', '૩'][idx] || `${idx + 1}`;
+                                if (kbForm.summaryType !== "donor_list") {
+                                  // Vibhag Collection Summary Mode (Live Database Data)
+                                  let summaryText = `📊 *MMP દાન વિગત & કલેક્શન સમરી (Live Database Scope)*\n`;
+                                  summaryText += `💰 *કુલ દાન રકમ:* ₹${Number(previewDonationStats.totalAmt).toLocaleString('en-IN')}\n`;
+                                  summaryText += `👥 *કુલ દાતાઓ:* ${previewFilteredDonations.length} દાતાઓ\n`;
+                                  summaryText += `🟢 *Online (Razorpay):* ₹${Number(previewDonationStats.onlineAmt).toLocaleString('en-IN')} (${previewDonationStats.onlineCount} txns)\n`;
+                                  summaryText += `🟠 *Offline / રોકડ:* ₹${Number(previewDonationStats.offlineAmt).toLocaleString('en-IN')} (${previewDonationStats.offlineCount} entries)\n`;
+                                  if (previewDonationStats.vibhagList.length > 0) {
+                                    summaryText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                    summaryText += `📍 *વિભાગ વાર વિગત:*\n`;
+                                    previewDonationStats.vibhagList.slice(0, 6).forEach(([vName, vData]) => {
+                                      summaryText += `• *${vName}*: ₹${Number(vData.total).toLocaleString('en-IN')} (${vData.count} દાતા)\n`;
+                                    });
+                                    if (previewDonationStats.vibhagList.length > 6) {
+                                      summaryText += `... and ${previewDonationStats.vibhagList.length - 6} more vibhags\n`;
+                                    }
+                                  }
+                                  return summaryText;
+                                }
+
+                                // Person-wise Donor Registry Mode (Live Database Data)
+                                let previewText = `📋 *દાતાઓની યાદી (Live Database Scope):*\n`;
+                                if (previewFilteredDonations.length === 0) {
+                                  previewText += `(No donation entries recorded yet for selected event scope)\n`;
+                                  previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  previewText += `💰 *Total Donation 0/- count 0*\n`;
+                                  return previewText;
+                                }
+
+                                const recordsToShow = previewFilteredDonations.slice(0, 10);
+                                recordsToShow.forEach((d, idx) => {
+                                  const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦'][idx] || `${idx + 1}`;
                                   const parts = [];
-                                  if (activeF.includes("name")) parts.push(s.name);
-                                  if (activeF.includes("amount")) parts.push(`₹${s.amount}/-`);
-                                  if (activeF.includes("vibhag")) parts.push(`(${s.vibhag})`);
-                                  if (activeF.includes("receiptNo")) parts.push(`[${s.rcp}]`);
+                                  if (activeF.includes("name")) parts.push(d.name || d.donorName || "Donor");
+                                  if (activeF.includes("amount")) parts.push(`₹${Number(d.amount || 0).toLocaleString('en-IN')}/-`);
+                                  if (activeF.includes("vibhag")) parts.push(`(${d.vibhag || 'General'})`);
+                                  if (activeF.includes("receiptNo") && (d.receiptNo || d.internalReceiptNo || d.id)) parts.push(`[${d.receiptNo || d.internalReceiptNo || d.id}]`);
+                                  if (activeF.includes("date") && d.date) parts.push(`📅 ${d.date}`);
+                                  if (activeF.includes("paymentMode")) parts.push(`(${d.paymentMode || (d.isOffline ? 'Offline' : 'Online')})`);
+                                  if (activeF.includes("purpose") && (d.purpose || d.program)) parts.push(`• ${d.purpose || d.program}`);
+                                  if (activeF.includes("mobile") && (d.mobile || d.phone)) parts.push(`📱 ${d.mobile || d.phone}`);
                                   previewText += `${gujNum}. ${parts.join(" ")}\n`;
                                 });
+
+                                if (previewFilteredDonations.length > 10) {
+                                  previewText += `... and ${previewFilteredDonations.length - 10} more donors\n`;
+                                }
+
                                 previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                previewText += `💰 *Total Donation 9000/- count 3*\n`;
+                                previewText += `💰 *Total Donation ${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}*\n`;
                                 return previewText;
                               })()}
                               {`━━━━━━━━━━━━━━━━━━━━━\n`}
@@ -29267,79 +29517,495 @@ function ChatbotAccessManager({ C, setC, auth }) {
                     {kbForm.actionType === "form" && (
                       <div style={{
                         background: "#F0FDF4",
-                        border: "1.5px solid #86EFAC",
+                        border: "2px solid #86EFAC",
                         borderRadius: 12,
                         padding: "18px 20px",
                         display: "flex",
                         flexDirection: "column",
-                        gap: 14
+                        gap: 16
                       }}>
-                        <div style={{fontSize:".86rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
-                          <span>📝</span> Interactive Form & Destination Settings:
+                        {/* Header Banner */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                          <div style={{fontSize:".92rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
+                            <span>📝</span> Interactive Form & Submissions Flow Setup:
+                          </div>
+                          <span style={{fontSize:".72rem",background:"#DCFCE7",color:"#166534",padding:"3px 8px",borderRadius:6,fontWeight:800}}>
+                            Step 2 of Flow: Form & Output Configuration
+                          </span>
                         </div>
 
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
-                          {/* 1. Form Selector */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
-                              1. Select Form to Display in Chatbot:
+                        {/* 1. SELECT FORM OUTPUT MODE */}
+                        <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                              <span>🎯</span> 1. Select Form Output Mode (Choose Submissions Summary vs Registry vs Interactive Entry):
                             </label>
-                            <select
-                              value={kbForm.attachedFormId || "builtin_offline_donation"}
-                              onChange={e => {
-                                const formId = e.target.value;
-                                const isBuiltinDon = formId === "builtin_offline_donation";
+                            <span style={{fontSize:".74rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                              Mode: {kbForm.summaryType === "offline_form" ? "Interactive Entry Form" : (kbForm.summaryType === "donor_list" ? "Person-wise Submissions Registry" : "Form Submissions Summary")}
+                            </span>
+                          </div>
+
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:10}}>
+                            {/* Option 1: Form Submissions Summary */}
+                            <div
+                              onClick={() => {
                                 setKbForm({
                                   ...kbForm,
-                                  attachedFormId: formId,
-                                  storageDestination: isBuiltinDon ? "donations" : (kbForm.storageDestination || "registrations"),
-                                  roleAccess: isBuiltinDon ? "donation_collector" : (kbForm.roleAccess || "public")
+                                  summaryType: "summary",
+                                  roleAccess: kbForm.roleAccess || "vibhag_admin"
                                 });
                               }}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                              style={{
+                                border: (kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType) ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                background: (kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType) ? "#F0FDF4" : "white",
+                                borderRadius: 8,
+                                padding: "10px 14px",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease"
+                              }}
                             >
-                              <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
-                              {(C.forms || []).map(f => (
-                                <option key={f.id} value={f.id}>
-                                  📝 {f.name || f.id} (Custom Event Form - {Array.isArray(f.fields) ? f.fields.length : 0} fields)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📊 Form Submissions Summary</span>
+                                <input
+                                  type="radio"
+                                  name="formOutputModeSelector"
+                                  checked={kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType}
+                                  onChange={() => {}}
+                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                />
+                              </div>
+                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                Live submission totals, Vibhag-by-Vibhag breakdown table, verification status splits & WhatsApp summary.
+                              </p>
+                            </div>
 
-                          {/* 2. Target Database Destination */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
-                              2. Store Submissions Into Database:
-                            </label>
-                            <select
-                              value={kbForm.storageDestination || "donations"}
-                              onChange={e => setKbForm({ ...kbForm, storageDestination: e.target.value })}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#166534",cursor:"pointer"}}
+                            {/* Option 2: Person-wise Submissions Registry */}
+                            <div
+                              onClick={() => {
+                                setKbForm({
+                                  ...kbForm,
+                                  summaryType: "donor_list",
+                                  roleAccess: kbForm.roleAccess || "vibhag_admin"
+                                });
+                              }}
+                              style={{
+                                border: kbForm.summaryType === "donor_list" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                background: kbForm.summaryType === "donor_list" ? "#F0FDF4" : "white",
+                                borderRadius: 8,
+                                padding: "10px 14px",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease"
+                              }}
                             >
-                              <option value="donations">💰 Donations Collection (donations)</option>
-                              <option value="registrations">📥 Event Registrations Collection (registrations)</option>
-                              <option value="volunteers">👥 Volunteers Collection (volunteers)</option>
-                            </select>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📋 Person-wise Submissions Registry</span>
+                                <input
+                                  type="radio"
+                                  name="formOutputModeSelector"
+                                  checked={kbForm.summaryType === "donor_list"}
+                                  onChange={() => {}}
+                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                />
+                              </div>
+                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                Numbered list of individual registered applicants (૧. રમેશભાઈ... ૨. વિનોદભાઈ...) with dynamic custom fields & 1-click WhatsApp share.
+                              </p>
+                            </div>
+
+                            {/* Option 3: Interactive Form Entry Form */}
+                            <div
+                              onClick={() => {
+                                setKbForm({
+                                  ...kbForm,
+                                  summaryType: "offline_form"
+                                });
+                              }}
+                              style={{
+                                border: kbForm.summaryType === "offline_form" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                background: kbForm.summaryType === "offline_form" ? "#F0FDF4" : "white",
+                                borderRadius: 8,
+                                padding: "10px 14px",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease"
+                              }}
+                            >
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>✍️ Interactive Form Entry in Chatbot</span>
+                                <input
+                                  type="radio"
+                                  name="formOutputModeSelector"
+                                  checked={kbForm.summaryType === "offline_form"}
+                                  onChange={() => {}}
+                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                />
+                              </div>
+                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                Interactive form presented inside the chatbot for applicants or collectors to fill and save directly into database.
+                              </p>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Form Intro Message */}
+                        {/* 2. FORM & EVENT CONNECTION (SELECT DATA SOURCE) */}
+                        <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                            <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                              <span>📌</span> 2. Form & Event Connection (Select Data Source):
+                            </label>
+                            <span style={{fontSize:".72rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                              {previewFilteredRegistrations.length} {previewFilteredRegistrations.length === 1 ? 'Submission' : 'Submissions'} Matching
+                            </span>
+                          </div>
+
+                          <select
+                            value={kbForm.attachedFormId || "all"}
+                            onChange={e => {
+                              const fVal = e.target.value;
+                              setKbForm({
+                                ...kbForm,
+                                attachedFormId: fVal,
+                                storageDestination: fVal === "builtin_offline_donation" ? "donations" : (kbForm.storageDestination || "registrations")
+                              });
+                            }}
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
+                          >
+                            <option value="all">🌐 All Forms & Event Registrations Combined ({recordedRegistrations.length} total entries)</option>
+                            <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
+                            {(C.forms || []).map(f => {
+                              const count = recordedRegistrations.filter(r => String(r.formId || r.formName || "").toLowerCase() === String(f.id || f.name).toLowerCase()).length;
+                              return (
+                                <option key={f.id} value={f.id}>
+                                  📝 {f.name || f.id} ({count} submissions, {Array.isArray(f.fields) ? f.fields.length : 0} fields)
+                                </option>
+                              );
+                            })}
+                            {(C.events || []).map(ev => {
+                              const count = recordedRegistrations.filter(r => String(r.eventId || r.eventName || "").toLowerCase().includes(String(ev.id || ev.title).toLowerCase())).length;
+                              return (
+                                <option key={ev.id} value={ev.id}>
+                                  🎪 {ev.title || ev.id} ({count} event submissions)
+                                </option>
+                              );
+                            })}
+                          </select>
+
+                          <div style={{fontSize:".72rem",color:"#166534",marginTop:6,lineHeight:1.4}}>
+                            💡 <em>Choose specific form or event to extract its entries, or select All Forms to summarize across all community registrations.</em>
+                          </div>
+                        </div>
+
+                        {/* 3. DYNAMIC FIELD EXTRACTION & AGGREGATION LAYOUT TABLE (Shown for Summary & Registry modes) */}
+                        {kbForm.summaryType !== "offline_form" && (
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>📊</span> 3. Configure Output Fields & Aggregation Layout:
+                              </label>
+                              <span style={{fontSize:".74rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                📊 Dynamic Field Extraction Table
+                              </span>
+                            </div>
+
+                            <p style={{fontSize:".75rem",color:"#64748B",margin:"0 0 10px 0",lineHeight:1.4}}>
+                              Customize the columns completely with zero hardcoding. Toggle <strong>Yes</strong> to include a column, and choose its aggregation action:
+                            </p>
+
+                            <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
+                              <table style={{width:"100%",borderCollapse:"collapse",fontSize:".8rem"}}>
+                                <thead>
+                                  <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#334155"}}>
+                                    <th style={{padding:"8px 12px",textAlign:"left",fontWeight:800}}>Field</th>
+                                    <th style={{padding:"8px 12px",textAlign:"left",fontWeight:800,width:170}}>Action / Aggregation</th>
+                                    <th style={{padding:"8px 12px",textAlign:"center",fontWeight:800,width:100}}>Select</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {formAvailableFields.map(fItem => {
+                                    const curSelectedList = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0 
+                                      ? kbForm.selectedFields 
+                                      : ["name", "vibhag", "mobile", "stream", "percentage", "status"];
+                                    const currentSelected = curSelectedList.includes(fItem.key);
+                                    const curAction = (kbForm.fieldActions && kbForm.fieldActions[fItem.key]) || fItem.defaultAction || "show";
+
+                                    return (
+                                      <tr 
+                                        key={fItem.key} 
+                                        style={{
+                                          borderBottom: "1px solid #F1F5F9",
+                                          background: currentSelected ? "#ECFDF5" : "white",
+                                          transition: "background 0.15s ease"
+                                        }}
+                                      >
+                                        <td style={{padding:"8px 12px",fontWeight:700,color: currentSelected ? "#166534" : "#334155"}}>
+                                          {fItem.label}
+                                        </td>
+                                        <td style={{padding:"8px 12px"}}>
+                                          <select
+                                            value={curAction}
+                                            onChange={(e) => {
+                                              const newActions = { ...(kbForm.fieldActions || {}), [fItem.key]: e.target.value };
+                                              setKbForm({ ...kbForm, fieldActions: newActions });
+                                            }}
+                                            style={{
+                                              padding: "4px 8px",
+                                              borderRadius: 6,
+                                              border: "1px solid #CBD5E1",
+                                              fontSize: ".76rem",
+                                              fontWeight: 700,
+                                              background: "white",
+                                              color: "#0F172A",
+                                              cursor: "pointer"
+                                            }}
+                                          >
+                                            {fItem.allowedActions.map(a => (
+                                              <option key={a.id} value={a.id}>{a.label}</option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                        <td style={{padding:"8px 12px",textAlign:"center"}}>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const curList = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                                ? [...kbForm.selectedFields]
+                                                : ["name", "vibhag", "mobile", "stream", "percentage", "status"];
+                                              let nextList;
+                                              if (curList.includes(fItem.key)) {
+                                                nextList = curList.filter(k => k !== fItem.key);
+                                              } else {
+                                                nextList = [...curList, fItem.key];
+                                              }
+                                              if (nextList.length === 0) nextList = ["name", "vibhag"];
+                                              setKbForm({ ...kbForm, selectedFields: nextList });
+                                            }}
+                                            style={{
+                                              background: currentSelected ? "#16A34A" : "#F1F5F9",
+                                              color: currentSelected ? "white" : "#64748B",
+                                              border: currentSelected ? "1px solid #15803D" : "1px solid #CBD5E1",
+                                              borderRadius: 6,
+                                              padding: "3px 12px",
+                                              fontSize: ".74rem",
+                                              fontWeight: 800,
+                                              cursor: "pointer",
+                                              boxShadow: currentSelected ? "0 1px 3px rgba(22,163,74,0.2)" : "none"
+                                            }}
+                                          >
+                                            {currentSelected ? "✅ Yes" : "❌ No"}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* EXTRACTED OUTPUT PREVIEW TABLE WITH LIVE SUBMISSION RECORDS */}
+                            <div style={{marginTop:12,background:"#F8FAFC",border:"1.5px dashed #16A34A",borderRadius:8,padding:12}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
+                                <div style={{fontSize:".76rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                  <span>👁️</span> Extracted Output Layout Preview (Based on your chosen columns):
+                                </div>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                    {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).length} Columns Selected
+                                  </span>
+                                  <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                    {previewFilteredRegistrations.length} {previewFilteredRegistrations.length === 1 ? 'Record' : 'Records'} Extracted
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:6,background:"white",maxHeight:260,overflowY:"auto"}}>
+                                <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
+                                  <thead style={{position:"sticky",top:0,zIndex:1}}>
+                                    <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
+                                      <th style={{padding:"6px 10px",width:36}}>sr.</th>
+                                      {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).map(k => {
+                                        const fDef = formAvailableFields.find(f => f.key === k);
+                                        return (
+                                          <th key={k} style={{padding:"6px 10px"}}>
+                                            {fDef ? fDef.shortLabel : k}
+                                          </th>
+                                        );
+                                      })}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {previewFilteredRegistrations.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).length + 1} style={{padding:"16px 10px",textAlign:"center",color:"#64748B",fontStyle:"italic"}}>
+                                          No submissions recorded yet matching the selected form / event.
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      previewFilteredRegistrations.slice(0, 15).map((row, ri) => (
+                                        <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
+                                          <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
+                                          {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).map(k => {
+                                            const val = getRegRowValue(row, k);
+                                            if (k === "status") {
+                                              const isApp = val === "Approved" || val === "Verified";
+                                              return (
+                                                <td key={k} style={{padding:"6px 10px"}}>
+                                                  <span style={{fontSize:".68rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                                    {val}
+                                                  </span>
+                                                </td>
+                                              );
+                                            }
+                                            return (
+                                              <td key={k} style={{padding:"6px 10px",color: k === "name" ? "#0F172A" : "#475569",fontWeight: k === "name" ? 700 : 500}}>
+                                                {val}
+                                              </td>
+                                            );
+                                          })}
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div style={{marginTop:8,fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <span>Total Submissions count {previewFilteredRegistrations.length}</span>
+                                {previewFilteredRegistrations.length > 15 && (
+                                  <span style={{color:"#64748B",fontWeight:600}}>(Showing first 15 records in preview)</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 4. IF INTERACTIVE ENTRY FORM MODE */}
+                        {kbForm.summaryType === "offline_form" && (
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:14}}>
+                              <div>
+                                <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
+                                  Target Database Destination Collection:
+                                </label>
+                                <select
+                                  value={kbForm.storageDestination || "registrations"}
+                                  onChange={e => setKbForm({ ...kbForm, storageDestination: e.target.value })}
+                                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#166534",cursor:"pointer"}}
+                                >
+                                  <option value="registrations">📥 Event Registrations Collection (registrations)</option>
+                                  <option value="donations">💰 Donations Collection (donations)</option>
+                                  <option value="volunteers">👥 Volunteers Collection (volunteers)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div style={{marginTop:12,fontSize:".74rem",color:"#15803D",lineHeight:1.4,background:"#F0FDF4",padding:"10px 14px",borderRadius:8,border:"1px solid #BBF7D0"}}>
+                              ✨ <strong>Connected Form</strong>: When any permitted user triggers <strong>{kbForm.cmd || "/ss"}</strong>, the chatbot presents the interactive submission form and instantly saves all records into <strong>{kbForm.storageDestination || "registrations"}</strong>.
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 5. REAL-TIME WHATSAPP MESSAGE PREVIEW WITH LIVE SUBMISSIONS */}
+                        {kbForm.summaryType !== "offline_form" && (
+                          <div style={{background:"#064E3B",color:"#ECFDF5",borderRadius:8,padding:"10px 14px",fontSize:".76rem",fontFamily:"monospace",lineHeight:1.45,border:"1px solid #047857",boxShadow:"inset 0 1px 3px rgba(0,0,0,0.2)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,borderBottom:"1px solid rgba(255,255,255,0.15)",paddingBottom:4}}>
+                              <span style={{fontWeight:800,color:"#6EE7B7",display:"flex",alignItems:"center",gap:6}}>
+                                <span>💬</span> Real-Time WhatsApp Message Preview:
+                                <span style={{fontSize:".68rem",background:"rgba(255,255,255,0.15)",color:"#A7F3D0",padding:"1px 6px",borderRadius:4}}>
+                                  {kbForm.summaryType === "donor_list" ? "📋 Person-wise Submissions Registry Mode" : "📊 Form Submissions Summary Mode"}
+                                </span>
+                              </span>
+                              <span style={{fontSize:".68rem",color:"#A7F3D0"}}>Trigger: {kbForm.cmd || "/form"}</span>
+                            </div>
+                            <div style={{whiteSpace:"pre-wrap"}}>
+                              {kbForm.customWaHeader ? `${kbForm.customWaHeader}
+` : ""}
+                              {kbForm.customWaAppeal ? `${kbForm.customWaAppeal}
+` : ""}
+                              {`━━━━━━━━━━━━━━━━━━━━━
+`}
+                              {(() => {
+                                const activeF = kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"];
+                                if (kbForm.summaryType !== "donor_list") {
+                                  // Form Submissions Summary Mode (Live Database Data)
+                                  let approvedCount = 0, pendingCount = 0, rejectedCount = 0;
+                                  const vMap = {};
+                                  previewFilteredRegistrations.forEach(r => {
+                                    const s = String(r.Status || r.status || "Pending").trim();
+                                    if (s === "Approved" || s === "Verified") approvedCount++;
+                                    else if (s === "Disapproved" || s === "Rejected") rejectedCount++;
+                                    else pendingCount++;
+                                    const v = getRegRowValue(r, "vibhag");
+                                    vMap[v] = (vMap[v] || 0) + 1;
+                                  });
+
+                                  let summaryText = `📊 *MMP અરજી વિગત & સમરી (Live Database Scope)*\n`;
+                                  summaryText += `📋 *કુલ અરજીઓ:* ${previewFilteredRegistrations.length}\n`;
+                                  summaryText += `🟢 *Approved:* ${approvedCount} | 🟡 *Pending:* ${pendingCount} | 🔴 *Rejected:* ${rejectedCount}\n`;
+                                  const vList = Object.entries(vMap).sort((a, b) => b[1] - a[1]);
+                                  if (vList.length > 0) {
+                                    summaryText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                    summaryText += `📍 *વિભાગ વાર વિગત:*\n`;
+                                    vList.slice(0, 6).forEach(([vName, vCount]) => {
+                                      summaryText += `• *${vName}*: ${vCount} અરજી\n`;
+                                    });
+                                    if (vList.length > 6) {
+                                      summaryText += `... and ${vList.length - 6} more vibhags\n`;
+                                    }
+                                  }
+                                  return summaryText;
+                                }
+
+                                // Person-wise Submissions Registry Mode (Live Database Data)
+                                let previewText = `📋 *અરજી યાદી (Live Database Submissions):*\n`;
+                                if (previewFilteredRegistrations.length === 0) {
+                                  previewText += `(No submissions recorded yet for selected form / event)\n`;
+                                  previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                  previewText += `📋 *Total Submissions count 0*\n`;
+                                  return previewText;
+                                }
+
+                                const recordsToShow = previewFilteredRegistrations.slice(0, 10);
+                                recordsToShow.forEach((r, idx) => {
+                                  const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦'][idx] || `${idx + 1}`;
+                                  const parts = [];
+                                  if (activeF.includes("name")) parts.push(getRegRowValue(r, "name"));
+                                  if (activeF.includes("vibhag")) parts.push(`(${getRegRowValue(r, "vibhag")})`);
+                                  if (activeF.includes("stream")) parts.push(`• ${getRegRowValue(r, "stream")}`);
+                                  if (activeF.includes("percentage") && getRegRowValue(r, "percentage") !== "-") parts.push(`[${getRegRowValue(r, "percentage")}%]`);
+                                  if (activeF.includes("status")) parts.push(`[Status: ${getRegRowValue(r, "status")}]`);
+                                  if (activeF.includes("mobile")) parts.push(`📱 ${getRegRowValue(r, "mobile")}`);
+                                  if (activeF.includes("txnId") && getRegRowValue(r, "txnId") !== "-") parts.push(`ID: ${getRegRowValue(r, "txnId")}`);
+                                  previewText += `${gujNum}. ${parts.join(" ")}\n`;
+                                });
+
+                                if (previewFilteredRegistrations.length > 10) {
+                                  previewText += `... and ${previewFilteredRegistrations.length - 10} more applicants\n`;
+                                }
+
+                                previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                                previewText += `📋 *Total Submissions count ${previewFilteredRegistrations.length}*\n`;
+                                return previewText;
+                              })()}
+                              {`━━━━━━━━━━━━━━━━━━━━━
+`}
+                              {kbForm.customWaSignatory ? `${kbForm.customWaSignatory}
+` : ""}
+                              {`🌐 *Live Portal:* https://mmp-cwc.com`}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 6. Guidance / Form Introduction Text */}
                         <div>
                           <label style={{fontSize:".75rem",fontWeight:700,color:"#166534",display:"block",marginBottom:4}}>
-                            3. Guidance / Form Introduction Text (Shown directly above the form in Chat):
+                            Guidance / Form Introduction Text (Shown directly above the response in Chat):
                           </label>
                           <textarea
                             rows={3}
                             value={kbForm.answer || ""}
                             onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
-                            placeholder="Enter guidance or instructions that will appear above the interactive form..."
-                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #86EFAC",fontSize:".85rem",fontFamily:"inherit",boxSizing:"border-box"}}
+                            placeholder={kbForm.summaryType === "offline_form" ? "Enter guidance or instructions that will appear above the interactive form in Chat..." : "e.g. 📋 Live Event Submissions & Registration Registry with verified details."}
+                            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #86EFAC",fontSize:".85rem",fontFamily:"inherit",boxSizing:"border-box"}}
                           />
-                        </div>
-
-                        <div style={{fontSize:".74rem",color:"#15803D",lineHeight:1.4,background:"white",padding:"10px 14px",borderRadius:8,border:"1px solid #BBF7D0"}}>
-                          ✨ <strong>Connected Form</strong>: When any permitted user triggers <strong>{kbForm.cmd || "/ss"}</strong>, the chatbot presents the interactive submission form and instantly saves all records into <strong>{kbForm.storageDestination}</strong>.
                         </div>
                       </div>
                     )}
@@ -54747,7 +55413,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
   });
 
   const getFieldShortName = (key) => {
-    const f = DONATION_AVAILABLE_FIELDS.find(x => x.key === key);
+    const f = DONATION_AVAILABLE_FIELDS.find(x => x.key === key) || (typeof FORM_AVAILABLE_FIELDS !== "undefined" && FORM_AVAILABLE_FIELDS.find(x => x.key === key));
     return f ? f.shortLabel : key;
   };
 
@@ -54759,6 +55425,18 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
         </span>
       );
     }
+    if (key === "stream") return d.stream || "-";
+    if (key === "percentage") return d.percentage ? `${d.percentage}%` : "-";
+    if (key === "school") return d.school || "-";
+    if (key === "status") {
+      const isApp = d.status === "Approved" || d.status === "Verified";
+      return (
+        <span style={{fontSize:".65rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:3,fontWeight:700}}>
+          {d.status || "Pending"}
+        </span>
+      );
+    }
+    if (key === "txnId") return d.txnId || d.receiptNo || "-";
     if (key === "paymentMode") {
       const isOff = d.isOffline || d.paymentMode === "Offline";
       return isOff ? (
@@ -57807,7 +58485,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return false;
     });
 
-    // ── Command 2: Person-wise Donor Registry ──
+    // ── Command 2: Person-wise Donor / Form Registry ──
     const isDonorList = (
       qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" ||
       qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" ||
@@ -57817,13 +58495,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       (matchedKb && (
         matchedKb.id === "kb_donerlist" ||
         matchedKb.summaryType === "donor_list" ||
-        (matchedKb.actionType === "donation" && matchedKb.summaryType === "donor_list") ||
-        (matchedKb.actionType === "summary" && matchedKb.summaryType === "donor_list") ||
-        (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list")))
+        matchedKb.summaryType === "registry" ||
+        (matchedKb.actionType === "donation" && (matchedKb.summaryType === "donor_list" || matchedKb.summaryType === "registry")) ||
+        (matchedKb.actionType === "form" && (matchedKb.summaryType === "donor_list" || matchedKb.summaryType === "registry")) ||
+        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donor_list" || matchedKb.summaryType === "registry")) ||
+        (matchedKb.title && (matchedKb.title.toLowerCase().includes("donor registry") || matchedKb.title.toLowerCase().includes("donor list") || matchedKb.title.toLowerCase().includes("person-wise")))
       ))
     );
 
-    // ── Command 1: Live Vibhag Donation Summary (Online vs Offline splits) ──
+    // ── Command 1: Live Vibhag Donation / Form Summary ──
     const isDonSummary = !isDonorList && (
       qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" ||
       qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" ||
@@ -57832,9 +58512,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       (matchedKb && (
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
-        (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
-        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.summaryType !== "donor_list") ||
-        (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list")
+        (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
+        (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations")) ||
+        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry") ||
+        (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry")
       ))
     );
 
@@ -57856,9 +58537,102 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
     );
 
     if (isDonSummary) {
-      if (!isDonationCollector) {
-        botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonation summaries and financial metrics are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
+      const isFormSummary = matchedKb && matchedKb.actionType === "form";
+      const reqRole = matchedKb?.roleAccess || (isFormSummary ? "vibhag_admin" : "donation_collector");
+      const isPermitted =
+        reqRole === "public" ||
+        (reqRole === "donation_collector" && isDonationCollector) ||
+        (reqRole === "vibhag_admin" && (isAnyAdmin || userSessionScope === "all")) ||
+        (reqRole === "super_admin" && userSessionScope === "all") ||
+        (isFormSummary ? (isAnyAdmin || userSessionScope === "all") : isDonationCollector);
+
+      if (!isPermitted) {
+        botReply = `🔒 **Access Restricted: ${reqRole === "donation_collector" ? "Donation Collector" : "Committee Admin"} Role Required**\n\nSummaries and financial metrics are restricted to authorized administrators.\n\n• 👉 Please enter your **10-digit Authorized Mobile Number** to unlock.`;
+      } else if (isFormSummary) {
+        // Form Submissions Summary Flow (Live Database Data)
+        let targetRegs = currentRegs;
+        const attachedFId = matchedKb?.attachedFormId;
+        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+          const fLow = attachedFId.toLowerCase().trim();
+          targetRegs = targetRegs.filter(r => {
+            const rF = String(r.formId || r.formName || "").toLowerCase().trim();
+            const rE = String(r.eventId || "").toLowerCase().trim();
+            return rF === fLow || (r.formName && r.formName.toLowerCase() === fLow) || rE === fLow;
+          });
+        }
+        const scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+          const s = String(t || '').trim().toLowerCase();
+          return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+        });
+        if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
+          targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
+        }
+
+        const vibhagMap = {};
+        let approved = 0, pending = 0, rejected = 0;
+        targetRegs.forEach(r => {
+          const s = String(r.Status || r.status || "Pending").trim();
+          if (s === "Approved" || s === "Verified") approved++;
+          else if (s === "Disapproved" || s === "Rejected") rejected++;
+          else pending++;
+
+          let v = getRecordVibhag(r);
+          if (!v || v === 'Unspecified') v = String(r["Vibhag"] || r["Vibhag New"] || r["vibhag"] || "10 MAHALAXMI").trim();
+          if (!vibhagMap[v]) vibhagMap[v] = { total: 0, count: 0, approved: 0, pending: 0, rejected: 0 };
+          vibhagMap[v].count += 1;
+          vibhagMap[v].total += 1;
+          if (s === "Approved" || s === "Verified") vibhagMap[v].approved++;
+          else if (s === "Disapproved" || s === "Rejected") vibhagMap[v].rejected++;
+          else vibhagMap[v].pending++;
+        });
+
+        const formLabel = attachedFId && attachedFId !== "all"
+          ? ((C.forms || []).find(f => f.id === attachedFId || f.name === attachedFId)?.name || (C.events || []).find(e => e.id === attachedFId)?.title || attachedFId)
+          : (scopedEvents.length === 1 && scopedEvents[0] !== "all" ? formatEventTitle(scopedEvents[0]) : "All Forms");
+
+        botType = "donation_summary_card";
+        botReply = (matchedKb && matchedKb.customWaAppeal && matchedKb.customWaAppeal.trim())
+          ? matchedKb.customWaAppeal.trim()
+          : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📊 **Live Form Submissions Summary (${formLabel})**:`);
+
+        cardData = {
+          eventLabel: formLabel,
+          targetEventIds: scopedEvents,
+          totalAmount: targetRegs.length,
+          totalCount: targetRegs.length,
+          onlineAmount: approved,
+          onlineCount: approved,
+          offlineAmount: pending,
+          offlineCount: pending,
+          vibhagBreakdown: Object.entries(vibhagMap).sort((a, b) => b[1].count - a[1].count),
+          donors: targetRegs.map((r, idx) => ({
+            id: r.id || r._docId || `REG-${idx + 1}`,
+            name: getRegRowValue(r, "name"),
+            amount: getRegRowValue(r, "amount") || "",
+            vibhag: getRegRowValue(r, "vibhag"),
+            mobile: getRegRowValue(r, "mobile"),
+            stream: getRegRowValue(r, "stream"),
+            percentage: getRegRowValue(r, "percentage"),
+            school: getRegRowValue(r, "school"),
+            status: getRegRowValue(r, "status"),
+            txnId: getRegRowValue(r, "txnId"),
+            date: getRegRowValue(r, "date"),
+            receiptNo: getRegRowValue(r, "txnId"),
+            ...r
+          })),
+          summaryType: "form_summary",
+          selectedFields: (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0) ? matchedKb.selectedFields : ["name", "vibhag", "mobile", "stream"],
+          fieldActions: matchedKb?.fieldActions || {},
+          tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_summary",
+          customWaHeader: matchedKb?.customWaHeader,
+          customWaAppeal: matchedKb?.customWaAppeal,
+          customWaSignatory: matchedKb?.customWaSignatory,
+          customWaIncludeQr: matchedKb?.customWaIncludeQr,
+          customWaUpiId: matchedKb?.customWaUpiId,
+          matchedKb: matchedKb
+        };
       } else {
+        // Standard Donation Summary Flow
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
@@ -57937,9 +58711,83 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         }
       }
     } else if (isDonorList) {
-      if (!isDonationCollector) {
-        botReply = `🔒 **Access Restricted: Donation Collector Role Required**\n\nDonor registries and person-wise collections are restricted to authorized **Donation Collectors** and **Super Admins**.\n\n• 👉 If you are an assigned Donation Collector, please enter your **10-digit Authorized Mobile Number** to unlock.`;
+      const isFormList = matchedKb && matchedKb.actionType === "form";
+      const reqRole = matchedKb?.roleAccess || (isFormList ? "vibhag_admin" : "donation_collector");
+      const isPermitted =
+        reqRole === "public" ||
+        (reqRole === "donation_collector" && isDonationCollector) ||
+        (reqRole === "vibhag_admin" && (isAnyAdmin || userSessionScope === "all")) ||
+        (reqRole === "super_admin" && userSessionScope === "all") ||
+        (isFormList ? (isAnyAdmin || userSessionScope === "all") : isDonationCollector);
+
+      if (!isPermitted) {
+        botReply = `🔒 **Access Restricted: ${reqRole === "donation_collector" ? "Donation Collector" : "Committee Admin"} Role Required**\n\nRegistries and person-wise lists are restricted to authorized administrators.\n\n• 👉 Please enter your **10-digit Authorized Mobile Number** to unlock.`;
+      } else if (isFormList) {
+        // Form Person-wise Submissions Registry Flow (Live Database Data)
+        let targetRegs = currentRegs;
+        const attachedFId = matchedKb?.attachedFormId;
+        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+          const fLow = attachedFId.toLowerCase().trim();
+          targetRegs = targetRegs.filter(r => {
+            const rF = String(r.formId || r.formName || "").toLowerCase().trim();
+            const rE = String(r.eventId || "").toLowerCase().trim();
+            return rF === fLow || (r.formName && r.formName.toLowerCase() === fLow) || rE === fLow;
+          });
+        }
+        const scopedEvents = (matchedKb?.targetEventIds || ["all"]).filter(t => {
+          const s = String(t || '').trim().toLowerCase();
+          return s && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+        });
+        if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
+          targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
+        }
+
+        const formLabel = attachedFId && attachedFId !== "all"
+          ? ((C.forms || []).find(f => f.id === attachedFId || f.name === attachedFId)?.name || (C.events || []).find(e => e.id === attachedFId)?.title || attachedFId)
+          : (scopedEvents.length === 1 && scopedEvents[0] !== "all" ? formatEventTitle(scopedEvents[0]) : "");
+
+        if (targetRegs.length === 0) {
+          botReply = `📋 **No submissions found${formLabel ? ` for "${formLabel}"` : " in the database"}.**`;
+        } else {
+          botType = "donor_list_card";
+          botReply = (matchedKb && matchedKb.customWaAppeal && matchedKb.customWaAppeal.trim())
+            ? matchedKb.customWaAppeal.trim()
+            : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Submissions Registry${formLabel ? ` — ${formLabel}` : ""} (${targetRegs.length} Entries Recorded)**:`);
+
+          const mappedItems = targetRegs.map((r, idx) => ({
+            id: r.id || r._docId || `REG-${idx + 1}`,
+            name: getRegRowValue(r, "name"),
+            amount: getRegRowValue(r, "amount") || "",
+            vibhag: getRegRowValue(r, "vibhag"),
+            mobile: getRegRowValue(r, "mobile"),
+            stream: getRegRowValue(r, "stream"),
+            percentage: getRegRowValue(r, "percentage"),
+            school: getRegRowValue(r, "school"),
+            status: getRegRowValue(r, "status"),
+            txnId: getRegRowValue(r, "txnId"),
+            date: getRegRowValue(r, "date"),
+            receiptNo: getRegRowValue(r, "txnId"),
+            ...r
+          }));
+
+          cardData = {
+            eventLabel: formLabel,
+            targetEventIds: scopedEvents,
+            donors: mappedItems,
+            totalAmount: mappedItems.length,
+            selectedFields: (matchedKb && Array.isArray(matchedKb.selectedFields) && matchedKb.selectedFields.length > 0) ? matchedKb.selectedFields : ["name", "vibhag", "mobile", "stream"],
+            fieldActions: matchedKb?.fieldActions || {},
+            tplId: matchedKb?.attachedWhatsAppTplId || "tpl_donor_list",
+            customWaHeader: matchedKb?.customWaHeader,
+            customWaAppeal: matchedKb?.customWaAppeal,
+            customWaSignatory: matchedKb?.customWaSignatory,
+            customWaIncludeQr: matchedKb?.customWaIncludeQr,
+            customWaUpiId: matchedKb?.customWaUpiId,
+            matchedKb: matchedKb
+          };
+        }
       } else {
+        // Standard Donation Donor List Flow
         try {
           let token = auth?.idToken || localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken") || "";
           const allDonationsRaw = await fbFetchDonations(token).catch(() => []);
