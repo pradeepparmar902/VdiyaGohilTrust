@@ -1580,14 +1580,23 @@ export const getRegRowValue = (row, k) => {
   if (!row) return "-";
   if (k === "name") return row["Full Name"] || row.studentName || row["Name"] || row["Submitted By"] || row.name || "-";
   if (k === "vibhag") return row["Vibhag"] || row.vibhag || "-";
-  if (k === "mobile") return row["Mobile Number"] || row.mobile || row.phone || "-";
-  if (k === "stream") return row["Stream / Class"] || row["Stream"] || row.stream || "-";
-  if (k === "percentage") return row["% Obtained"] || row["Percentage"] || row.percentage || "-";
-  if (k === "school") return row["School / College Name"] || row["School / College"] || row.school || "-";
+  if (k === "mobile") return row["Mobile Number"] || row.mobile || row.phone || row["Contact Number"] || row["WhatsApp Number"] || "-";
+  if (k === "stream") return row["Stream / Class"] || row["Stream"] || row.stream || row["Standard"] || row["Course"] || "-";
+  if (k === "percentage") return row["% Obtained"] || row["Percentage"] || row.percentage || row["Marks"] || "-";
+  if (k === "school") return row["School / College Name"] || row["School / College"] || row.school || row["College"] || "-";
   if (k === "status") return row["Status"] || row.status || "Verified";
   if (k === "txnId") return row["Transaction ID"] || row.transactionId || row.id || "-";
   if (k === "date") return row._submittedAt ? new Date(row._submittedAt).toLocaleDateString("en-IN") : (row.date || "-");
-  return row[k] || "-";
+  if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
+    return typeof row[k] === "object" ? JSON.stringify(row[k]) : String(row[k]);
+  }
+  const lowK = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const [propKey, propVal] of Object.entries(row)) {
+    if (propKey.toLowerCase().replace(/[^a-z0-9]/g, "") === lowK && propVal !== undefined && propVal !== null && String(propVal).trim() !== "") {
+      return typeof propVal === "object" ? JSON.stringify(propVal) : String(propVal);
+    }
+  }
+  return "-";
 };
 
 export const getDistinctEventOptions = (C = {}) => {
@@ -26627,32 +26636,214 @@ function ChatbotAccessManager({ C, setC, auth }) {
   }, [recordedRegistrations, kbForm.attachedFormId, kbForm.targetEventIds]);
 
   const formAvailableFields = useMemo(() => {
-    const list = [...FORM_AVAILABLE_FIELDS];
-    const customForm = (C?.forms || []).find(f => f.id === kbForm.attachedFormId || f.name === kbForm.attachedFormId);
-    if (customForm && Array.isArray(customForm.fields)) {
-      customForm.fields.forEach(f => {
-        const lbl = (f.label || "").trim();
-        if (!lbl) return;
-        const key = f.dataKey || lbl.toLowerCase().replace(/\W+/g, "_");
-        const exists = list.some(b => b.key === key || b.label.toLowerCase().includes(lbl.toLowerCase()));
-        if (!exists) {
+    const activeTargets = (Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds : []).filter(x => {
+      const s = String(x || '').trim().toLowerCase();
+      return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+    });
+
+    const isAll = activeTargets.length === 0;
+
+    // Check if education-related event is selected (or All events)
+    const isEduScoped = isAll || activeTargets.some(t => {
+      const s = String(t).toLowerCase();
+      return s.includes("edu") || s.includes("felicitation") || s.includes("student") || s === "edu26";
+    });
+
+    // 1. Build Base standard fields according to scope
+    let list = [];
+    if (isEduScoped) {
+      // Include full education registration fields
+      list = [...FORM_AVAILABLE_FIELDS];
+    } else {
+      // General non-education event: start with universal attendee/participant fields
+      list = [
+        {
+          key: "name",
+          shortLabel: "Name",
+          label: "Name (સભ્ય / અરજદારનું નામ)",
+          defaultAction: "distinct_count",
+          allowedActions: [
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "show", label: "Show" }
+          ]
+        },
+        {
+          key: "vibhag",
+          shortLabel: "Vibhag",
+          label: "Vibhag (વિભાગ)",
+          defaultAction: "distinct",
+          allowedActions: [
+            { id: "distinct", label: "Distinct" },
+            { id: "distinct_group", label: "Distinct / Group" },
+            { id: "show", label: "Show" }
+          ]
+        },
+        {
+          key: "mobile",
+          shortLabel: "Mobile No.",
+          label: "Mobile Number (મોબાઈલ નં.)",
+          defaultAction: "show",
+          allowedActions: [
+            { id: "show", label: "Show" },
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "masked", label: "Masked" }
+          ]
+        },
+        {
+          key: "status",
+          shortLabel: "Status",
+          label: "Verification Status (મંજૂરી સ્થિતિ)",
+          defaultAction: "distinct_group",
+          allowedActions: [
+            { id: "distinct_group", label: "Distinct / Group" },
+            { id: "distinct", label: "Distinct" },
+            { id: "show", label: "Show" }
+          ]
+        },
+        {
+          key: "txnId",
+          shortLabel: "App ID / Txn",
+          label: "Application / Txn ID (નોંધણી ક્રમાંક)",
+          defaultAction: "distinct_count",
+          allowedActions: [
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "show", label: "Show" }
+          ]
+        },
+        {
+          key: "date",
+          shortLabel: "Date",
+          label: "Submission Date (તારીખ)",
+          defaultAction: "show",
+          allowedActions: [
+            { id: "show", label: "Show" }
+          ]
+        }
+      ];
+    }
+
+    // 2. Discover related forms from C.forms linked to selected event(s) or directly targeted
+    const relevantForms = [];
+    (C?.forms || []).forEach(f => {
+      const fId = String(f.id || '').trim().toUpperCase();
+      const fName = String(f.name || '').trim().toUpperCase();
+
+      if (isAll) {
+        relevantForms.push(f);
+        return;
+      }
+
+      // Check direct form match
+      if (activeTargets.some(t => {
+        const tUp = String(t).trim().toUpperCase();
+        return fId === tUp || fName.includes(tUp);
+      })) {
+        relevantForms.push(f);
+        return;
+      }
+
+      // Check if any matched event links to this form
+      const isLinkedToMatchedEvent = (C?.events || []).some(ev => {
+        const evId = String(ev.id || '').trim().toUpperCase();
+        const evCode = String(ev.code || ev.eventCode || '').trim().toUpperCase();
+        const evTitle = String(ev.title || '').trim().toUpperCase();
+        const evFormId = String(ev.formId || '').trim().toUpperCase();
+
+        const evMatches = activeTargets.some(t => {
+          const tUp = String(t).trim().toUpperCase();
+          if (evId === tUp || evCode === tUp || evTitle.includes(tUp)) return true;
+          if (tUp.includes("EDU") && (evCode.includes("EDU") || evTitle.includes("EDU") || evTitle.includes("FELICITATION"))) return true;
+          if (tUp.includes("6TH") && (evCode.includes("6TH") || evTitle.includes("6TH") || evTitle.includes("DEC") || evTitle.includes("MAHAPARINIRVAN"))) return true;
+          if (tUp.includes("BLOOD") && (evCode.includes("BLOOD") || evTitle.includes("BLOOD"))) return true;
+          if (tUp.includes("TREE") && (evCode.includes("TREE") || evTitle.includes("TREE"))) return true;
+          return false;
+        });
+
+        return evMatches && (evFormId === fId || (ev.formName && ev.formName.toUpperCase() === fId));
+      });
+
+      if (isLinkedToMatchedEvent) {
+        relevantForms.push(f);
+      }
+    });
+
+    // Append fields from all relevant forms
+    relevantForms.forEach(form => {
+      if (!Array.isArray(form.fields)) return;
+      form.fields.forEach(f => {
+        const rawLabel = String(f.label || f.name || f.title || "").trim();
+        if (!rawLabel) return;
+        const key = f.dataKey || f.id || rawLabel;
+
+        const alreadyExists = list.some(item => 
+          item.key.toLowerCase() === key.toLowerCase() || 
+          item.key.toLowerCase() === rawLabel.toLowerCase() ||
+          item.label.toLowerCase().includes(rawLabel.toLowerCase()) ||
+          rawLabel.toLowerCase().includes(item.shortLabel.toLowerCase())
+        );
+
+        if (!alreadyExists) {
           list.push({
             key: key,
-            fieldLabel: lbl,
-            shortLabel: lbl.length > 15 ? lbl.slice(0, 15) + "..." : lbl,
-            label: lbl,
+            fieldLabel: rawLabel,
+            shortLabel: rawLabel.length > 20 ? rawLabel.slice(0, 18) + "..." : rawLabel,
+            label: `${rawLabel} (${form.name || 'Form Field'})`,
             defaultAction: "show",
             allowedActions: [
               { id: "show", label: "Show" },
               { id: "distinct", label: "Distinct" },
-              { id: "distinct_count", label: "Distinct / count" }
+              { id: "distinct_count", label: "Distinct / count" },
+              { id: "distinct_group", label: "Distinct / Group" }
             ]
           });
         }
       });
-    }
+    });
+
+    // 3. Inspect real submitted records in previewFilteredRegistrations to dynamically extract all record keys
+    const recordKeys = new Set();
+    previewFilteredRegistrations.slice(0, 100).forEach(r => {
+      if (!r || typeof r !== "object") return;
+      Object.keys(r).forEach(k => {
+        if (!k) return;
+        const cleanK = String(k).trim();
+        const ignored = [
+          "_docId", "id", "_submittedAt", "timestamp", "createdAt", "updatedAt",
+          "deleted", "isDeleted", "isTrash", "rawJson", "eventId", "formId",
+          "formName", "eventName", "eventTitle", "eventCode", "Status", "status",
+          "_rev", "__v"
+        ];
+        if (ignored.includes(cleanK) || cleanK.startsWith("_") || cleanK.startsWith("$")) return;
+        recordKeys.add(cleanK);
+      });
+    });
+
+    recordKeys.forEach(k => {
+      const alreadyExists = list.some(item => 
+        item.key.toLowerCase() === k.toLowerCase() || 
+        item.shortLabel.toLowerCase() === k.toLowerCase() ||
+        item.label.toLowerCase().includes(k.toLowerCase())
+      );
+
+      if (!alreadyExists) {
+        list.push({
+          key: k,
+          fieldLabel: k,
+          shortLabel: k.length > 20 ? k.slice(0, 18) + "..." : k,
+          label: `${k}`,
+          defaultAction: "show",
+          allowedActions: [
+            { id: "show", label: "Show" },
+            { id: "distinct", label: "Distinct" },
+            { id: "distinct_count", label: "Distinct / count" },
+            { id: "distinct_group", label: "Distinct / Group" }
+          ]
+        });
+      }
+    });
+
     return list;
-  }, [C?.forms, kbForm.attachedFormId]);
+  }, [C?.forms, C?.events, kbForm.targetEventIds, previewFilteredRegistrations]);
 
   const formatEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
@@ -30002,10 +30193,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {formAvailableFields.map(fItem => {
-                                    const curSelectedList = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0 
-                                      ? kbForm.selectedFields 
-                                      : ["name", "vibhag", "mobile", "stream", "percentage", "status"];
+                                  {(() => {
+                                    const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                    const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                      ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                      : [];
+                                    const curSelectedList = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+                                    return formAvailableFields.map(fItem => {
                                     const currentSelected = curSelectedList.includes(fItem.key);
                                     const curAction = (kbForm.fieldActions && kbForm.fieldActions[fItem.key]) || fItem.defaultAction || "show";
 
@@ -30048,16 +30242,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                           <button
                                             type="button"
                                             onClick={() => {
-                                              const curList = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
-                                                ? [...kbForm.selectedFields]
-                                                : ["name", "vibhag", "mobile", "stream", "percentage", "status"];
+                                              const curList = curSelectedList;
                                               let nextList;
                                               if (curList.includes(fItem.key)) {
                                                 nextList = curList.filter(k => k !== fItem.key);
                                               } else {
                                                 nextList = [...curList, fItem.key];
                                               }
-                                              if (nextList.length === 0) nextList = ["name", "vibhag"];
+                                              if (nextList.length === 0 && formAvailableFields.length > 0) nextList = [formAvailableFields[0].key];
                                               setKbForm({ ...kbForm, selectedFields: nextList });
                                             }}
                                             style={{
@@ -30077,7 +30269,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         </td>
                                       </tr>
                                     );
-                                  })}
+                                  });
+                                })()}
                                 </tbody>
                               </table>
                             </div>
@@ -30090,7 +30283,14 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 </div>
                                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                                   <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                    {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).length} Columns Selected
+                                    {(() => {
+                                      const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                      const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                        ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                        : [];
+                                      const curList = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+                                      return curList.length;
+                                    })()} Columns Selected
                                   </span>
                                   <span style={{fontSize:".68rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
                                     {previewFilteredRegistrations.length} {previewFilteredRegistrations.length === 1 ? 'Record' : 'Records'} Extracted
@@ -30103,14 +30303,21 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   <thead style={{position:"sticky",top:0,zIndex:1}}>
                                     <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
                                       <th style={{padding:"6px 10px",width:36}}>sr.</th>
-                                      {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).map(k => {
+                                      {(() => {
+                                        const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                        const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                          ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                          : [];
+                                        const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+                                        return curCols.map(k => {
                                         const fDef = formAvailableFields.find(f => f.key === k);
                                         return (
                                           <th key={k} style={{padding:"6px 10px"}}>
                                             {fDef ? fDef.shortLabel : k}
                                           </th>
                                         );
-                                      })}
+                                      });
+                                    })()}
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -30124,24 +30331,31 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       previewFilteredRegistrations.slice(0, 15).map((row, ri) => (
                                         <tr key={row._docId || row.id || ri} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
                                           <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                          {(kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"]).map(k => {
-                                            const val = getRegRowValue(row, k);
-                                            if (k === "status") {
-                                              const isApp = val === "Approved" || val === "Verified";
+                                          {(() => {
+                                            const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                            const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                              ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                              : [];
+                                            const curCols = validSelected.length > 0 ? validSelected : defaultFieldKeys;
+                                            return curCols.map(k => {
+                                              const val = getRegRowValue(row, k);
+                                              if (k === "status") {
+                                                const isApp = val === "Approved" || val === "Verified";
+                                                return (
+                                                  <td key={k} style={{padding:"6px 10px"}}>
+                                                    <span style={{fontSize:".68rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
+                                                      {val}
+                                                    </span>
+                                                  </td>
+                                                );
+                                              }
                                               return (
-                                                <td key={k} style={{padding:"6px 10px"}}>
-                                                  <span style={{fontSize:".68rem",background:isApp ? "#DCFCE7" : "#FEF3C7",color:isApp ? "#15803D" : "#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>
-                                                    {val}
-                                                  </span>
+                                                <td key={k} style={{padding:"6px 10px",color: k === "name" ? "#0F172A" : "#475569",fontWeight: k === "name" ? 700 : 500}}>
+                                                  {val}
                                                 </td>
                                               );
-                                            }
-                                            return (
-                                              <td key={k} style={{padding:"6px 10px",color: k === "name" ? "#0F172A" : "#475569",fontWeight: k === "name" ? 700 : 500}}>
-                                                {val}
-                                              </td>
-                                            );
-                                          })}
+                                            });
+                                          })()}
                                         </tr>
                                       ))
                                     )}
@@ -30205,7 +30419,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               {`━━━━━━━━━━━━━━━━━━━━━
 `}
                               {(() => {
-                                const activeF = kbForm.selectedFields || ["name", "vibhag", "mobile", "stream"];
+                                const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
+                                const validSelected = Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0
+                                  ? kbForm.selectedFields.filter(k => formAvailableFields.some(f => f.key === k))
+                                  : [];
+                                const activeF = validSelected.length > 0 ? validSelected : defaultFieldKeys;
                                 if (kbForm.summaryType !== "donor_list") {
                                   // Form Submissions Summary Mode (Live Database Data)
                                   let approvedCount = 0, pendingCount = 0, rejectedCount = 0;
