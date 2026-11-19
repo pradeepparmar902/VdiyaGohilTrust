@@ -25953,6 +25953,19 @@ function ChatbotWhatsAppDispatcherCard({ dispatchData, C, allRegs }) {
 }
 // ── End Shared Sub-Workspace Utilities ──
 
+const toGujDigits = (num) => {
+  if (num === null || num === undefined) return "";
+  const guj = ['૦', '૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯'];
+  return String(num).replace(/[0-9]/g, d => guj[parseInt(d, 10)]);
+};
+
+const padCol = (str, len, alignRight = false) => {
+  const s = String(str ?? "");
+  if (s.length >= len) return s;
+  const pad = " ".repeat(len - s.length);
+  return alignRight ? pad + s : s + pad;
+};
+
 function ChatbotAccessManager({ C, setC, auth }) {
   const [activeTab, setActiveTab] = useState("kb"); // Default to 1-Flow Question & Action Studio ("kb" / "studio")
   const [accessScope, setAccessScope] = useState("individual"); // Default to "individual" (Mobile/Txn only)
@@ -26284,6 +26297,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
     answer: "",
     actionType: "donation", // "donation" | "form" | "summary" | "workspace" | "whatsapp" | "committee" | "text"
     summaryType: "donation", // "donation" | "donor_list" | "registrations" | "pending" | "approved"
+    columnOrder: "count_first", // "count_first" | "vibhag_first"
+    tableLang: "gu", // "gu" | "en"
+    layoutFormat: "table", // "table" | "list"
     selectedFields: ["name", "amount", "vibhag"],
     fieldActions: {
       name: "distinct_count",
@@ -27210,6 +27226,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
       answer: finalAnswer,
       actionType: kbForm.actionType || "donation",
       summaryType: kbForm.summaryType || "donation",
+      columnOrder: kbForm.columnOrder || "count_first",
+      tableLang: kbForm.tableLang || "gu",
+      layoutFormat: kbForm.layoutFormat || "table",
       order: itemOrder,
       roleAccess: kbForm.roleAccess || defaultRole,
       adminOnly: (kbForm.roleAccess || defaultRole) !== "public",
@@ -27268,6 +27287,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
       answer: "",
       actionType: "donation",
       summaryType: "donation",
+      columnOrder: "count_first",
+      tableLang: "gu",
+      layoutFormat: "table",
       selectedFields: ["name", "amount", "vibhag"],
       fieldActions: {
         name: "distinct_count",
@@ -28386,6 +28408,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
             ...item,
             actionType: act,
             summaryType: sum,
+            columnOrder: item.columnOrder || "count_first",
+            tableLang: item.tableLang || "gu",
+            layoutFormat: item.layoutFormat || "table",
             selectedFields: (Array.isArray(item.selectedFields) && item.selectedFields.length > 0) ? item.selectedFields : ["name", "amount", "vibhag"],
             fieldActions: item.fieldActions || {
               name: "distinct_count",
@@ -28430,6 +28455,9 @@ function ChatbotAccessManager({ C, setC, auth }) {
             answer: "",
             actionType: "donation",
             summaryType: "donation",
+            columnOrder: "count_first",
+            tableLang: "gu",
+            layoutFormat: "table",
             selectedFields: ["name", "amount", "vibhag"],
             fieldActions: {
               name: "distinct_count",
@@ -29325,6 +29353,136 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 Customize the columns completely with zero hardcoding. Toggle <strong>Yes</strong> to include a column, and choose its aggregation action:
                               </div>
 
+                              {/* Column Order, Language & WhatsApp Format Controls */}
+                              <div style={{
+                                display: "flex",
+                                gap: 12,
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                background: "#F0FDF4",
+                                border: "1px solid #86EFAC",
+                                borderRadius: 8,
+                                padding: "8px 12px",
+                                marginBottom: 10
+                              }}>
+                                {/* 1. Column Order Selector */}
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>↕️ Column Order:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, columnOrder: "count_first" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: (kbForm.columnOrder || "count_first") === "count_first" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: (kbForm.columnOrder || "count_first") === "count_first" ? "#16A34A" : "white",
+                                      color: (kbForm.columnOrder || "count_first") === "count_first" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: (kbForm.columnOrder || "count_first") === "count_first" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    🔢 Count 1st, Vibhag 2nd
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, columnOrder: "vibhag_first" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: kbForm.columnOrder === "vibhag_first" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: kbForm.columnOrder === "vibhag_first" ? "#16A34A" : "white",
+                                      color: kbForm.columnOrder === "vibhag_first" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: kbForm.columnOrder === "vibhag_first" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    📍 Vibhag 1st, Count 2nd
+                                  </button>
+                                </div>
+
+                                {/* 2. Language Selector */}
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>🌐 Language:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, tableLang: "gu" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: (kbForm.tableLang || "gu") === "gu" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: (kbForm.tableLang || "gu") === "gu" ? "#16A34A" : "white",
+                                      color: (kbForm.tableLang || "gu") === "gu" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: (kbForm.tableLang || "gu") === "gu" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    🇬🇺 ગુજરાતી
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, tableLang: "en" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: kbForm.tableLang === "en" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: kbForm.tableLang === "en" ? "#16A34A" : "white",
+                                      color: kbForm.tableLang === "en" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: kbForm.tableLang === "en" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    🇬🇧 English
+                                  </button>
+                                </div>
+
+                                {/* 3. WhatsApp Output Format */}
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>📱 WhatsApp Format:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, layoutFormat: "table" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: (kbForm.layoutFormat || "table") === "table" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: (kbForm.layoutFormat || "table") === "table" ? "#16A34A" : "white",
+                                      color: (kbForm.layoutFormat || "table") === "table" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: (kbForm.layoutFormat || "table") === "table" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    📊 Monospace Table
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKbForm({ ...kbForm, layoutFormat: "list" })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 5,
+                                      border: kbForm.layoutFormat === "list" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      background: kbForm.layoutFormat === "list" ? "#16A34A" : "white",
+                                      color: kbForm.layoutFormat === "list" ? "white" : "#334155",
+                                      fontSize: ".73rem",
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      boxShadow: kbForm.layoutFormat === "list" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                    }}
+                                  >
+                                    📋 Numbered List
+                                  </button>
+                                </div>
+                              </div>
+
                               <div style={{overflowX:"auto",border:"1px solid #CBD5E1",borderRadius:8}}>
                                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:".8rem"}}>
                                   <thead>
@@ -29466,15 +29624,45 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
                                           <thead style={{position:"sticky",top:0,zIndex:1}}>
                                             <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
-                                              <th style={{padding:"6px 10px",width:36}}>sr.</th>
+                                              <th style={{padding:"6px 10px",width:36}}>{(kbForm.tableLang || "gu") === "gu" ? "ક્રમ" : "sr."}</th>
                                               {isDonGroupedView ? (
-                                                <>
-                                                  <th style={{padding:"6px 10px"}}>{primaryDonLabel}</th>
-                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>Donors Count (દાતાઓ)</th>
-                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Total Amount (દાન રકમ ₹)</th>
-                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Average (સરેરાશ ₹)</th>
-                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>Share % (હિસ્સો)</th>
-                                                </>
+                                                ((kbForm.columnOrder || "count_first") === "count_first") ? (
+                                                  <>
+                                                    <th style={{padding:"6px 10px",textAlign:"center",color:"#15803D"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "દાતાઓ (Donors Count)" : "Donors Count"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right",color:"#15803D"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "દાન રકમ ₹ (Total Amount)" : "Total Amount ₹"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? (primaryDonGroupKey === "vibhag" ? "વિભાગ (Vibhag)" : `${primaryDonLabel} (વિભાગ)`) : primaryDonLabel}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "સરેરાશ ₹ (Average)" : "Average ₹"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "હિસ્સો % (Share)" : "Share %"}
+                                                    </th>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <th style={{padding:"6px 10px"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? (primaryDonGroupKey === "vibhag" ? "વિભાગ (Vibhag)" : `${primaryDonLabel} (વિભાગ)`) : primaryDonLabel}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"center",color:"#15803D"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "દાતાઓ (Donors Count)" : "Donors Count"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right",color:"#15803D"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "દાન રકમ ₹ (Total Amount)" : "Total Amount ₹"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "સરેરાશ ₹ (Average)" : "Average ₹"}
+                                                    </th>
+                                                    <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                      {(kbForm.tableLang || "gu") === "gu" ? "હિસ્સો % (Share)" : "Share %"}
+                                                    </th>
+                                                  </>
+                                                )
                                               ) : (
                                                 curDonCols.map(k => {
                                                   const fDef = DONATION_AVAILABLE_FIELDS.find(f => f.key === k);
@@ -29498,21 +29686,43 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                               donGroupList.slice(0, 20).map(([val, stats], ri) => {
                                                 const pct = previewTotalAmt > 0 ? ((stats.total / previewTotalAmt) * 100).toFixed(1) : "0";
                                                 const avg = stats.count > 0 ? Math.round(stats.total / stats.count) : 0;
+                                                const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
+                                                const isGu = (kbForm.tableLang || "gu") === "gu";
+                                                const srVal = isGu ? toGujDigits(ri + 1) : ri + 1;
+                                                const countVal = isGu ? `${toGujDigits(stats.count)} દાતા` : `${stats.count} Donors`;
+                                                const amtVal = isGu ? `₹${toGujDigits(stats.total.toLocaleString('en-IN'))}` : `₹${stats.total.toLocaleString('en-IN')}`;
+                                                const avgVal = isGu ? `₹${toGujDigits(avg.toLocaleString('en-IN'))}` : `₹${avg.toLocaleString('en-IN')}`;
+                                                const pctVal = (isGu ? toGujDigits(pct) : pct) + "%";
+
                                                 return (
                                                   <tr key={val} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
-                                                    <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                                    <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
-                                                    <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
-                                                      {stats.count} દાતા
-                                                    </td>
-                                                    <td style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
-                                                      ₹{stats.total.toLocaleString('en-IN')}
-                                                    </td>
+                                                    <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{srVal}</td>
+                                                    {isCountFirst ? (
+                                                      <>
+                                                        <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                          {countVal}
+                                                        </td>
+                                                        <td style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
+                                                          {amtVal}
+                                                        </td>
+                                                        <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                        <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                          {countVal}
+                                                        </td>
+                                                        <td style={{padding:"6px 10px",textAlign:"right",fontWeight:800,color:"#15803D"}}>
+                                                          {amtVal}
+                                                        </td>
+                                                      </>
+                                                    )}
                                                     <td style={{padding:"6px 10px",textAlign:"right",color:"#475569"}}>
-                                                      ₹{avg.toLocaleString('en-IN')}
+                                                      {avgVal}
                                                     </td>
                                                     <td style={{padding:"6px 10px",textAlign:"right",color:"#64748B",fontWeight:700}}>
-                                                      {pct}%
+                                                      {pctVal}
                                                     </td>
                                                   </tr>
                                                 );
@@ -29602,8 +29812,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                               <td colSpan={isDonGroupedView ? 6 : curDonCols.length + 1} style={{padding:"8px 10px",color:"#065F46",fontWeight:800,fontSize:".8rem"}}>
                                                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
                                                   <span>
-                                                    Total Donation ₹{previewTotalAmt.toLocaleString('en-IN')}/- count {previewFilteredDonations.length}
-                                                    {isDonGroupedView ? ` (across ${donGroupList.length} distinct ${primaryDonLabel})` : ""}
+                                                    {(() => {
+                                                      const isGu = (kbForm.tableLang || "gu") === "gu";
+                                                      return isGu
+                                                        ? `કુલ દાન રકમ: ₹${toGujDigits(previewTotalAmt.toLocaleString('en-IN'))}/- કુલ દાતાઓ: ${toGujDigits(previewFilteredDonations.length)} ${isDonGroupedView ? `(કુલ ${toGujDigits(donGroupList.length)} વિભાગ)` : ""}`
+                                                        : `Total Donation ₹${previewTotalAmt.toLocaleString('en-IN')}/- count ${previewFilteredDonations.length} ${isDonGroupedView ? `(across ${donGroupList.length} distinct ${primaryDonLabel})` : ""}`;
+                                                    })()}
                                                   </span>
                                                   {isDonGroupedView ? (
                                                     donGroupList.length > 20 && (
@@ -29906,19 +30120,75 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 }
 
                                 if (isDonGroupedView) {
-                                  let previewText = `📍 *${primaryDonLabel} વાર વિગત & દાન ગણતરી:*\n`;
-                                  const groupsToShow = donGroupList.slice(0, 15);
-                                  groupsToShow.forEach(([val, stats], idx) => {
-                                    const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦', '૧૧', '૧૨', '૧૩', '૧૪', '૧૫'][idx] || `${idx + 1}`;
-                                    previewText += `${gujNum}. *${val}* — ₹${Number(stats.total).toLocaleString('en-IN')}/- (${stats.count} દાતા — count: ${stats.count})\n`;
-                                  });
+                                  const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
+                                  const isGu = (kbForm.tableLang || "gu") === "gu";
+                                  const isTableFormat = (kbForm.layoutFormat || "table") === "table";
+                                  const primaryGrpLabel = primaryDonGroupKey === "vibhag" ? (isGu ? "વિભાગ" : "Vibhag") : primaryDonLabel;
 
-                                  if (donGroupList.length > 15) {
-                                    previewText += `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                  let previewText = "";
+                                  if (isTableFormat) {
+                                    previewText += isGu
+                                      ? `📍 *${primaryGrpLabel} વાર વિગત & દાન સમરી (કોષ્ટક):*\n`
+                                      : `📍 *${primaryGrpLabel}-wise Donation Summary Table:*\n`;
+                                    previewText += "```\n";
+                                    if (isCountFirst) {
+                                      const hSr = isGu ? "ક્રમ" : "Sr.";
+                                      const hCnt = isGu ? "દાતા" : "Donors";
+                                      const hAmt = isGu ? "રકમ ₹" : "Amount ₹";
+                                      const hVib = primaryGrpLabel;
+                                      previewText += `${padCol(hSr, 4)} ${padCol(hCnt, 5)} ${padCol(hAmt, 9)} ${hVib}\n`;
+                                      previewText += `-----------------------------------\n`;
+                                      donGroupList.slice(0, 15).forEach(([val, stats], idx) => {
+                                        const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                        const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+                                        const amt = "₹" + (isGu ? toGujDigits(stats.total) : stats.total.toLocaleString('en-IN'));
+                                        previewText += `${padCol(sr, 4)} ${padCol(cnt, 5)} ${padCol(amt, 9)} ${val}\n`;
+                                      });
+                                    } else {
+                                      const hSr = isGu ? "ક્રમ" : "Sr.";
+                                      const hVib = primaryGrpLabel;
+                                      const hCnt = isGu ? "દાતા" : "Donors";
+                                      const hAmt = isGu ? "રકમ ₹" : "Amount ₹";
+                                      previewText += `${padCol(hSr, 4)} ${padCol(hVib, 16)} ${padCol(hCnt, 5)} ${hAmt}\n`;
+                                      previewText += `-----------------------------------\n`;
+                                      donGroupList.slice(0, 15).forEach(([val, stats], idx) => {
+                                        const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                        const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+                                        const amt = "₹" + (isGu ? toGujDigits(stats.total) : stats.total.toLocaleString('en-IN'));
+                                        previewText += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${padCol(cnt, 5)} ${amt}\n`;
+                                      });
+                                    }
+                                    previewText += "```\n";
+                                    if (donGroupList.length > 15) {
+                                      previewText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} વિભાગ\n`
+                                        : `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                    }
+                                  } else {
+                                    previewText += isGu
+                                      ? `📍 *${primaryGrpLabel} વાર વિગત & દાન ગણતરી:*\n`
+                                      : `📍 *${primaryGrpLabel}-wise Donation Count:*\n`;
+                                    donGroupList.slice(0, 15).forEach(([val, stats], idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      const amt = "₹" + (isGu ? toGujDigits(stats.total) : stats.total.toLocaleString('en-IN')) + "/-";
+                                      const cnt = isGu ? `${toGujDigits(stats.count)} દાતા` : `${stats.count} Donors`;
+                                      if (isCountFirst) {
+                                        previewText += `${sr} *${cnt} (${amt})* — ${val}\n`;
+                                      } else {
+                                        previewText += `${sr} *${val}* — ${amt} (${cnt})\n`;
+                                      }
+                                    });
+                                    if (donGroupList.length > 15) {
+                                      previewText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(donGroupList.length - 15)} વિભાગ\n`
+                                        : `... and ${donGroupList.length - 15} more ${primaryDonLabel.toLowerCase()}s\n`;
+                                    }
                                   }
 
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                  previewText += `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}* (${donGroupList.length} distinct ${primaryDonLabel})\n`;
+                                  previewText += isGu
+                                    ? `💰 *કુલ દાન રકમ: ₹${toGujDigits(Number(previewTotalAmt).toLocaleString('en-IN'))}/- (કુલ ${toGujDigits(previewFilteredDonations.length)} દાતા, ${toGujDigits(donGroupList.length)} વિભાગ)*\n`
+                                    : `💰 *Total Donation ₹${Number(previewTotalAmt).toLocaleString('en-IN')}/- count ${previewFilteredDonations.length}* (${donGroupList.length} distinct ${primaryDonLabel})\n`;
                                   return previewText;
                                 }
 
@@ -30355,6 +30625,136 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               Customize the columns completely with zero hardcoding. Toggle <strong>Yes</strong> to include a column, and choose its aggregation action:
                             </p>
 
+                            {/* Column Order, Language & WhatsApp Format Controls */}
+                            <div style={{
+                              display: "flex",
+                              gap: 12,
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              background: "#F0FDF4",
+                              border: "1px solid #86EFAC",
+                              borderRadius: 8,
+                              padding: "8px 12px",
+                              marginBottom: 10
+                            }}>
+                              {/* 1. Column Order Selector */}
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>↕️ Column Order:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, columnOrder: "count_first" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: (kbForm.columnOrder || "count_first") === "count_first" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: (kbForm.columnOrder || "count_first") === "count_first" ? "#16A34A" : "white",
+                                    color: (kbForm.columnOrder || "count_first") === "count_first" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: (kbForm.columnOrder || "count_first") === "count_first" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  🔢 Count 1st, Vibhag 2nd
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, columnOrder: "vibhag_first" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: kbForm.columnOrder === "vibhag_first" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: kbForm.columnOrder === "vibhag_first" ? "#16A34A" : "white",
+                                    color: kbForm.columnOrder === "vibhag_first" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: kbForm.columnOrder === "vibhag_first" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  📍 Vibhag 1st, Count 2nd
+                                </button>
+                              </div>
+
+                              {/* 2. Language Selector */}
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>🌐 Language:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, tableLang: "gu" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: (kbForm.tableLang || "gu") === "gu" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: (kbForm.tableLang || "gu") === "gu" ? "#16A34A" : "white",
+                                    color: (kbForm.tableLang || "gu") === "gu" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: (kbForm.tableLang || "gu") === "gu" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  🇬🇺 ગુજરાતી
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, tableLang: "en" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: kbForm.tableLang === "en" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: kbForm.tableLang === "en" ? "#16A34A" : "white",
+                                    color: kbForm.tableLang === "en" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: kbForm.tableLang === "en" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  🇬🇧 English
+                                </button>
+                              </div>
+
+                              {/* 3. WhatsApp Output Format */}
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>📱 WhatsApp Format:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, layoutFormat: "table" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: (kbForm.layoutFormat || "table") === "table" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: (kbForm.layoutFormat || "table") === "table" ? "#16A34A" : "white",
+                                    color: (kbForm.layoutFormat || "table") === "table" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: (kbForm.layoutFormat || "table") === "table" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  📊 Monospace Table
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, layoutFormat: "list" })}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 5,
+                                    border: kbForm.layoutFormat === "list" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                    background: kbForm.layoutFormat === "list" ? "#16A34A" : "white",
+                                    color: kbForm.layoutFormat === "list" ? "white" : "#334155",
+                                    fontSize: ".73rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    boxShadow: kbForm.layoutFormat === "list" ? "0 1px 3px rgba(22,163,74,0.25)" : "none"
+                                  }}
+                                >
+                                  📋 Numbered List
+                                </button>
+                              </div>
+                            </div>
+
                             <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:8}}>
                               <table style={{width:"100%",borderCollapse:"collapse",fontSize:".8rem"}}>
                                 <thead>
@@ -30510,15 +30910,45 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:".76rem"}}>
                                         <thead style={{position:"sticky",top:0,zIndex:1}}>
                                           <tr style={{background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569",textAlign:"left"}}>
-                                            <th style={{padding:"6px 10px",width:36}}>sr.</th>
+                                            <th style={{padding:"6px 10px",width:36}}>{(kbForm.tableLang || "gu") === "gu" ? "ક્રમ" : "sr."}</th>
                                             {isGroupedView ? (
-                                              <>
-                                                <th style={{padding:"6px 10px"}}>{primaryLabel}</th>
-                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Submissions Count (અરજી સંખ્યા)</th>
-                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Approved (મંજૂર)</th>
-                                                <th style={{padding:"6px 10px",textAlign:"center"}}>Pending (બાકી)</th>
-                                                <th style={{padding:"6px 10px",textAlign:"right"}}>Share % (હિસ્સો)</th>
-                                              </>
+                                              ((kbForm.columnOrder || "count_first") === "count_first") ? (
+                                                <>
+                                                  <th style={{padding:"6px 10px",textAlign:"center",color:"#15803D"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "અરજી સંખ્યા (Submissions Count)" : "Submissions Count"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? (primaryGroupKey === "vibhag" ? "વિભાગ (Vibhag)" : `${primaryLabel} (વિભાગ)`) : primaryLabel}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "મંજૂર (Approved)" : "Approved"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "બાકી (Pending)" : "Pending"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "હિસ્સો % (Share)" : "Share %"}
+                                                  </th>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <th style={{padding:"6px 10px"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? (primaryGroupKey === "vibhag" ? "વિભાગ (Vibhag)" : `${primaryLabel} (વિભાગ)`) : primaryLabel}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center",color:"#15803D"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "અરજી સંખ્યા (Submissions Count)" : "Submissions Count"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "મંજૂર (Approved)" : "Approved"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "બાકી (Pending)" : "Pending"}
+                                                  </th>
+                                                  <th style={{padding:"6px 10px",textAlign:"right"}}>
+                                                    {(kbForm.tableLang || "gu") === "gu" ? "હિસ્સો % (Share)" : "Share %"}
+                                                  </th>
+                                                </>
+                                              )
                                             ) : (
                                               curCols.map(k => {
                                                 const fDef = formAvailableFields.find(f => f.key === k);
@@ -30541,20 +30971,39 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                           ) : isGroupedView ? (
                                             groupList.slice(0, 20).map(([val, stats], ri) => {
                                               const pct = previewFilteredRegistrations.length > 0 ? ((stats.count / previewFilteredRegistrations.length) * 100).toFixed(1) : "0";
+                                              const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
+                                              const isGu = (kbForm.tableLang || "gu") === "gu";
+                                              const srVal = isGu ? toGujDigits(ri + 1) : ri + 1;
+                                              const countVal = isGu ? `${toGujDigits(stats.count)} અરજી` : `${stats.count} Submissions`;
+                                              const appVal = isGu ? toGujDigits(stats.approved) : stats.approved;
+                                              const penVal = isGu ? toGujDigits(stats.pending) : stats.pending;
+                                              const pctVal = (isGu ? toGujDigits(pct) : pct) + "%";
+
                                               return (
                                                 <tr key={val} style={{borderBottom:"1px solid #F1F5F9",background: ri % 2 === 0 ? "white" : "#F8FAFC"}}>
-                                                  <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{ri + 1}</td>
-                                                  <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
-                                                  <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
-                                                    {stats.count} અરજી
+                                                  <td style={{padding:"6px 10px",color:"#64748B",fontWeight:700}}>{srVal}</td>
+                                                  {isCountFirst ? (
+                                                    <>
+                                                      <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                        {countVal}
+                                                      </td>
+                                                      <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <td style={{padding:"6px 10px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                                                      <td style={{padding:"6px 10px",textAlign:"center",fontWeight:800,color:"#15803D",fontSize:".82rem"}}>
+                                                        {countVal}
+                                                      </td>
+                                                    </>
+                                                  )}
+                                                  <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                                    <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{appVal}</span>
                                                   </td>
                                                   <td style={{padding:"6px 10px",textAlign:"center"}}>
-                                                    <span style={{fontSize:".68rem",background:"#DCFCE7",color:"#15803D",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{stats.approved}</span>
+                                                    <span style={{fontSize:".68rem",background:"#FEF3C7",color:"#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{penVal}</span>
                                                   </td>
-                                                  <td style={{padding:"6px 10px",textAlign:"center"}}>
-                                                    <span style={{fontSize:".68rem",background:"#FEF3C7",color:"#B45309",padding:"1px 6px",borderRadius:4,fontWeight:700}}>{stats.pending}</span>
-                                                  </td>
-                                                  <td style={{padding:"6px 10px",textAlign:"right",color:"#64748B",fontWeight:700}}>{pct}%</td>
+                                                  <td style={{padding:"6px 10px",textAlign:"right",color:"#64748B",fontWeight:700}}>{pctVal}</td>
                                                 </tr>
                                               );
                                             })
@@ -30589,8 +31038,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                                     <div style={{marginTop:8,fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                       <span>
-                                        Total Submissions count {previewFilteredRegistrations.length}
-                                        {isGroupedView ? ` (across ${groupList.length} distinct ${primaryLabel})` : ""}
+                                        {(() => {
+                                          const isGu = (kbForm.tableLang || "gu") === "gu";
+                                          return isGu
+                                            ? `કુલ અરજીઓ: ${toGujDigits(previewFilteredRegistrations.length)} ${isGroupedView ? `(કુલ ${toGujDigits(groupList.length)} વિભાગ)` : ""}`
+                                            : `Total Submissions count ${previewFilteredRegistrations.length} ${isGroupedView ? `(across ${groupList.length} distinct ${primaryLabel})` : ""}`;
+                                        })()}
                                       </span>
                                       {isGroupedView ? (
                                         groupList.length > 20 && (
@@ -30692,6 +31145,11 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                   return a[0].localeCompare(b[0], undefined, { numeric: true });
                                 });
 
+                                const isCountFirst = (kbForm.columnOrder || "count_first") === "count_first";
+                                const isGu = (kbForm.tableLang || "gu") === "gu";
+                                const isTableFormat = (kbForm.layoutFormat || "table") === "table";
+                                const primaryGrpLabel = primaryGroupKey === "vibhag" ? (isGu ? "વિભાગ" : "Vibhag") : primaryLabel;
+
                                 if (kbForm.summaryType !== "donor_list") {
                                   // Form Submissions Summary Mode (Live Database Data)
                                   let approvedCount = 0, pendingCount = 0, rejectedCount = 0;
@@ -30702,17 +31160,73 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                     else pendingCount++;
                                   });
 
-                                  let summaryText = `📊 *MMP અરજી વિગત & સમરી (Live Database Scope)*\n`;
-                                  summaryText += `📋 *કુલ અરજીઓ:* ${previewFilteredRegistrations.length}\n`;
-                                  summaryText += `🟢 *Approved:* ${approvedCount} | 🟡 *Pending:* ${pendingCount} | 🔴 *Rejected:* ${rejectedCount}\n`;
+                                  let summaryText = isGu
+                                    ? `📊 *MMP અરજી વિગત & સમરી (Live Database)*\n`
+                                    : `📊 *MMP Submissions Summary (Live Database)*\n`;
+                                  summaryText += isGu
+                                    ? `📋 *કુલ અરજીઓ:* ${toGujDigits(previewFilteredRegistrations.length)}\n`
+                                    : `📋 *Total Submissions:* ${previewFilteredRegistrations.length}\n`;
+                                  summaryText += isGu
+                                    ? `🟢 *Approved (મંજૂર):* ${toGujDigits(approvedCount)} | 🟡 *Pending (બાકી):* ${toGujDigits(pendingCount)} | 🔴 *Rejected:* ${toGujDigits(rejectedCount)}\n`
+                                    : `🟢 *Approved:* ${approvedCount} | 🟡 *Pending:* ${pendingCount} | 🔴 *Rejected:* ${rejectedCount}\n`;
+
                                   if (groupList.length > 0) {
                                     summaryText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                    summaryText += `📍 *${primaryLabel} વાર વિગત & ગણતરી:*\n`;
-                                    groupList.slice(0, 15).forEach(([vName, vData]) => {
-                                      summaryText += `• *${vName}*: ${vData.count} અરજી (count: ${vData.count})\n`;
-                                    });
-                                    if (groupList.length > 15) {
-                                      summaryText += `... and ${groupList.length - 15} more ${primaryLabel.toLowerCase()}s\n`;
+                                    if (isTableFormat) {
+                                      summaryText += isGu
+                                        ? `📍 *${primaryGrpLabel} વાર વિગત (લાઈવ સમરી કોષ્ટક):*\n`
+                                        : `📍 *${primaryGrpLabel}-wise Submissions Table:*\n`;
+                                      summaryText += "```\n";
+                                      if (isCountFirst) {
+                                        const hSr = isGu ? "ક્રમ" : "Sr.";
+                                        const hCnt = isGu ? "અરજી" : "Count";
+                                        const hVib = primaryGrpLabel;
+                                        summaryText += `${padCol(hSr, 4)} ${padCol(hCnt, 6)} ${hVib}\n`;
+                                        summaryText += `-----------------------------------\n`;
+                                        groupList.slice(0, 20).forEach(([vName, vData], idx) => {
+                                          const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                          const cnt = isGu ? toGujDigits(vData.count) : String(vData.count);
+                                          summaryText += `${padCol(sr, 4)} ${padCol(cnt, 6)} ${vName}\n`;
+                                        });
+                                      } else {
+                                        const hSr = isGu ? "ક્રમ" : "Sr.";
+                                        const hVib = primaryGrpLabel;
+                                        const hCnt = isGu ? "અરજી" : "Count";
+                                        summaryText += `${padCol(hSr, 4)} ${padCol(hVib, 16)} ${hCnt}\n`;
+                                        summaryText += `-----------------------------------\n`;
+                                        groupList.slice(0, 20).forEach(([vName, vData], idx) => {
+                                          const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                          const cnt = isGu ? toGujDigits(vData.count) : String(vData.count);
+                                          summaryText += `${padCol(sr, 4)} ${padCol(vName.slice(0, 15), 16)} ${cnt}\n`;
+                                        });
+                                      }
+                                      summaryText += "```\n";
+                                      if (groupList.length > 20) {
+                                        summaryText += isGu
+                                          ? `... અને અન્ય ${toGujDigits(groupList.length - 20)} વિભાગ\n`
+                                          : `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                      }
+                                    } else {
+                                      summaryText += isGu
+                                        ? `📍 *${primaryGrpLabel} વાર વિગત & ગણતરી:*\n`
+                                        : `📍 *${primaryGrpLabel}-wise Submissions Breakdown:*\n`;
+                                      groupList.slice(0, 20).forEach(([vName, vData], idx) => {
+                                        const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                        if (isCountFirst) {
+                                          summaryText += isGu
+                                            ? `${sr} *${toGujDigits(vData.count)} અરજી* — ${vName}\n`
+                                            : `${sr} *${vData.count} Submissions* — ${vName}\n`;
+                                        } else {
+                                          summaryText += isGu
+                                            ? `${sr} *${vName}* — ${toGujDigits(vData.count)} અરજી\n`
+                                            : `${sr} *${vName}* — ${vData.count} Submissions\n`;
+                                        }
+                                      });
+                                      if (groupList.length > 20) {
+                                        summaryText += isGu
+                                          ? `... અને અન્ય ${toGujDigits(groupList.length - 20)} વિભાગ\n`
+                                          : `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                      }
                                     }
                                   }
                                   return summaryText;
@@ -30720,27 +31234,76 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                                 // Person-wise Submissions Registry Mode (Live Database Data)
                                 if (previewFilteredRegistrations.length === 0) {
-                                  let previewText = `📋 *અરજી યાદી (Live Database Submissions):*\n`;
+                                  let previewText = isGu ? `📋 *અરજી યાદી (Live Database):*\n` : `📋 *Submissions Registry (Live Database):*\n`;
                                   previewText += `(No submissions recorded yet for selected form / event)\n`;
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                  previewText += `📋 *Total Submissions count 0*\n`;
+                                  previewText += isGu ? `📋 *કુલ અરજીઓ: ૦*\n` : `📋 *Total Submissions count 0*\n`;
                                   return previewText;
                                 }
 
                                 if (isGroupedView) {
-                                  let previewText = `📋 *${primaryLabel} વાર અરજી ગણતરી (Live Submissions Count):*\n`;
-                                  const groupsToShow = groupList.slice(0, 20);
-                                  groupsToShow.forEach(([val, stats], idx) => {
-                                    const gujNum = ['૧', '૨', '૩', '૪', '૫', '૬', '૭', '૮', '૯', '૧૦', '૧૧', '૧૨', '૧૩', '૧૪', '૧૫', '૧૬', '૧૭', '૧૮', '૧૯', '૨૦'][idx] || `${idx + 1}`;
-                                    previewText += `${gujNum}. *${val}* — ${stats.count} અરજી (count: ${stats.count})\n`;
-                                  });
-
-                                  if (groupList.length > 20) {
-                                    previewText += `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                  let previewText = "";
+                                  if (isTableFormat) {
+                                    previewText += isGu
+                                      ? `📋 *${primaryGrpLabel} વાર અરજી ગણતરી (લાઈવ સમરી કોષ્ટક):*\n`
+                                      : `📋 *${primaryGrpLabel}-wise Submissions Count (Live Table):*\n`;
+                                    previewText += "```\n";
+                                    if (isCountFirst) {
+                                      const hSr = isGu ? "ક્રમ" : "Sr.";
+                                      const hCnt = isGu ? "અરજી" : "Count";
+                                      const hVib = primaryGrpLabel;
+                                      previewText += `${padCol(hSr, 4)} ${padCol(hCnt, 6)} ${hVib}\n`;
+                                      previewText += `-----------------------------------\n`;
+                                      groupList.slice(0, 20).forEach(([val, stats], idx) => {
+                                        const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                        const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+                                        previewText += `${padCol(sr, 4)} ${padCol(cnt, 6)} ${val}\n`;
+                                      });
+                                    } else {
+                                      const hSr = isGu ? "ક્રમ" : "Sr.";
+                                      const hVib = primaryGrpLabel;
+                                      const hCnt = isGu ? "અરજી" : "Count";
+                                      previewText += `${padCol(hSr, 4)} ${padCol(hVib, 16)} ${hCnt}\n`;
+                                      previewText += `-----------------------------------\n`;
+                                      groupList.slice(0, 20).forEach(([val, stats], idx) => {
+                                        const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                        const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+                                        previewText += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${cnt}\n`;
+                                      });
+                                    }
+                                    previewText += "```\n";
+                                    if (groupList.length > 20) {
+                                      previewText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(groupList.length - 20)} વિભાગ\n`
+                                        : `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                    }
+                                  } else {
+                                    previewText += isGu
+                                      ? `📋 *${primaryGrpLabel} વાર અરજી ગણતરી (Live Submissions Count):*\n`
+                                      : `📋 *${primaryGrpLabel}-wise Submissions Count:*\n`;
+                                    groupList.slice(0, 20).forEach(([val, stats], idx) => {
+                                      const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+                                      if (isCountFirst) {
+                                        previewText += isGu
+                                          ? `${sr} *${toGujDigits(stats.count)} અરજી* — ${val}\n`
+                                          : `${sr} *${stats.count} Submissions* — ${val}\n`;
+                                      } else {
+                                        previewText += isGu
+                                          ? `${sr} *${val}* — ${toGujDigits(stats.count)} અરજી\n`
+                                          : `${sr} *${val}* — ${stats.count} Submissions\n`;
+                                      }
+                                    });
+                                    if (groupList.length > 20) {
+                                      previewText += isGu
+                                        ? `... અને અન્ય ${toGujDigits(groupList.length - 20)} વિભાગ\n`
+                                        : `... and ${groupList.length - 20} more ${primaryLabel.toLowerCase()}s\n`;
+                                    }
                                   }
 
                                   previewText += `━━━━━━━━━━━━━━━━━━━━━\n`;
-                                  previewText += `📋 *Total Submissions count ${previewFilteredRegistrations.length}* (${groupList.length} distinct ${primaryLabel})\n`;
+                                  previewText += isGu
+                                    ? `📋 *કુલ અરજીઓ: ${toGujDigits(previewFilteredRegistrations.length)}* (${toGujDigits(groupList.length)} વિભાગ)\n`
+                                    : `📋 *Total Submissions count ${previewFilteredRegistrations.length}* (${groupList.length} distinct ${primaryLabel})\n`;
                                   return previewText;
                                 }
 
@@ -57236,13 +57799,61 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
 
       if (donorData.isGroupedView && donorData.groupBreakdown && donorData.groupBreakdown.length > 0) {
-        msg += `📋 *${getFieldShortName(donorData.primaryGroupKey || "vibhag")} વાર અરજી ગણતરી (Submissions Count):*\r\n`;
-        donorData.groupBreakdown.forEach(([val, stats], idx) => {
-          const numGu = toGujDigits(idx + 1);
-          msg += `${numGu}. *${val}* — ${stats.count} અરજી (count: ${stats.count})\r\n`;
-        });
+        const isCountFirst = (donorData.columnOrder || donorData.matchedKb?.columnOrder || "count_first") === "count_first";
+        const isGu = (donorData.tableLang || donorData.matchedKb?.tableLang || "gu") === "gu";
+        const isTableFormat = (donorData.layoutFormat || donorData.matchedKb?.layoutFormat || "table") === "table";
+        const primaryGrp = donorData.primaryGroupKey === "vibhag" ? (isGu ? "વિભાગ" : "Vibhag") : getFieldShortName(donorData.primaryGroupKey || "vibhag");
+
+        if (isTableFormat) {
+          msg += isGu
+            ? `📋 *${primaryGrp} વાર અરજી ગણતરી (લાઈવ સમરી કોષ્ટક):*\r\n`
+            : `📋 *${primaryGrp}-wise Submissions Summary Table:*\r\n`;
+          msg += "```\r\n";
+          if (isCountFirst) {
+            const hSr = isGu ? "ક્રમ" : "Sr.";
+            const hCnt = isGu ? "અરજી" : "Count";
+            const hVib = primaryGrp;
+            msg += `${padCol(hSr, 4)} ${padCol(hCnt, 6)} ${hVib}\r\n`;
+            msg += `-----------------------------------\r\n`;
+            donorData.groupBreakdown.forEach(([val, stats], idx) => {
+              const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+              const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+              msg += `${padCol(sr, 4)} ${padCol(cnt, 6)} ${val}\r\n`;
+            });
+          } else {
+            const hSr = isGu ? "ક્રમ" : "Sr.";
+            const hVib = primaryGrp;
+            const hCnt = isGu ? "અરજી" : "Count";
+            msg += `${padCol(hSr, 4)} ${padCol(hVib, 16)} ${hCnt}\r\n`;
+            msg += `-----------------------------------\r\n`;
+            donorData.groupBreakdown.forEach(([val, stats], idx) => {
+              const sr = (isGu ? toGujDigits(idx + 1) : (idx + 1)) + ".";
+              const cnt = isGu ? toGujDigits(stats.count) : String(stats.count);
+              msg += `${padCol(sr, 4)} ${padCol(val.slice(0, 15), 16)} ${cnt}\r\n`;
+            });
+          }
+          msg += "```\r\n";
+        } else {
+          msg += isGu
+            ? `📋 *${primaryGrp} વાર અરજી ગણતરી (Submissions Count):*\r\n`
+            : `📋 *${primaryGrp}-wise Submissions Count:*\r\n`;
+          donorData.groupBreakdown.forEach(([val, stats], idx) => {
+            const numGu = isGu ? toGujDigits(idx + 1) : (idx + 1);
+            if (isCountFirst) {
+              msg += isGu
+                ? `${numGu}. *${toGujDigits(stats.count)} અરજી* — ${val}\r\n`
+                : `${numGu}. *${stats.count} Submissions* — ${val}\r\n`;
+            } else {
+              msg += isGu
+                ? `${numGu}. *${val}* — ${toGujDigits(stats.count)} અરજી\r\n`
+                : `${numGu}. *${val}* — ${stats.count} Submissions\r\n`;
+            }
+          });
+        }
         msg += "━━━━━━━━━━━━━━━━━━━━━\r\n";
-        msg += `📋 *Total Submissions count ${donorData.totalAmount || donors.length}* (${donorData.groupBreakdown.length} distinct ${getFieldShortName(donorData.primaryGroupKey || "vibhag")})\r\n`;
+        msg += isGu
+          ? `📋 *કુલ અરજીઓ: ${toGujDigits(donorData.totalAmount || donors.length)}* (${toGujDigits(donorData.groupBreakdown.length)} ${primaryGrp})\r\n`
+          : `📋 *Total Submissions count ${donorData.totalAmount || donors.length}* (${donorData.groupBreakdown.length} distinct ${primaryGrp})\r\n`;
       } else {
         msg += `📋 *અરજી યાદી (${filtered.length} Submissions):*\r\n`;
         filtered.forEach((d, idx) => {
@@ -57430,6 +58041,81 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
         onChange={e=>setFilterText(e.target.value)}
         style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".75rem",boxSizing:"border-box",marginBottom:8}}
       />
+
+      {donorData.isGroupedView && donorData.groupBreakdown && donorData.groupBreakdown.length > 0 && (
+        <div style={{overflowX:"auto",border:"1px solid #E2E8F0",borderRadius:8,background:"white",maxHeight:220,overflowY:"auto",marginBottom:10}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:".74rem"}}>
+            <thead style={{position:"sticky",top:0,zIndex:1,background:"#F1F5F9",borderBottom:"1.5px solid #CBD5E1",color:"#475569"}}>
+              <tr>
+                <th style={{padding:"5px 8px",width:32}}>{(donorData.tableLang || "gu") === "gu" ? "ક્રમ" : "Sr."}</th>
+                {(donorData.columnOrder || "count_first") === "count_first" ? (
+                  <>
+                    <th style={{padding:"5px 8px",textAlign:"center",color:"#15803D"}}>
+                      {(donorData.tableLang || "gu") === "gu" ? "અરજી સંખ્યા (Count)" : "Count"}
+                    </th>
+                    <th style={{padding:"5px 8px",textAlign:"left"}}>
+                      {(donorData.tableLang || "gu") === "gu" ? "વિભાગ (Vibhag)" : "Vibhag"}
+                    </th>
+                  </>
+                ) : (
+                  <>
+                    <th style={{padding:"5px 8px",textAlign:"left"}}>
+                      {(donorData.tableLang || "gu") === "gu" ? "વિભાગ (Vibhag)" : "Vibhag"}
+                    </th>
+                    <th style={{padding:"5px 8px",textAlign:"center",color:"#15803D"}}>
+                      {(donorData.tableLang || "gu") === "gu" ? "અરજી સંખ્યા (Count)" : "Count"}
+                    </th>
+                  </>
+                )}
+                <th style={{padding:"5px 8px",textAlign:"center",color:"#166534"}}>
+                  {(donorData.tableLang || "gu") === "gu" ? "મંજૂર" : "Appr."}
+                </th>
+                <th style={{padding:"5px 8px",textAlign:"center",color:"#B45309"}}>
+                  {(donorData.tableLang || "gu") === "gu" ? "બાકી" : "Pend."}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {donorData.groupBreakdown.map(([val, stats], idx) => {
+                const isGu = (donorData.tableLang || "gu") === "gu";
+                const isCountFirst = (donorData.columnOrder || "count_first") === "count_first";
+                return (
+                  <tr key={val} style={{borderBottom:"1px solid #F1F5F9",background: idx % 2 === 0 ? "white" : "#F8FAFC"}}>
+                    <td style={{padding:"5px 8px",color:"#64748B",fontWeight:700}}>
+                      {isGu ? toGujDigits(idx + 1) : idx + 1}
+                    </td>
+                    {isCountFirst ? (
+                      <>
+                        <td style={{padding:"5px 8px",textAlign:"center",fontWeight:800,color:"#15803D"}}>
+                          {isGu ? `${toGujDigits(stats.count)} અરજી` : stats.count}
+                        </td>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:"#0F172A"}}>{val}</td>
+                        <td style={{padding:"5px 8px",textAlign:"center",fontWeight:800,color:"#15803D"}}>
+                          {isGu ? `${toGujDigits(stats.count)} અરજી` : stats.count}
+                        </td>
+                      </>
+                    )}
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>
+                      <span style={{fontSize:".65rem",background:"#DCFCE7",color:"#15803D",padding:"1px 5px",borderRadius:4,fontWeight:700}}>
+                        {isGu ? toGujDigits(stats.approved) : stats.approved}
+                      </span>
+                    </td>
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>
+                      <span style={{fontSize:".65rem",background:"#FEF3C7",color:"#B45309",padding:"1px 5px",borderRadius:4,fontWeight:700}}>
+                        {isGu ? toGujDigits(stats.pending) : stats.pending}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div style={{maxHeight:220,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
         {filtered.map((d, di) => {
@@ -59783,6 +60469,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📊 **Live Form Submissions Summary (${formLabel})**:`);
 
         cardData = {
+          columnOrder: matchedKb?.columnOrder || "count_first",
+          tableLang: matchedKb?.tableLang || "gu",
+          layoutFormat: matchedKb?.layoutFormat || "table",
           eventLabel: formLabel,
           targetEventIds: scopedEvents,
           totalAmount: targetRegs.length,
@@ -59872,6 +60561,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             ? matchedKb.customWaAppeal.trim()
             : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `💰 **Live Donation Summary${eventLabel ? ` (${eventLabel})` : ""}**:`);
           cardData = {
+            columnOrder: matchedKb?.columnOrder || "count_first",
+            tableLang: matchedKb?.tableLang || "gu",
+            layoutFormat: matchedKb?.layoutFormat || "table",
             eventLabel: eventLabel,
             targetEventIds: scopedEvents,
             totalAmount: totalAmt,
@@ -59989,6 +60681,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             isGroupedView,
             primaryGroupKey,
             groupBreakdown,
+            columnOrder: matchedKb?.columnOrder || "count_first",
+            tableLang: matchedKb?.tableLang || "gu",
+            layoutFormat: matchedKb?.layoutFormat || "table",
             eventLabel: formLabel,
             targetEventIds: scopedEvents,
             donors: mappedItems,
@@ -60036,6 +60731,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
               ? matchedKb.customWaAppeal.trim()
               : ((matchedKb && matchedKb.answer) ? matchedKb.answer : `📋 **Person-wise Donor Registry${eventLabel ? ` — ${eventLabel}` : ""} (${allDonations.length} Donors Recorded)**:`);
             cardData = {
+              columnOrder: matchedKb?.columnOrder || "count_first",
+              tableLang: matchedKb?.tableLang || "gu",
+              layoutFormat: matchedKb?.layoutFormat || "table",
               eventLabel: eventLabel,
               targetEventIds: scopedEvents,
               donors: allDonations,
