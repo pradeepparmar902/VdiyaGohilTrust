@@ -42065,8 +42065,38 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   const [showMasterImportModal, setShowMasterImportModal] = useState(false);
   const [showColumnModal, setShowColumnModal] = useState(false);
 
-  // Default visible columns: compact view fitting horizontally without left/right scrolling
+  // Backend tracking & internal properties that must NEVER appear as table columns
+  const backendInternalKeys = new Set([
+    'id', 'eventid', 'eventtitle', 'eventname', '_submittedat', 'transaction id', 
+    'status', 'remarks', 'updated by', 'loghistory', 'activedoctpl', 'archived', 
+    'assigneddoctypes', 'assignedworkspaceids', 'category', 'customdocid', 
+    'deleted', 'deletedat', 'deletedby', 'designation', 'designationrole', 'designation / role',
+    'envelopeprinted', 'envelopeprintedat', 'envelopeprintedbydoc', 
+    'firstpassopenedat', 'formid', 'globalguestid', 'group', 'groups', 
+    'isarchived', 'isglobalguest', 'isinvitemode', 'isspecialguest', 
+    'lastpassopenedat', 'lastwhatsappat', 'lastwhatsappcontent', 
+    'lastwhatsapptype', 'organization', 'name', 'mobile',
+    'passopencount', 'whatsappcount', 'certificatereleased', 'inviteletterreleased',
+    'invitemode', 'createdat', 'updatedat', 'submittermob', 'submittedby',
+    'tokenno', 'seatno', 'gatepass', 'passlink'
+  ]);
+
+  const isBackendKey = (rawKey, normKey = "") => {
+    const rawLower = String(rawKey || '').trim().toLowerCase();
+    const cleanNorm = String(normKey || rawLower).replace(/[\s/_-]+/g, '');
+    return backendInternalKeys.has(rawLower) || 
+           backendInternalKeys.has(cleanNorm) ||
+           rawLower.startsWith('_') ||
+           rawLower.startsWith('lastwhatsapp') ||
+           rawLower.startsWith('envelopeprinted') ||
+           rawLower.startsWith('passopen') ||
+           rawLower.startsWith('assignedworkspace') ||
+           rawLower.startsWith('assigneddoc');
+  };
+
+  // Default visible columns: includes Event Name by default as requested
   const defaultVisibleCols = [
+    "Event Name",
     "Full Name",
     "Mobile Number",
     "Vibhag",
@@ -42079,19 +42109,23 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
 
   // Load custom columns config from C or localStorage
   const [selectedCols, setSelectedCols] = useState(() => {
+    let base = defaultVisibleCols;
     if (Array.isArray(C?.regVisibleColumns) && C.regVisibleColumns.length > 0) {
-      return C.regVisibleColumns;
-    }
-    if (typeof localStorage !== 'undefined') {
+      base = C.regVisibleColumns;
+    } else if (typeof localStorage !== 'undefined') {
       try {
         const cached = localStorage.getItem("mmp_reg_visible_columns");
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) base = parsed;
         }
       } catch (e) {}
     }
-    return defaultVisibleCols;
+    const cleaned = (base || []).filter(c => !isBackendKey(c, String(c).toLowerCase().replace(/[\s/_-]+/g, '')));
+    if (!cleaned.some(c => c.toLowerCase() === 'event name' || c.toLowerCase() === 'event')) {
+      return ["Event Name", ...cleaned];
+    }
+    return cleaned.length > 0 ? cleaned : defaultVisibleCols;
   });
 
   const [colOrder, setColOrder] = useState(() => {
@@ -42862,7 +42896,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     for (const [colKey, filterVal] of Object.entries(columnFilters)) {
       if(!filterVal) continue;
       
-      if (colKey === "Unique") {
+      if (colKey === "Unique" || colKey === "Duplicate" || colKey === "Duplicate / Unique") {
         const dup = getDuplicateInfo(r);
         if (filterVal === "Duplicate" && !dup.isDuplicate) return false;
         if (filterVal === "Unique" && dup.isDuplicate) return false;
@@ -42886,12 +42920,9 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   });
 
   
-  // 1. Gather dynamic field keys strictly for the active event (or all events)
-  const ignoreKeys = ['id', 'eventId', 'eventTitle', 'eventName', '_submittedAt', 'Transaction ID', 'Status', 'Remarks', 'Updated By', 'logHistory', 'status', 'remarks'];
-
   // Master ordered list of columns dynamically adapted to the selected event
   const allMasterCols = useMemo(() => {
-    const systemCols = ["Date", "Event", "Transaction ID", "Unique", "Status", "Remarks", "Updated By"];
+    const systemCols = ["Date", "Transaction ID", "Duplicate / Unique", "Status", "Remarks", "Updated By"];
     
     // Target records pool: If an event is selected, inspect ONLY this event's records!
     const targetPool = activeEventObj 
@@ -42915,7 +42946,8 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       if (linkedForm && Array.isArray(linkedForm.fields)) {
         linkedForm.fields.forEach(f => {
           const lbl = (f.label || f.name || f.dataKey || "").trim();
-          if (lbl && !ignoreKeys.includes(lbl) && !lbl.startsWith('_')) {
+          const normL = lbl.toLowerCase().replace(/[\s/_-]+/g, '');
+          if (lbl && !isBackendKey(lbl, normL)) {
             eventKeysSet.add(lbl);
           }
         });
@@ -42928,14 +42960,14 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       const inspectObj = (obj) => {
         if (!obj || typeof obj !== 'object') return;
         Object.keys(obj).forEach(k => {
-          if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
-            const cleanK = k.trim();
-            const normK = cleanK.toLowerCase().replace(/[\s_-]+/g, '');
-            if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
-              eventKeysSet.add('Vibhag');
-            } else {
-              eventKeysSet.add(cleanK);
-            }
+          const cleanK = k.trim();
+          const normK = cleanK.toLowerCase().replace(/[\s/_-]+/g, '');
+          if (cleanK.startsWith('_') || isBackendKey(cleanK, normK)) return;
+
+          if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
+            eventKeysSet.add('Vibhag');
+          } else {
+            eventKeysSet.add(cleanK);
           }
         });
       };
@@ -42948,7 +42980,8 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       C.masterDataMappings.forEach(rule => {
         (rule.importCols || []).forEach(col => {
           const targetCol = (rule.targetColNames?.[col] || col).trim();
-          if (targetCol && !ignoreKeys.includes(targetCol)) {
+          const normT = targetCol.toLowerCase().replace(/[\s/_-]+/g, '');
+          if (targetCol && !isBackendKey(targetCol, normT)) {
             if (!activeEventObj || targetPool.some(r => r[targetCol] !== undefined || r[col] !== undefined)) {
               eventKeysSet.add(targetCol);
             }
@@ -42960,10 +42993,10 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     const dynamicKeys = Array.from(eventKeysSet).filter(k => k !== 'Vibhag New' && k.toLowerCase().replace(/[\s_-]+/g, '') !== 'vibhagnew');
 
     const priority = [
-      "Full Name", "Name", "Mobile Number", "Mobile", "Vibhag", "Zone", 
+      "Full Name", "Mobile Number", "Vibhag", "Zone", 
       "Stream", "Stream Group", "Obtained Marks", "Out Of Marks", "% Obtained",
       "School / College Name", "Supporting Document",
-      "Address", "Email Address", "Email", "Gender", "Alternate Mobile Number"
+      "Address", "Email Address", "Gender", "Alternate Mobile Number"
     ];
 
     dynamicKeys.sort((a, b) => {
@@ -42975,14 +43008,11 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       return a.localeCompare(b);
     });
 
-    const baseList = activeEventObj ? [
+    const baseList = [
+      "Event Name",
       "Full Name", "Mobile Number", "Vibhag",
       ...dynamicKeys,
-      "Status", "Date", "Transaction ID", "Unique", "Remarks", "Updated By"
-    ] : [
-      "Full Name", "Name", "Mobile Number", "Mobile", "Vibhag", "Zone", "Stream", "Stream Group",
-      "Status", "Date", "Transaction ID", "Obtained Marks", "Out Of Marks", "% Obtained",
-      "Unique", "Remarks", "Updated By", "Event", ...dynamicKeys, ...systemCols
+      "Status", "Date", "Transaction ID", "Duplicate / Unique", "Remarks", "Updated By"
     ];
 
     const seenLower = new Set();
@@ -42991,7 +43021,13 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       if (!raw) return;
       const c = String(raw).trim();
       const lower = c.toLowerCase();
-      if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id') return;
+      if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id' || lower === 'event' || lower === 'unique' || lower === 'duplicate') {
+        if ((lower === 'unique' || lower === 'duplicate') && !seenLower.has('duplicate / unique')) {
+          seenLower.add('duplicate / unique');
+          finalCols.push("Duplicate / Unique");
+        }
+        return;
+      }
       if (!seenLower.has(lower)) {
         seenLower.add(lower);
         finalCols.push(c);
@@ -43023,33 +43059,48 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     return finalCols;
   }, [selectedEventId, activeEventObj, availableEvents, regs, C?.forms, C?.masterDataMappings, colOrder]);
 
+  const allKeys = useMemo(() => {
+    return allMasterCols.filter(c => !["Event Name", "Event", "Status", "Date", "Transaction ID", "Txn ID", "Duplicate / Unique", "Unique", "Duplicate", "Remarks", "Updated By"].includes(c));
+  }, [allMasterCols]);
+
   const currentEventVisibleCols = useMemo(() => {
+    let saved = null;
     if (selectedEventId && selectedEventId !== "all") {
-      let saved = C?.regVisibleColumnsByEvent?.[selectedEventId];
+      saved = C?.regVisibleColumnsByEvent?.[selectedEventId];
       if (!saved && typeof localStorage !== 'undefined') {
         try {
           const cached = localStorage.getItem("mmp_reg_visible_columns_" + selectedEventId);
           if (cached) saved = JSON.parse(cached);
         } catch(e){}
       }
-      if (Array.isArray(saved) && saved.length > 0) return saved;
     }
-    return selectedCols;
+    const candidate = (Array.isArray(saved) && saved.length > 0) ? saved : selectedCols;
+    const cleaned = (candidate || []).filter(c => !isBackendKey(c, String(c).toLowerCase().replace(/[\s/_-]+/g, '')));
+    if (!cleaned.some(c => c.toLowerCase() === 'event name' || c.toLowerCase() === 'event')) {
+      return ["Event Name", ...cleaned];
+    }
+    return cleaned;
   }, [selectedEventId, C?.regVisibleColumnsByEvent, selectedCols]);
 
   // The active subset of columns to display on screen in the user's customized order
   const visibleColumns = useMemo(() => {
     const selectedLower = new Set(currentEventVisibleCols.map(c => {
       const str = String(c || '').trim();
-      return (str === 'Txn ID' ? 'Transaction ID' : str).toLowerCase();
+      return (str === 'Txn ID' ? 'Transaction ID' : (str === 'Event' ? 'Event Name' : (str === 'Unique' || str === 'Duplicate' ? 'Duplicate / Unique' : str))).toLowerCase();
     }));
-    const visible = allMasterCols.filter(c => selectedLower.has(c.toLowerCase()));
-    if (visible.length > 0) return visible;
+    selectedLower.add('event name');
 
-    // Smart default: core identifiers + first several form fields up to 10
-    const defaults = ["Full Name", "Mobile Number", "Vibhag", "Status", "Transaction ID"];
+    const visible = allMasterCols.filter(c => selectedLower.has(c.toLowerCase()));
+    if (visible.length > 0) {
+      const evCol = visible.find(c => c.toLowerCase() === 'event name' || c.toLowerCase() === 'event');
+      const rest = visible.filter(c => c.toLowerCase() !== 'event name' && c.toLowerCase() !== 'event');
+      return evCol ? [evCol, ...rest] : visible;
+    }
+
+    // Smart default: Event Name + core identifiers + form fields up to 10
+    const defaults = ["Event Name", "Full Name", "Mobile Number", "Vibhag", "Status", "Transaction ID"];
     const matchedDefaults = allMasterCols.filter(c => defaults.includes(c));
-    const extraFields = allMasterCols.filter(c => !defaults.includes(c) && c !== "Remarks" && c !== "Updated By" && c !== "Unique");
+    const extraFields = allMasterCols.filter(c => !defaults.includes(c) && c !== "Remarks" && c !== "Updated By" && c !== "Duplicate / Unique");
     const combined = [...matchedDefaults, ...extraFields].slice(0, 10);
     return combined.length > 0 ? combined : allMasterCols.slice(0, 8);
   }, [allMasterCols, currentEventVisibleCols]);
@@ -43102,7 +43153,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       if(colKey === "Date") { try { if(r._submittedAt) val = new Date(r._submittedAt).toLocaleString().split(',')[0].trim(); } catch(e){} }
       else if(colKey === "Event") val = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
       else if(colKey === "Transaction ID" || colKey === "Txn ID") val = r['Transaction ID'] || r.transactionId || "-";
-      else if(colKey === "Unique") val = getDuplicateInfo(r).isDuplicate ? "Duplicate" : "Unique";
+      else if(colKey === "Unique" || colKey === "Duplicate" || colKey === "Duplicate / Unique") val = getDuplicateInfo(r).isDuplicate ? "Duplicate" : "Unique";
       else if(colKey === "Status") val = r['Status'] || "Pending";
       else if(colKey === "Updated By") val = r['Updated By'] || "-";
       else if(colKey === "Remarks") val = r['Remarks'] || "-";
@@ -43131,7 +43182,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           val = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
         } else if (k === "Transaction ID" || k === "Txn ID") {
           val = r['Transaction ID'] || r.transactionId || "-";
-        } else if (k === "Unique") {
+        } else if (k === "Unique" || k === "Duplicate" || k === "Duplicate / Unique") {
           val = getDuplicateInfo(r).tagText;
         } else if (k === "Status") {
           val = r['Status'] || "Pending";
@@ -44190,7 +44241,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                           </td>
                         );
                       }
-                      if (k === 'Unique') {
+                      if (k === 'Unique' || k === 'Duplicate' || k === 'Duplicate / Unique') {
                         const dup = getDuplicateInfo(r);
                         return (
                           <td key={k} style={{padding:"12px",whiteSpace:"nowrap"}}>
