@@ -44051,6 +44051,13 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                 try { if(r._submittedAt) date = new Date(r._submittedAt).toLocaleString(); } catch(e){}
                 let evName = r.eventName || r.eventTitle || r.eventId || "Unknown Event";
                 const ev = C.events?.find(e => e.title === r.eventTitle || e.title === r.eventName || e.title === r.eventId || e.id === r.eventId);
+                if (ev?.title) {
+                  evName = ev.title;
+                } else if (String(r['Transaction ID'] || '').toUpperCase().startsWith("EDU") || String(r['Transaction ID'] || '').toUpperCase().startsWith("VG-") || r['Stream'] || r['% Obtained']) {
+                  evName = "Education felicitation 2026";
+                } else if (String(r['Transaction ID'] || '').toUpperCase().startsWith("6TH") || String(r['Transaction ID'] || '').toUpperCase().includes("6TH")) {
+                  evName = "6th Dec Mahaparinirvan Diwas";
+                }
 
                 return (
                   <tr key={i} style={{background: isSelected ? "#F0FDF4" : "transparent", transition: "background 0.2s"}}>
@@ -44134,14 +44141,27 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
                           <td key={k} style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>{date}</td>
                         );
                       }
-                      if (k === 'Event') {
+                      if (k === 'Event' || k === 'Event Name') {
                         return (
                           <td key={k} style={{padding:"12px",whiteSpace:"nowrap",color:"#111827"}}>
-                            <div>{evName}</div>
-                            {ev?.section && ev.section !== 'Default' && (
-                              <span style={{fontSize:".7rem",background:"var(--tl)",color:"var(--dt)",padding:"2px 6px",borderRadius:4,marginTop:4,display:"inline-block",fontWeight:600}}>
-                                {ev.section}
-                              </span>
+                            <span style={{
+                              fontWeight: 700,
+                              fontSize: ".78rem",
+                              color: "#1E40AF",
+                              background: "#EFF6FF",
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #BFDBFE",
+                              display: "inline-block"
+                            }}>
+                              {evName}
+                            </span>
+                            {ev?.section && ev.section !== 'Default' && ev.section !== evName && (
+                              <div style={{marginTop:3}}>
+                                <span style={{fontSize:".68rem",background:"var(--tl)",color:"var(--dt)",padding:"1px 6px",borderRadius:4,fontWeight:600}}>
+                                  {ev.section}
+                                </span>
+                              </div>
                             )}
                           </td>
                         );
