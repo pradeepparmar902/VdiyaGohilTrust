@@ -25817,202 +25817,6 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [isStudioOpen, setIsStudioOpen] = useState(true);
   const [showGuideModal, setShowGuideModal] = useState(false);
-  const [recordedDonations, setRecordedDonations] = useState([]);
-  const [customEventCodes, setCustomEventCodes] = useState(() => {
-    try {
-      const saved = localStorage.getItem("trust_custom_event_codes");
-      return saved ? JSON.parse(saved) : (C?.customDonationEventCodes || []);
-    } catch(e) {
-      return C?.customDonationEventCodes || [];
-    }
-  });
-  const [hiddenEventCodes, setHiddenEventCodes] = useState(() => {
-    try {
-      const saved = localStorage.getItem("trust_hidden_donation_event_codes");
-      return saved ? JSON.parse(saved) : (C?.hiddenDonationEventCodes || []);
-    } catch(e) {
-      return C?.hiddenDonationEventCodes || [];
-    }
-  });
-  const [newEventCodeInput, setNewEventCodeInput] = useState("");
-
-  useEffect(() => {
-    let isMounted = true;
-    const token = auth?.idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
-    if (typeof fbFetchDonations === "function") {
-      fbFetchDonations(token)
-        .then(dons => {
-          if (isMounted && Array.isArray(dons)) {
-            setRecordedDonations(dons);
-          }
-        })
-        .catch(() => {});
-    }
-    return () => { isMounted = false; };
-  }, [auth]);
-
-  const distinctDonationEvents = useMemo(() => {
-    const codeMap = new Map();
-
-    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
-      if (!d) return false;
-      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted") return false;
-      return true;
-    });
-
-    // 1. Extract strictly from verified recorded donations in database
-    validDons.forEach(d => {
-      const code = resolveRecordEventCode(d).trim().toUpperCase();
-      if (hiddenEventCodes.includes(code)) return; // Exclude user-hidden/removed event code badges
-      const rawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim();
-      const title = rawTitle && rawTitle.toLowerCase() !== "general" && rawTitle.toUpperCase() !== code
-        ? rawTitle
-        : (code === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : code === "EDU26" ? "Education Felicitation 2026" : code === "GEN" ? "General Donation" : `Event: ${code}`);
-      const amt = parseFloat(d.amount) || 0;
-
-      if (!codeMap.has(code)) {
-        codeMap.set(code, {
-          code: code,
-          title: title,
-          count: 1,
-          totalAmt: amt,
-          isManual: false
-        });
-      } else {
-        const item = codeMap.get(code);
-        item.count += 1;
-        item.totalAmt += amt;
-        if ((!item.title || item.title === item.code) && title && title !== code) {
-          item.title = title;
-        }
-      }
-    });
-
-    // 2. Allow manually added / upcoming event codes (for events that have not received any donations yet)
-    (customEventCodes || []).forEach(manualCode => {
-      const cleanC = String(manualCode).trim().toUpperCase();
-      if (!cleanC || hiddenEventCodes.includes(cleanC)) return;
-      if (!codeMap.has(cleanC)) {
-        codeMap.set(cleanC, {
-          code: cleanC,
-          title: cleanC === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : cleanC === "EDU26" ? "Education Felicitation 2026" : cleanC === "BLOOD" ? "Annual Blood Donation Camp" : cleanC === "TREE" ? "Monsoon Tree Plantation Drive" : `Upcoming Code: ${cleanC}`,
-          count: 0,
-          totalAmt: 0,
-          isManual: true
-        });
-      }
-    });
-
-    return Array.from(codeMap.values());
-  }, [recordedDonations, customEventCodes, hiddenEventCodes]);
-
-  const handleAddCustomEventCode = () => {
-    const clean = (newEventCodeInput || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
-    if (!clean) return alert("Please enter an event code (e.g. 6THDEC, EDU26, BLOOD).");
-    
-    // If it was previously hidden, unhide it
-    if (hiddenEventCodes.includes(clean)) {
-      const nextHidden = hiddenEventCodes.filter(c => c !== clean);
-      setHiddenEventCodes(nextHidden);
-      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
-      if (C) C.hiddenDonationEventCodes = nextHidden;
-    }
-
-    if (!customEventCodes.includes(clean)) {
-      const nextCodes = [...customEventCodes, clean];
-      setCustomEventCodes(nextCodes);
-      try {
-        localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes));
-      } catch(e) {}
-    }
-    const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
-    if (!cur.includes(clean)) {
-      setKbForm({ ...kbForm, targetEventIds: [...cur, clean] });
-    }
-    setNewEventCodeInput("");
-  };
-
-  const handleRemoveOrHideEventBadge = (codeToRemove) => {
-    const clean = String(codeToRemove || '').trim().toUpperCase();
-    if (!clean) return;
-
-    // 1. If in customEventCodes, remove it
-    if (customEventCodes.includes(clean)) {
-      const nextCodes = customEventCodes.filter(c => c !== clean);
-      setCustomEventCodes(nextCodes);
-      try { localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes)); } catch(e) {}
-    }
-
-    // 2. Add to hiddenEventCodes so it disappears from the list
-    if (!hiddenEventCodes.includes(clean)) {
-      const nextHidden = [...hiddenEventCodes, clean];
-      setHiddenEventCodes(nextHidden);
-      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
-      if (C) C.hiddenDonationEventCodes = nextHidden;
-    }
-
-    // 3. Remove from active selection
-    if (Array.isArray(kbForm.targetEventIds)) {
-      const nextTargets = kbForm.targetEventIds.filter(x => x !== clean && x !== clean.toLowerCase());
-      setKbForm({ ...kbForm, targetEventIds: nextTargets.length === 0 ? ['all'] : nextTargets });
-    }
-  };
-
-  const handleRestoreHiddenCodes = () => {
-    setHiddenEventCodes([]);
-    try { localStorage.removeItem("trust_hidden_donation_event_codes"); } catch(e) {}
-    if (C) C.hiddenDonationEventCodes = [];
-  };
-
-  // Dynamically extract real donation records matching selected event codes
-  const previewFilteredDonations = useMemo(() => {
-    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
-      if (!d) return false;
-      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted" || d.Status === "Deleted") return false;
-      return true;
-    });
-
-    const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
-    if (isAll) return validDons;
-
-    return validDons.filter(d => {
-      const dEvCode = resolveRecordEventCode(d).trim().toUpperCase();
-      const dRawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim().toLowerCase();
-      const dEvId = String(d.eventId || '').trim().toUpperCase();
-      const dRawCode = String(d.eventCode || '').trim().toUpperCase();
-
-      return kbForm.targetEventIds.some(target => {
-        const tUp = String(target || '').trim().toUpperCase();
-        const tLow = tUp.toLowerCase();
-        if (!tUp || tUp === 'ALL') return true;
-        if (dEvCode === tUp || dRawCode === tUp || dEvId === tUp) return true;
-        if (tLow.includes('edu') && (dEvCode.includes('EDU') || dRawCode.includes('EDU') || dRawTitle.includes('education') || dRawTitle.includes('felicitation'))) return true;
-        if (tLow.includes('6th') && (dEvCode.includes('6TH') || dRawCode.includes('6TH') || dRawTitle.includes('6th') || dRawTitle.includes('dec') || dRawTitle.includes('mahaparinirvan'))) return true;
-        if (tLow.includes('blood') && (dEvCode.includes('BLOOD') || dRawTitle.includes('blood'))) return true;
-        if (tLow.includes('tree') && (dEvCode.includes('TREE') || dRawTitle.includes('tree'))) return true;
-        if (tLow.includes('scholar') && (dEvCode.includes('SCHOLAR') || dRawTitle.includes('scholar'))) return true;
-        return dEvCode === tUp || dRawTitle.includes(tLow);
-      });
-    });
-  }, [recordedDonations, kbForm.targetEventIds]);
-
-  const previewTotalAmt = useMemo(() => {
-    return previewFilteredDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-  }, [previewFilteredDonations]);
-
-  const formatEventTitle = (evIdOrTitle) => {
-    if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
-    const clean = String(evIdOrTitle).trim();
-    const up = clean.toUpperCase();
-    if (up === "6THDEC" || clean.toLowerCase().includes("6th") || clean.toLowerCase().includes("dec")) return "6THDEC";
-    if (up === "EDU26" || clean.toLowerCase().includes("education")) return "EDU26";
-    if (up === "BLOOD") return "BLOOD";
-    if (up === "TREE") return "TREE";
-    if (up === "GEN") return "GEN";
-    const found = distinctDonationEvents.find(e => e.code === up || e.title === clean);
-    if (found) return found.code;
-    return up;
-  };
 
   // Default Knowledge Base entries
   const DEFAULT_KB = [
@@ -26355,6 +26159,203 @@ function ChatbotAccessManager({ C, setC, auth }) {
     targetEventIds: ["all"],
     order: kbList.length + 1
   });
+
+  const [recordedDonations, setRecordedDonations] = useState([]);
+  const [customEventCodes, setCustomEventCodes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("trust_custom_event_codes");
+      return saved ? JSON.parse(saved) : (C?.customDonationEventCodes || []);
+    } catch(e) {
+      return C?.customDonationEventCodes || [];
+    }
+  });
+  const [hiddenEventCodes, setHiddenEventCodes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("trust_hidden_donation_event_codes");
+      return saved ? JSON.parse(saved) : (C?.hiddenDonationEventCodes || []);
+    } catch(e) {
+      return C?.hiddenDonationEventCodes || [];
+    }
+  });
+  const [newEventCodeInput, setNewEventCodeInput] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+    const token = auth?.idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
+    if (typeof fbFetchDonations === "function") {
+      fbFetchDonations(token)
+        .then(dons => {
+          if (isMounted && Array.isArray(dons)) {
+            setRecordedDonations(dons);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { isMounted = false; };
+  }, [auth]);
+
+  const distinctDonationEvents = useMemo(() => {
+    const codeMap = new Map();
+
+    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
+      if (!d) return false;
+      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted") return false;
+      return true;
+    });
+
+    // 1. Extract strictly from verified recorded donations in database
+    validDons.forEach(d => {
+      const code = resolveRecordEventCode(d).trim().toUpperCase();
+      if (hiddenEventCodes.includes(code)) return; // Exclude user-hidden/removed event code badges
+      const rawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim();
+      const title = rawTitle && rawTitle.toLowerCase() !== "general" && rawTitle.toUpperCase() !== code
+        ? rawTitle
+        : (code === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : code === "EDU26" ? "Education Felicitation 2026" : code === "GEN" ? "General Donation" : `Event: ${code}`);
+      const amt = parseFloat(d.amount) || 0;
+
+      if (!codeMap.has(code)) {
+        codeMap.set(code, {
+          code: code,
+          title: title,
+          count: 1,
+          totalAmt: amt,
+          isManual: false
+        });
+      } else {
+        const item = codeMap.get(code);
+        item.count += 1;
+        item.totalAmt += amt;
+        if ((!item.title || item.title === item.code) && title && title !== code) {
+          item.title = title;
+        }
+      }
+    });
+
+    // 2. Allow manually added / upcoming event codes (for events that have not received any donations yet)
+    (customEventCodes || []).forEach(manualCode => {
+      const cleanC = String(manualCode).trim().toUpperCase();
+      if (!cleanC || hiddenEventCodes.includes(cleanC)) return;
+      if (!codeMap.has(cleanC)) {
+        codeMap.set(cleanC, {
+          code: cleanC,
+          title: cleanC === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : cleanC === "EDU26" ? "Education Felicitation 2026" : cleanC === "BLOOD" ? "Annual Blood Donation Camp" : cleanC === "TREE" ? "Monsoon Tree Plantation Drive" : `Upcoming Code: ${cleanC}`,
+          count: 0,
+          totalAmt: 0,
+          isManual: true
+        });
+      }
+    });
+
+    return Array.from(codeMap.values());
+  }, [recordedDonations, customEventCodes, hiddenEventCodes]);
+
+  const handleAddCustomEventCode = () => {
+    const clean = (newEventCodeInput || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (!clean) return alert("Please enter an event code (e.g. 6THDEC, EDU26, BLOOD).");
+    
+    // If it was previously hidden, unhide it
+    if (hiddenEventCodes.includes(clean)) {
+      const nextHidden = hiddenEventCodes.filter(c => c !== clean);
+      setHiddenEventCodes(nextHidden);
+      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
+      if (C) C.hiddenDonationEventCodes = nextHidden;
+    }
+
+    if (!customEventCodes.includes(clean)) {
+      const nextCodes = [...customEventCodes, clean];
+      setCustomEventCodes(nextCodes);
+      try {
+        localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes));
+      } catch(e) {}
+    }
+    const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+    if (!cur.includes(clean)) {
+      setKbForm({ ...kbForm, targetEventIds: [...cur, clean] });
+    }
+    setNewEventCodeInput("");
+  };
+
+  const handleRemoveOrHideEventBadge = (codeToRemove) => {
+    const clean = String(codeToRemove || '').trim().toUpperCase();
+    if (!clean) return;
+
+    // 1. If in customEventCodes, remove it
+    if (customEventCodes.includes(clean)) {
+      const nextCodes = customEventCodes.filter(c => c !== clean);
+      setCustomEventCodes(nextCodes);
+      try { localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes)); } catch(e) {}
+    }
+
+    // 2. Add to hiddenEventCodes so it disappears from the list
+    if (!hiddenEventCodes.includes(clean)) {
+      const nextHidden = [...hiddenEventCodes, clean];
+      setHiddenEventCodes(nextHidden);
+      try { localStorage.setItem("trust_hidden_donation_event_codes", JSON.stringify(nextHidden)); } catch(e) {}
+      if (C) C.hiddenDonationEventCodes = nextHidden;
+    }
+
+    // 3. Remove from active selection
+    if (Array.isArray(kbForm.targetEventIds)) {
+      const nextTargets = kbForm.targetEventIds.filter(x => x !== clean && x !== clean.toLowerCase());
+      setKbForm({ ...kbForm, targetEventIds: nextTargets.length === 0 ? ['all'] : nextTargets });
+    }
+  };
+
+  const handleRestoreHiddenCodes = () => {
+    setHiddenEventCodes([]);
+    try { localStorage.removeItem("trust_hidden_donation_event_codes"); } catch(e) {}
+    if (C) C.hiddenDonationEventCodes = [];
+  };
+
+  // Dynamically extract real donation records matching selected event codes
+  const previewFilteredDonations = useMemo(() => {
+    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
+      if (!d) return false;
+      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted" || d.Status === "Deleted") return false;
+      return true;
+    });
+
+    const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
+    if (isAll) return validDons;
+
+    return validDons.filter(d => {
+      const dEvCode = resolveRecordEventCode(d).trim().toUpperCase();
+      const dRawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim().toLowerCase();
+      const dEvId = String(d.eventId || '').trim().toUpperCase();
+      const dRawCode = String(d.eventCode || '').trim().toUpperCase();
+
+      return kbForm.targetEventIds.some(target => {
+        const tUp = String(target || '').trim().toUpperCase();
+        const tLow = tUp.toLowerCase();
+        if (!tUp || tUp === 'ALL') return true;
+        if (dEvCode === tUp || dRawCode === tUp || dEvId === tUp) return true;
+        if (tLow.includes('edu') && (dEvCode.includes('EDU') || dRawCode.includes('EDU') || dRawTitle.includes('education') || dRawTitle.includes('felicitation'))) return true;
+        if (tLow.includes('6th') && (dEvCode.includes('6TH') || dRawCode.includes('6TH') || dRawTitle.includes('6th') || dRawTitle.includes('dec') || dRawTitle.includes('mahaparinirvan'))) return true;
+        if (tLow.includes('blood') && (dEvCode.includes('BLOOD') || dRawTitle.includes('blood'))) return true;
+        if (tLow.includes('tree') && (dEvCode.includes('TREE') || dRawTitle.includes('tree'))) return true;
+        if (tLow.includes('scholar') && (dEvCode.includes('SCHOLAR') || dRawTitle.includes('scholar'))) return true;
+        return dEvCode === tUp || dRawTitle.includes(tLow);
+      });
+    });
+  }, [recordedDonations, kbForm.targetEventIds]);
+
+  const previewTotalAmt = useMemo(() => {
+    return previewFilteredDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+  }, [previewFilteredDonations]);
+
+  const formatEventTitle = (evIdOrTitle) => {
+    if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
+    const clean = String(evIdOrTitle).trim();
+    const up = clean.toUpperCase();
+    if (up === "6THDEC" || clean.toLowerCase().includes("6th") || clean.toLowerCase().includes("dec")) return "6THDEC";
+    if (up === "EDU26" || clean.toLowerCase().includes("education")) return "EDU26";
+    if (up === "BLOOD") return "BLOOD";
+    if (up === "TREE") return "TREE";
+    if (up === "GEN") return "GEN";
+    const found = distinctDonationEvents.find(e => e.code === up || e.title === clean);
+    if (found) return found.code;
+    return up;
+  };
 
   const VIBHAG_LIST = [
     "10 MAHALAXMI",
