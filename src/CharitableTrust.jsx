@@ -1523,6 +1523,20 @@ export const getDistinctEventOptions = (C = {}) => {
   return events;
 };
 
+export const resolveRecordEventCode = (r) => {
+  if (!r) return "GEN";
+  if (r.eventCode && r.eventCode !== "GEN" && r.eventCode !== "EVT") return String(r.eventCode).trim().toUpperCase();
+  const text = `${r.program || ""} ${r.purpose || ""} ${r.formName || ""} ${r.eventName || ""} ${r.eventTitle || ""}`.toLowerCase();
+  if (text.includes("6th") || text.includes("dec") || text.includes("mahaparinirvan")) return "6THDEC";
+  if (text.includes("edu") || text.includes("felicitation")) return "EDU26";
+  if (text.includes("blood")) return "BLOOD";
+  if (text.includes("tree")) return "TREE";
+  if (text.includes("scholar")) return "SCHOLAR";
+  if (text.includes("skill")) return "SKILL";
+  if (text.includes("food") || text.includes("jamnavar")) return "6THDEC";
+  return (r.eventCode && String(r.eventCode).trim().toUpperCase()) || "GEN";
+};
+
 const generateNextTxnId = async (idToken, preferredPrefix = null, targetEventId = null) => {
   try {
     const rawExisting = await fbFetchRegistrations(idToken);
@@ -25803,13 +25817,127 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [isStudioOpen, setIsStudioOpen] = useState(true);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [recordedDonations, setRecordedDonations] = useState([]);
+  const [customEventCodes, setCustomEventCodes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("trust_custom_event_codes");
+      return saved ? JSON.parse(saved) : (C?.customDonationEventCodes || []);
+    } catch(e) {
+      return C?.customDonationEventCodes || [];
+    }
+  });
+  const [newEventCodeInput, setNewEventCodeInput] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+    const token = auth?.idToken || (typeof localStorage !== 'undefined' ? (localStorage.getItem("trustPublicAuthToken") || localStorage.getItem("globalAuthToken")) : "");
+    if (typeof fbFetchDonations === "function") {
+      fbFetchDonations(token)
+        .then(dons => {
+          if (isMounted && Array.isArray(dons)) {
+            setRecordedDonations(dons);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { isMounted = false; };
+  }, [auth]);
+
+  const distinctDonationEvents = useMemo(() => {
+    const codeMap = new Map();
+
+    const validDons = (Array.isArray(recordedDonations) ? recordedDonations : []).filter(d => {
+      if (!d) return false;
+      if (d.deleted === true || d.deleted === "true" || d.isDeleted === true || d.isTrash === true || d.status === "Deleted") return false;
+      return true;
+    });
+
+    // 1. Extract strictly from verified recorded donations in database
+    validDons.forEach(d => {
+      const code = resolveRecordEventCode(d).trim().toUpperCase();
+      const rawTitle = (d.program || d.purpose || d.eventName || d.eventTitle || "").trim();
+      const title = rawTitle && rawTitle.toLowerCase() !== "general" && rawTitle.toUpperCase() !== code
+        ? rawTitle
+        : (code === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : code === "EDU26" ? "Education Felicitation 2026" : code === "GEN" ? "General Donation" : `Event: ${code}`);
+      const amt = parseFloat(d.amount) || 0;
+
+      if (!codeMap.has(code)) {
+        codeMap.set(code, {
+          code: code,
+          title: title,
+          count: 1,
+          totalAmt: amt,
+          isManual: false
+        });
+      } else {
+        const item = codeMap.get(code);
+        item.count += 1;
+        item.totalAmt += amt;
+        if ((!item.title || item.title === item.code) && title && title !== code) {
+          item.title = title;
+        }
+      }
+    });
+
+    // 2. Allow manually added / upcoming event codes (for events that have not received any donations yet)
+    (customEventCodes || []).forEach(manualCode => {
+      const cleanC = String(manualCode).trim().toUpperCase();
+      if (!cleanC) return;
+      if (!codeMap.has(cleanC)) {
+        codeMap.set(cleanC, {
+          code: cleanC,
+          title: cleanC === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : cleanC === "EDU26" ? "Education Felicitation 2026" : cleanC === "BLOOD" ? "Annual Blood Donation Camp" : cleanC === "TREE" ? "Monsoon Tree Plantation Drive" : `Upcoming Code: ${cleanC}`,
+          count: 0,
+          totalAmt: 0,
+          isManual: true
+        });
+      }
+    });
+
+    return Array.from(codeMap.values());
+  }, [recordedDonations, customEventCodes]);
+
+  const handleAddCustomEventCode = () => {
+    const clean = (newEventCodeInput || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (!clean) return alert("Please enter an event code (e.g. 6THDEC, EDU26, BLOOD).");
+    if (!customEventCodes.includes(clean)) {
+      const nextCodes = [...customEventCodes, clean];
+      setCustomEventCodes(nextCodes);
+      try {
+        localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes));
+      } catch(e) {}
+    }
+    const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+    if (!cur.includes(clean)) {
+      setKbForm({ ...kbForm, targetEventIds: [...cur, clean] });
+    }
+    setNewEventCodeInput("");
+  };
+
+  const handleRemoveCustomEventCode = (codeToRemove) => {
+    const nextCodes = customEventCodes.filter(c => c !== codeToRemove);
+    setCustomEventCodes(nextCodes);
+    try {
+      localStorage.setItem("trust_custom_event_codes", JSON.stringify(nextCodes));
+    } catch(e) {}
+    if (Array.isArray(kbForm.targetEventIds)) {
+      const nextTargets = kbForm.targetEventIds.filter(x => x !== codeToRemove && x !== codeToRemove.toLowerCase());
+      setKbForm({ ...kbForm, targetEventIds: nextTargets.length === 0 ? ['all'] : nextTargets });
+    }
+  };
 
   const formatEventTitle = (evIdOrTitle) => {
     if (!evIdOrTitle || evIdOrTitle === "all") return "All Events Combined";
-    if (evIdOrTitle === "education2026" || evIdOrTitle === "edu26" || String(evIdOrTitle).toLowerCase().includes("education")) return "Education Felicitation 2026";
-    const evObj = (C?.events || []).find(e => e && (e.id === evIdOrTitle || e.title === evIdOrTitle || (e.id && String(e.id).toLowerCase() === String(evIdOrTitle).toLowerCase())));
-    if (evObj && evObj.title) return evObj.title;
-    return String(evIdOrTitle);
+    const clean = String(evIdOrTitle).trim();
+    const up = clean.toUpperCase();
+    if (up === "6THDEC" || clean.toLowerCase().includes("6th") || clean.toLowerCase().includes("dec")) return "6THDEC";
+    if (up === "EDU26" || clean.toLowerCase().includes("education")) return "EDU26";
+    if (up === "BLOOD") return "BLOOD";
+    if (up === "TREE") return "TREE";
+    if (up === "GEN") return "GEN";
+    const found = distinctDonationEvents.find(e => e.code === up || e.title === clean);
+    if (found) return found.code;
+    return up;
   };
 
   // Default Knowledge Base entries
@@ -28236,7 +28364,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               <span style={{fontSize:".72rem",color:"#047857",background:"#D1FAE5",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
                                 {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) 
                                   ? "🌐 All Events Combined" 
-                                  : `📌 Scoped to (${kbForm.targetEventIds.length} Events): ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
+                                  : `📌 Scoped to (${kbForm.targetEventIds.length} ${kbForm.targetEventIds.length === 1 ? 'Event' : 'Events'}): ${kbForm.targetEventIds.map(formatEventTitle).join(", ")}`}
                               </span>
                               <button
                                 type="button"
@@ -28273,8 +28401,25 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </div>
                           </div>
 
-                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:6}}>
-                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#D1FAE5" : "white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #059669" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#065F46" : "#475569"}}>
+                          <div style={{fontSize:".73rem",color:"#475569",marginBottom:8}}>
+                            <em>Showing only distinct event codes with recorded donations. Select <strong>Select All</strong> or choose individual event code(s) below:</em>
+                          </div>
+
+                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
+                            {/* All Events Combined */}
+                            <label style={{
+                              display:"inline-flex",
+                              alignItems:"center",
+                              gap:6,
+                              background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#D1FAE5" : "white",
+                              padding:"6px 12px",
+                              borderRadius:6,
+                              border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #059669" : "1px solid #CBD5E1",
+                              fontSize:".78rem",
+                              fontWeight:800,
+                              cursor:"pointer",
+                              color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#065F46" : "#475569"
+                            }}>
                               <input
                                 type="checkbox"
                                 checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
@@ -28287,55 +28432,154 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               <span>🌐 All Events Combined (Select All)</span>
                             </label>
 
-                            {getDistinctEventOptions(C).map(evItem => {
+                            {/* Distinct Recorded Donation Event Codes Only */}
+                            {distinctDonationEvents.map(evItem => {
                               const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
                               const isSelected = !isAll && (
-                                (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evItem.id)) ||
-                                (Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evItem.title)) ||
-                                (evItem.code && Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evItem.code))
+                                Array.isArray(kbForm.targetEventIds) && (
+                                  kbForm.targetEventIds.includes(evItem.code) ||
+                                  kbForm.targetEventIds.includes(evItem.code.toLowerCase()) ||
+                                  (evItem.title && kbForm.targetEventIds.includes(evItem.title))
+                                )
                               );
+
                               return (
-                                <label
-                                  key={evItem.id || evItem.code || evItem.title}
+                                <div
+                                  key={evItem.code}
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: 6,
                                     background: isSelected ? "#D1FAE5" : "white",
-                                    padding: "6px 12px",
+                                    padding: "6px 10px",
                                     borderRadius: 6,
                                     border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",
                                     fontSize: ".78rem",
                                     fontWeight: 700,
-                                    cursor: "pointer",
                                     color: isSelected ? "#065F46" : "#334155",
                                     transition: "all 0.15s ease"
                                   }}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
-                                      const evKey = evItem.code || evItem.id || evItem.title;
-                                      let updated = e.target.checked ? [...cur, evKey] : cur.filter(x => x !== evKey && x !== evItem.id && x !== evItem.title && x !== evItem.code);
-                                      if (updated.length === 0) updated = ['all'];
-                                      setKbForm({ ...kbForm, targetEventIds: updated });
-                                    }}
-                                    style={{cursor:"pointer",accentColor:"#059669"}}
-                                  />
-                                  <span>📌 {evItem.title}</span>
-                                  {evItem.code && evItem.code !== evItem.title && (
-                                    <span style={{fontSize:".68rem",background:"#F1F5F9",color:"#065F46",padding:"1px 6px",borderRadius:4,fontWeight:800,fontFamily:"monospace",border:"1px solid #CBD5E1"}}>
-                                      {evItem.code}
+                                  <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
+                                        const evKey = evItem.code;
+                                        let updated = e.target.checked 
+                                          ? [...cur, evKey] 
+                                          : cur.filter(x => x !== evKey && x !== evKey.toLowerCase() && x !== evItem.title);
+                                        if (updated.length === 0) updated = ['all'];
+                                        setKbForm({ ...kbForm, targetEventIds: updated });
+                                      }}
+                                      style={{cursor:"pointer",accentColor:"#059669"}}
+                                    />
+                                    <span style={{
+                                      background: isSelected ? "#059669" : "#F1F5F9",
+                                      color: isSelected ? "white" : "#065F46",
+                                      padding: "1px 7px",
+                                      borderRadius: 4,
+                                      fontWeight: 800,
+                                      fontFamily: "monospace",
+                                      fontSize: ".74rem",
+                                      border: isSelected ? "1px solid #047857" : "1px solid #CBD5E1"
+                                    }}>
+                                      🏷️ {evItem.code}
                                     </span>
+                                    <span>{evItem.title && evItem.title !== evItem.code ? evItem.title : ""}</span>
+                                    {evItem.count > 0 ? (
+                                      <span style={{fontSize:".68rem",color:"#047857",background:"#ECFDF5",padding:"1px 6px",borderRadius:4,fontWeight:800}}>
+                                        ({evItem.count} {evItem.count === 1 ? 'donation' : 'donations'})
+                                      </span>
+                                    ) : (
+                                      <span style={{fontSize:".65rem",color:"#64748B",background:"#F8FAFC",padding:"1px 5px",borderRadius:4,fontStyle:"italic"}}>
+                                        (Manual / No donations yet)
+                                      </span>
+                                    )}
+                                  </label>
+
+                                  {evItem.isManual && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveCustomEventCode(evItem.code);
+                                      }}
+                                      title="Remove this manually added event code"
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        color: "#EF4444",
+                                        fontSize: ".85rem",
+                                        cursor: "pointer",
+                                        padding: "0 2px",
+                                        marginLeft: 2,
+                                        fontWeight: 800
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
                                   )}
-                                </label>
+                                </div>
                               );
                             })}
                           </div>
-                          <div style={{fontSize:".73rem",color:"#047857",marginTop:8,lineHeight:1.4}}>
-                            💡 <em>Select <strong>"Select All"</strong> or individual event codes (e.g. <strong>6THDEC</strong> or <strong>EDU26</strong>). Only the selected events' donation records will be extracted and used for this flow.</em>
+
+                          {/* Manual Event Code Entry Box for Upcoming Events */}
+                          <div style={{marginTop:12,paddingTop:10,borderTop:"1px dashed #CBD5E1",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                            <span style={{fontSize:".74rem",fontWeight:800,color:"#065F46",display:"flex",alignItems:"center",gap:4}}>
+                              <span>➕</span> Add Upcoming / New Event Code (if no donations received yet):
+                            </span>
+                            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                              <input
+                                type="text"
+                                placeholder="e.g. 6THDEC, EDU26, BLOOD, TREE"
+                                value={newEventCodeInput}
+                                onChange={e => setNewEventCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddCustomEventCode();
+                                  }
+                                }}
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: 6,
+                                  border: "1.5px solid #CBD5E1",
+                                  fontSize: ".76rem",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  minWidth: 220,
+                                  fontFamily: "monospace",
+                                  background: "white"
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddCustomEventCode}
+                                style={{
+                                  padding: "5px 12px",
+                                  borderRadius: 6,
+                                  background: "#059669",
+                                  color: "white",
+                                  border: "none",
+                                  fontSize: ".75rem",
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  boxShadow: "0 1px 3px rgba(5,150,105,0.2)"
+                                }}
+                              >
+                                <span>➕</span> Add Code
+                              </button>
+                            </div>
+                          </div>
+
+                          <div style={{fontSize:".72rem",color:"#047857",marginTop:8,lineHeight:1.4}}>
+                            💡 <em>Only distinct event codes from verified donation records appear above. If an event code has not received any donation yet, type its code above to add it manually and connect it to this flow.</em>
                           </div>
                         </div>
 
@@ -57210,18 +57454,21 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return cleanDonations;
     }
 
-    // Specific event scoping
+    // Specific event scoping by Event Code & Event Names
     const filtered = cleanDonations.filter(d => {
       const dEvId = String(d.eventId || '').toLowerCase().trim();
       const dEvCode = String(d.eventCode || '').toLowerCase().trim();
+      const dInferredCode = typeof resolveRecordEventCode === 'function' ? resolveRecordEventCode(d).toLowerCase().trim() : '';
       const dEvName = String(d.eventName || d.eventTitle || d.purpose || d.program || '').toLowerCase().trim();
       const dRemarks = String(d.remarks || '').toLowerCase().trim();
-      const combined = `${dEvId} ${dEvCode} ${dEvName} ${dRemarks}`.toLowerCase();
+      const combined = `${dEvId} ${dEvCode} ${dInferredCode} ${dEvName} ${dRemarks}`.toLowerCase();
 
       return targetEventIds.some(target => {
         const tClean = String(target || '').toLowerCase().trim();
         if (!tClean || tClean === 'all' || tClean === 'ev_donor_data' || tClean === 'donor data') return true;
-        if (dEvId === tClean || dEvCode === tClean) return true;
+        
+        // Exact matching on Event Code or Inferred Event Code
+        if (dEvCode === tClean || dInferredCode === tClean || dEvId === tClean) return true;
         if (dEvCode && (dEvCode === tClean || dEvCode.includes(tClean) || tClean.includes(dEvCode))) return true;
 
         if (tClean.includes('education') || tClean === 'education2026' || tClean === 'edu26') {
@@ -57232,16 +57479,16 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           return combined.includes('6th') || combined.includes('dec') || combined.includes('mahaparinirvan') || combined.includes('06');
         }
 
-        if (tClean.includes('blood') || tClean.includes('camp')) {
+        if (tClean.includes('blood') || tClean === 'blood') {
           return combined.includes('blood') || combined.includes('camp');
         }
 
-        if (tClean.includes('monsoon') || tClean.includes('tree')) {
+        if (tClean.includes('tree') || tClean === 'tree') {
           return combined.includes('monsoon') || combined.includes('tree') || combined.includes('plantation');
         }
 
-        if (tClean.includes('donor') || tClean.includes('donation')) {
-          return true;
+        if (tClean === 'gen' || tClean === 'general' || tClean === 'general donation') {
+          return dEvCode === 'gen' || dInferredCode === 'gen' || combined.includes('general');
         }
 
         const tokens = tClean.split(/[\s_/-]+/).filter(w => w.length > 2 && w !== 'event' && w !== 'program');
