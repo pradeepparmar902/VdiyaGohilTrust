@@ -41575,7 +41575,8 @@ function AdminColumnCustomizerModal({
   onSaveConfig,
   onResetDefault,
   C,
-  saveToFb
+  saveToFb,
+  eventName = ""
 }) {
   const [tempSelected, setTempSelected] = useState(() => new Set(selectedColumns));
   const [tempOrder, setTempOrder] = useState(() => [...allColumns]);
@@ -41764,7 +41765,7 @@ function AdminColumnCustomizerModal({
         <div style={{padding:"16px 20px",borderBottom:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F8FAFC"}}>
           <div>
             <h3 style={{margin:0,fontSize:"1.15rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:8}}>
-              <span>⚙️</span> Customize Table Columns
+              <span>⚙️</span> Customize Table Columns{eventName ? ` — ${eventName}` : ""}
             </h3>
             <p style={{margin:"4px 0 0 0",fontSize:".78rem",color:"#64748B"}}>
               Click any column row or checkbox to select/deselect. Drag handle ⋮⋮ or click arrows to reorder.
@@ -42352,7 +42353,8 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
 
   const [regs, setRegs] = useState([]);
   const [selectedSection, setSelectedSection] = useState("All");
-  const [viewMode, setViewMode] = useState("active"); // "active" | "archived" | "trash"
+  const [selectedEventId, setSelectedEventId] = useState("all");
+  const [viewMode, setViewMode] = useState("active"); // "active" | "archived" | "all" | "trash"
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -42607,9 +42609,141 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     return "Default";
   };
 
+  const allNonDeletedRegs = regs.filter(r => isPublicEventRegistration(r) && !r.deleted && !r.isGlobalGuest && !r.isSpecialGuest);
   const activeRegsList = regs.filter(r => isPublicEventRegistration(r) && !isRecordArchivedReg(r));
   const archivedRegsList = regs.filter(r => !r.deleted && isRecordArchivedReg(r) && !r.isGlobalGuest && !r.isSpecialGuest);
   const deletedRegsList = regs.filter(r => (r.deleted === true || r.deleted === "true" || r.isDeleted === true || r.status === "Deleted" || r.Status === "Deleted") && !r.isGlobalGuest && !r.isSpecialGuest);
+
+  const currentViewPool = viewMode === "all" ? allNonDeletedRegs : (viewMode === "archived" ? archivedRegsList : activeRegsList);
+
+  // 1. Gather all events from C.events and registrations database
+  const availableEvents = useMemo(() => {
+    const evMap = new Map();
+
+    // 1. Events configured in C.events
+    (C?.events || []).forEach(e => {
+      if (!e) return;
+      const key = String(e.id || e.code || e.title || "").trim();
+      if (!key) return;
+      evMap.set(key, {
+        id: e.id || key,
+        code: String(e.code || e.eventCode || e.id || "").trim().toUpperCase(),
+        title: e.title || key,
+        formId: e.formId || null,
+        section: e.section || null,
+        source: 'config'
+      });
+    });
+
+    // 2. Discover distinct events from registrations database
+    (regs || []).forEach(r => {
+      if (!r || r.deleted) return;
+      const rId = String(r.eventId || '').trim();
+      const rCode = String(r.eventCode || '').trim().toUpperCase();
+      const rTitle = String(r.eventName || r.eventTitle || '').trim();
+      const rFormId = String(r.formId || '').trim();
+      const txn = String(r['Transaction ID'] || r.transactionId || '').toUpperCase();
+
+      let matchedKey = null;
+      for (const [k, ev] of evMap.entries()) {
+        const evId = String(ev.id || '').toLowerCase();
+        const evCode = String(ev.code || '').toUpperCase();
+        const evTitle = String(ev.title || '').toLowerCase();
+        if ((rId && evId === rId.toLowerCase()) ||
+            (rCode && evCode === rCode) ||
+            (rFormId && ev.formId && ev.formId === rFormId) ||
+            (rTitle && evTitle === rTitle.toLowerCase()) ||
+            ((evCode === "EDU26" || evTitle.includes("education")) && (txn.startsWith("EDU") || txn.startsWith("VG-") || r['Stream'] || r['% Obtained'])) ||
+            ((evCode === "6THDEC" || evTitle.includes("6th")) && (txn.startsWith("6TH") || rTitle.toLowerCase().includes("6th")))) {
+          matchedKey = k;
+          break;
+        }
+      }
+
+      if (!matchedKey) {
+        let code = rCode || (txn.startsWith("EDU") ? "EDU26" : rId) || "EVENT";
+        let title = rTitle || r.program || r.purpose || code;
+        const key = rId || code || title;
+        if (!evMap.has(key)) {
+          evMap.set(key, {
+            id: rId || key,
+            code: code.toUpperCase(),
+            title: title,
+            formId: rFormId || null,
+            section: null,
+            source: 'records'
+          });
+        }
+      }
+    });
+
+    // Ensure Education felicitation 2026 is always available
+    const hasEdu = Array.from(evMap.values()).some(e => 
+      e.code === "EDU26" || e.title.toLowerCase().includes("education") || String(e.id).toLowerCase().includes("edu")
+    );
+    if (!hasEdu) {
+      evMap.set("edu26", {
+        id: "edu26",
+        code: "EDU26",
+        title: "Education felicitation 2026",
+        formId: "FORM_1785425256968",
+        section: "Education felicitation 2026",
+        source: 'default'
+      });
+    }
+
+    return Array.from(evMap.values());
+  }, [C?.events, regs]);
+
+  const recordMatchesEvent = (r, evId, evObj = null) => {
+    if (!r) return false;
+    if (!evId || evId === "all" || evId === "All") return true;
+
+    const target = evObj || availableEvents.find(e => e.id === evId || e.code === evId || e.title === evId);
+    const targetId = String(target?.id || evId).trim().toLowerCase();
+    const targetCode = String(target?.code || target?.eventCode || '').trim().toUpperCase();
+    const targetTitle = String(target?.title || '').trim().toLowerCase();
+    const targetFormId = String(target?.formId || '').trim();
+
+    const rEvId = String(r.eventId || '').trim().toLowerCase();
+    const rEvCode = String(r.eventCode || '').trim().toUpperCase();
+    const rEvTitle = String(r.eventName || r.eventTitle || '').trim().toLowerCase();
+    const rFormId = String(r.formId || '').trim();
+    const txn = String(r['Transaction ID'] || r.transactionId || '').toUpperCase();
+
+    // 1. Direct ID match
+    if (rEvId && targetId && (rEvId === targetId || (rEvId.length >= 3 && targetId.includes(rEvId)) || (targetId.length >= 3 && rEvId.includes(targetId)))) return true;
+
+    // 2. Direct Code match
+    if (targetCode && rEvCode && (rEvCode === targetCode || targetCode.includes(rEvCode))) return true;
+
+    // 3. Form ID match
+    if (targetFormId && rFormId && targetFormId === rFormId) return true;
+
+    // 4. Education 2026 special recognize
+    if (targetCode === "EDU26" || targetTitle.includes("education") || targetTitle.includes("felicitation") || targetId.includes("edu")) {
+      if (txn.startsWith("EDU") || txn.startsWith("VG-") || rEvTitle.includes("education") || rEvTitle.includes("felicitation") || Boolean(r['Stream'] || r['Stream / Class'] || r['% Obtained'] || r['Obtained Marks'])) {
+        return true;
+      }
+    }
+
+    // 5. 6th Dec special recognize
+    if (targetCode === "6THDEC" || targetTitle.includes("6th") || targetTitle.includes("mahaparinirvan")) {
+      if (txn.startsWith("6TH") || rEvTitle.includes("6th") || rEvTitle.includes("mahaparinirvan")) {
+        return true;
+      }
+    }
+
+    // 6. Title substring match (guarded by minimum length)
+    if (targetTitle && rEvTitle && targetTitle.length >= 3 && rEvTitle.length >= 3 && (rEvTitle.includes(targetTitle) || targetTitle.includes(rEvTitle))) return true;
+
+    return false;
+  };
+
+  const activeEventObj = useMemo(() => {
+    if (!selectedEventId || selectedEventId === "all") return null;
+    return availableEvents.find(e => e.id === selectedEventId || e.code === selectedEventId || e.title === selectedEventId) || null;
+  }, [selectedEventId, availableEvents]);
 
   // Compute live section distribution counts
   const sectionCounts = { "All": activeRegsList.length };
@@ -42669,13 +42803,18 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     };
   };
 
-  // 2. Filter registrations based on search query
-  const filteredRegs = activeRegsList.filter(r => {
+  // 2. Filter registrations based on selected event, search query, and pills
+  const filteredRegs = currentViewPool.filter(r => {
     if(!r) return false;
     
-    // Group section filter using smart section resolver
+    // Strict event filter based on selected event
+    if (selectedEventId !== "all") {
+      if (!recordMatchesEvent(r, selectedEventId, activeEventObj)) return false;
+    }
+    
+    // Group section filter using smart section resolver (if viewing all events)
     const evSection = getRecordSection(r);
-    if (selectedSection !== "All") {
+    if (selectedEventId === "all" && selectedSection !== "All") {
       if (selectedSection === "Default") {
         if (evSection !== "Default" && evSection !== "") return false;
       } else {
@@ -42747,74 +42886,115 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
   });
 
   
-  // 1. Gather dynamic field keys strictly for the active section/filters
+  // 1. Gather dynamic field keys strictly for the active event (or all events)
   const ignoreKeys = ['id', 'eventId', 'eventTitle', 'eventName', '_submittedAt', 'Transaction ID', 'Status', 'Remarks', 'Updated By', 'logHistory', 'status', 'remarks'];
-  const allKeysSet = new Set();
-  
-  // Inspect all registrations so mapped or newly imported columns are always visible even when filtering
-  (regs || []).forEach(r => {
-    if(!r) return;
-    const inspectObj = (obj) => {
-      if (!obj || typeof obj !== 'object') return;
-      Object.keys(obj).forEach(k => {
-        if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
-          const cleanK = k.trim();
-          const normK = cleanK.toLowerCase().replace(/[\s_-]+/g, '');
-          if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
-            allKeysSet.add('Vibhag');
-          } else {
-            allKeysSet.add(cleanK);
-          }
-        }
-      });
-    };
-    inspectObj(r);
-    if (r.formData) inspectObj(r.formData);
-  });
 
-  // Also include any target columns configured in masterDataMappings
-  if (Array.isArray(C?.masterDataMappings)) {
-    C.masterDataMappings.forEach(rule => {
-      (rule.importCols || []).forEach(col => {
-        const targetCol = (rule.targetColNames?.[col] || col).trim();
-        if (targetCol && !ignoreKeys.includes(targetCol)) {
-          allKeysSet.add(targetCol);
-        }
-      });
-    });
-  }
-  
-  let allKeys = Array.from(allKeysSet).filter(k => k !== 'Vibhag New' && k.toLowerCase().replace(/[\s_-]+/g, '') !== 'vibhagnew');
-  const priority = ["Full Name", "Name", "Mobile Number", "Mobile", "Phone", "Email Address", "Email", "Vibhag", "Zone", "Stream", "Stream Group"];
-  allKeys.sort((a, b) => {
-    const ia = priority.indexOf(a);
-    const ib = priority.indexOf(b);
-    if (ia !== -1 && ib !== -1) return ia - ib;
-    if (ia !== -1) return -1;
-    if (ib !== -1) return 1;
-    return a.localeCompare(b);
-  });
-
-  // Master ordered list of all possible table columns (combining standard system columns and dynamic form/master fields)
+  // Master ordered list of columns dynamically adapted to the selected event
   const allMasterCols = useMemo(() => {
     const systemCols = ["Date", "Event", "Transaction ID", "Unique", "Status", "Remarks", "Updated By"];
-    const priorityList = [
+    
+    // Target records pool: If an event is selected, inspect ONLY this event's records!
+    const targetPool = activeEventObj 
+      ? regs.filter(r => recordMatchesEvent(r, activeEventObj.id, activeEventObj))
+      : regs;
+
+    const eventKeysSet = new Set();
+
+    // 1. If an event is selected, check its linked form in C.forms first
+    if (activeEventObj) {
+      let linkedForm = null;
+      if (activeEventObj.formId) {
+        linkedForm = (C?.forms || []).find(f => f.id === activeEventObj.formId);
+      }
+      if (!linkedForm && activeEventObj.title) {
+        linkedForm = (C?.forms || []).find(f => 
+          (f.name && f.name.toLowerCase() === activeEventObj.title.toLowerCase()) ||
+          (f.id && f.id.toLowerCase() === activeEventObj.id.toLowerCase())
+        );
+      }
+      if (linkedForm && Array.isArray(linkedForm.fields)) {
+        linkedForm.fields.forEach(f => {
+          const lbl = (f.label || f.name || f.dataKey || "").trim();
+          if (lbl && !ignoreKeys.includes(lbl) && !lbl.startsWith('_')) {
+            eventKeysSet.add(lbl);
+          }
+        });
+      }
+    }
+
+    // 2. Inspect target records pool (only records of the selected event, or all records if "all")
+    (targetPool || []).forEach(r => {
+      if (!r) return;
+      const inspectObj = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        Object.keys(obj).forEach(k => {
+          if (!ignoreKeys.includes(k) && !k.startsWith('_')) {
+            const cleanK = k.trim();
+            const normK = cleanK.toLowerCase().replace(/[\s_-]+/g, '');
+            if (normK === 'vibhagnew' || cleanK === 'Vibhag New') {
+              eventKeysSet.add('Vibhag');
+            } else {
+              eventKeysSet.add(cleanK);
+            }
+          }
+        });
+      };
+      inspectObj(r);
+      if (r.formData) inspectObj(r.formData);
+    });
+
+    // 3. Target columns from masterDataMappings (Zone, etc.)
+    if (Array.isArray(C?.masterDataMappings)) {
+      C.masterDataMappings.forEach(rule => {
+        (rule.importCols || []).forEach(col => {
+          const targetCol = (rule.targetColNames?.[col] || col).trim();
+          if (targetCol && !ignoreKeys.includes(targetCol)) {
+            if (!activeEventObj || targetPool.some(r => r[targetCol] !== undefined || r[col] !== undefined)) {
+              eventKeysSet.add(targetCol);
+            }
+          }
+        });
+      });
+    }
+
+    const dynamicKeys = Array.from(eventKeysSet).filter(k => k !== 'Vibhag New' && k.toLowerCase().replace(/[\s_-]+/g, '') !== 'vibhagnew');
+
+    const priority = [
+      "Full Name", "Name", "Mobile Number", "Mobile", "Vibhag", "Zone", 
+      "Stream", "Stream Group", "Obtained Marks", "Out Of Marks", "% Obtained",
+      "School / College Name", "Supporting Document",
+      "Address", "Email Address", "Email", "Gender", "Alternate Mobile Number"
+    ];
+
+    dynamicKeys.sort((a, b) => {
+      const ia = priority.indexOf(a);
+      const ib = priority.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    const baseList = activeEventObj ? [
+      "Full Name", "Mobile Number", "Vibhag",
+      ...dynamicKeys,
+      "Status", "Date", "Transaction ID", "Unique", "Remarks", "Updated By"
+    ] : [
       "Full Name", "Name", "Mobile Number", "Mobile", "Vibhag", "Zone", "Stream", "Stream Group",
       "Status", "Date", "Transaction ID", "Obtained Marks", "Out Of Marks", "% Obtained",
-      "Unique", "Remarks", "Updated By", "Event", "Email Address", "Email", "Address",
-      "Gender", "Alternate Mobile Number", "Age_year", "Supporting Document"
+      "Unique", "Remarks", "Updated By", "Event", ...dynamicKeys, ...systemCols
     ];
-    
+
     const seenLower = new Set();
-    const list = [];
-    [...priorityList, ...allKeys, ...systemCols].forEach(raw => {
+    const finalCols = [];
+    baseList.forEach(raw => {
       if (!raw) return;
       const c = String(raw).trim();
       const lower = c.toLowerCase();
       if (lower === 'vibhag new' || lower === 'vibhagnew' || lower === 'txn id') return;
       if (!seenLower.has(lower)) {
         seenLower.add(lower);
-        list.push(c);
+        finalCols.push(c);
       }
     });
 
@@ -42825,13 +43005,13 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
         if (!raw) return;
         const cl = String(raw).trim();
         const low = cl.toLowerCase();
-        const match = list.find(x => x.toLowerCase() === low);
+        const match = finalCols.find(x => x.toLowerCase() === low);
         if (match && !orderedLower.has(low)) {
           orderedLower.add(low);
           ordered.push(match);
         }
       });
-      list.forEach(c => {
+      finalCols.forEach(c => {
         if (!orderedLower.has(c.toLowerCase())) {
           orderedLower.add(c.toLowerCase());
           ordered.push(c);
@@ -42840,18 +43020,39 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       return ordered;
     }
 
-    return list;
-  }, [allKeys, colOrder]);
+    return finalCols;
+  }, [selectedEventId, activeEventObj, availableEvents, regs, C?.forms, C?.masterDataMappings, colOrder]);
+
+  const currentEventVisibleCols = useMemo(() => {
+    if (selectedEventId && selectedEventId !== "all") {
+      let saved = C?.regVisibleColumnsByEvent?.[selectedEventId];
+      if (!saved && typeof localStorage !== 'undefined') {
+        try {
+          const cached = localStorage.getItem("mmp_reg_visible_columns_" + selectedEventId);
+          if (cached) saved = JSON.parse(cached);
+        } catch(e){}
+      }
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    }
+    return selectedCols;
+  }, [selectedEventId, C?.regVisibleColumnsByEvent, selectedCols]);
 
   // The active subset of columns to display on screen in the user's customized order
   const visibleColumns = useMemo(() => {
-    const selectedLower = new Set(selectedCols.map(c => {
+    const selectedLower = new Set(currentEventVisibleCols.map(c => {
       const str = String(c || '').trim();
       return (str === 'Txn ID' ? 'Transaction ID' : str).toLowerCase();
     }));
     const visible = allMasterCols.filter(c => selectedLower.has(c.toLowerCase()));
-    return visible.length > 0 ? visible : ["Full Name", "Mobile Number", "Status"];
-  }, [allMasterCols, selectedCols]);
+    if (visible.length > 0) return visible;
+
+    // Smart default: core identifiers + first several form fields up to 10
+    const defaults = ["Full Name", "Mobile Number", "Vibhag", "Status", "Transaction ID"];
+    const matchedDefaults = allMasterCols.filter(c => defaults.includes(c));
+    const extraFields = allMasterCols.filter(c => !defaults.includes(c) && c !== "Remarks" && c !== "Updated By" && c !== "Unique");
+    const combined = [...matchedDefaults, ...extraFields].slice(0, 10);
+    return combined.length > 0 ? combined : allMasterCols.slice(0, 8);
+  }, [allMasterCols, currentEventVisibleCols]);
 
   const handleSaveColumnConfig = (newSelected, newOrder, saveToCloud = false) => {
     setSelectedCols(newSelected);
@@ -42860,6 +43061,9 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.setItem("mmp_reg_visible_columns", JSON.stringify(newSelected));
+        if (selectedEventId && selectedEventId !== "all") {
+          localStorage.setItem("mmp_reg_visible_columns_" + selectedEventId, JSON.stringify(newSelected));
+        }
         if (newOrder) localStorage.setItem("mmp_reg_column_order", JSON.stringify(newOrder));
       } catch (e) {}
     }
@@ -42868,6 +43072,10 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
       const updatedC = {
         ...C,
         regVisibleColumns: newSelected,
+        regVisibleColumnsByEvent: selectedEventId && selectedEventId !== "all" ? {
+          ...(C?.regVisibleColumnsByEvent || {}),
+          [selectedEventId]: newSelected
+        } : (C?.regVisibleColumnsByEvent || {}),
         regColumnOrder: newOrder || allMasterCols
       };
       setC(updatedC);
@@ -42964,16 +43172,16 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
             <h2 style={{fontFamily:"'Playfair Display',serif",color:"var(--dt)",margin:0,fontSize:"1.25rem",fontWeight:700}}>Event Registrations</h2>
             
-            {/* View Mode Toggle: Active vs Archived vs Trash Bin */}
+            {/* View Mode Toggle: Active vs Archived vs All vs Trash Bin */}
             <div style={{display:"flex",gap:4,background:"#E9ECEF",padding:3,borderRadius:20}}>
               <button onClick={()=>setViewMode("active")} style={{
                 padding:"4px 12px", borderRadius:16, border:"none",
                 background:viewMode==="active"?"var(--dt)":"transparent", color:viewMode==="active"?"white":"var(--tm2)",
                 fontSize:".78rem", fontWeight:viewMode==="active"?700:500, cursor:"pointer"
               }}
-              title={selectedSection !== "All" ? `Showing ${filteredRegs.length} entries in ${selectedSection} (Total active across website: ${activeRegsList.length})` : `Total ${activeRegsList.length} active registrations`}
+              title={selectedEventId !== "all" ? `Showing ${filteredRegs.length} entries for ${activeEventObj?.title || selectedEventId} (Total active: ${activeRegsList.length})` : `Total ${activeRegsList.length} active registrations`}
               >
-                📋 Active ({selectedSection === "All" ? activeRegsList.length : `${filteredRegs.length} / ${activeRegsList.length}`})
+                📋 Active ({selectedEventId === "all" ? activeRegsList.length : `${filteredRegs.length} / ${activeRegsList.length}`})
               </button>
               <button onClick={()=>setViewMode("archived")} style={{
                 padding:"4px 12px", borderRadius:16, border:"none",
@@ -42984,6 +43192,15 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
               >
                 📦 Archived ({archivedRegsList.length})
               </button>
+              <button onClick={()=>setViewMode("all")} style={{
+                padding:"4px 12px", borderRadius:16, border:"none",
+                background:viewMode==="all"?"#0284C7":"transparent", color:viewMode==="all"?"white":"var(--tm2)",
+                fontSize:".78rem", fontWeight:viewMode==="all"?700:500, cursor:"pointer"
+              }}
+              title={`View all active and archived registrations combined (${allNonDeletedRegs.length})`}
+              >
+                🌐 All ({allNonDeletedRegs.length})
+              </button>
               <button onClick={()=>setViewMode("trash")} style={{
                 padding:"4px 12px", borderRadius:16, border:"none",
                 background:viewMode==="trash"?"#C0392B":"transparent", color:viewMode==="trash"?"white":"var(--tm2)",
@@ -42993,32 +43210,93 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
               </button>
             </div>
 
-            {viewMode === "active" && (
-              <div style={{display:"flex",gap:4,background:"#E9ECEF",padding:3,borderRadius:20}}>
-                {Array.from(new Set([
-                  "All", 
-                  "Default", 
-                  ...(C.eventSections || []), 
-                  ...(C.events || []).map(e => e.section).filter(Boolean)
-                ])).map(sec => {
-                  const isSelected = selectedSection === sec;
-                  const count = sectionCounts[sec] || 0;
-                  const label = sec === "Default" ? "Default Section" : sec === "All" ? "All Groups" : sec;
+            {/* Select Event Filter Container */}
+            <div style={{display:"flex",alignItems:"center",gap:6,background:"#F1F5F9",padding:"3px 8px",borderRadius:20,border:"1.5px solid #CBD5E1",flexWrap:"wrap"}}>
+              <span style={{fontSize:".75rem",fontWeight:800,color:"#334155",display:"flex",alignItems:"center",gap:4,paddingLeft:2}}>
+                <span>🎯</span> Event:
+              </span>
+              <select
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: 12,
+                  border: "1.5px solid #2563EB",
+                  background: "white",
+                  color: "#1E40AF",
+                  fontSize: ".75rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  outline: "none"
+                }}
+                title="Filter registrations strictly for a specific event and adapt table columns"
+              >
+                <option value="all">🌐 All Events Combined ({currentViewPool.length})</option>
+                {availableEvents.map(ev => {
+                  const c = currentViewPool.filter(r => recordMatchesEvent(r, ev.id, ev)).length;
                   return (
-                    <button key={sec} onClick={()=>setSelectedSection(sec)} style={{
-                      padding:"4px 12px", borderRadius:16, border:"none",
-                      background:isSelected?"var(--dt)":"transparent", color:isSelected?"white":"var(--tm2)",
-                      fontSize:".78rem", fontWeight:isSelected?700:500, cursor:"pointer", transition:"all 0.2s",
-                      boxShadow: isSelected ? "0 1px 4px rgba(0,0,0,0.18)" : "none"
-                    }}
-                    title={`Filter to ${label} (${count} registrations)`}
-                    >
-                      {label} ({count})
-                    </button>
+                    <option key={ev.id} value={ev.id}>
+                      {ev.title} {ev.code ? `(${ev.code})` : ''} ({c})
+                    </option>
                   );
                 })}
+              </select>
+
+              {/* Event Badges / Pills */}
+              <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEventId("all")}
+                  style={{
+                    padding: "3px 9px",
+                    borderRadius: 14,
+                    border: "none",
+                    background: selectedEventId === "all" ? "var(--dt)" : "transparent",
+                    color: selectedEventId === "all" ? "white" : "#475569",
+                    fontSize: ".74rem",
+                    fontWeight: selectedEventId === "all" ? 700 : 500,
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: selectedEventId === "all" ? "0 1px 4px rgba(0,0,0,0.18)" : "none"
+                  }}
+                  title={`Show registrations across all events combined (${currentViewPool.length})`}
+                >
+                  All Events ({currentViewPool.length})
+                </button>
+                {availableEvents
+                  .filter(ev => {
+                    const c = currentViewPool.filter(r => recordMatchesEvent(r, ev.id, ev)).length;
+                    return c > 0 || ev.code === "EDU26";
+                  })
+                  .map(ev => {
+                    const isSelected = selectedEventId === ev.id || selectedEventId === ev.code;
+                    const c = currentViewPool.filter(r => recordMatchesEvent(r, ev.id, ev)).length;
+                    const shortTitle = ev.title.length > 22 ? ev.title.substring(0, 20) + "..." : ev.title;
+                    return (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        onClick={() => setSelectedEventId(ev.id)}
+                        style={{
+                          padding: "3px 9px",
+                          borderRadius: 14,
+                          border: "none",
+                          background: isSelected ? "var(--dt)" : "transparent",
+                          color: isSelected ? "white" : "#475569",
+                          fontSize: ".74rem",
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          boxShadow: isSelected ? "0 1px 4px rgba(0,0,0,0.18)" : "none"
+                        }}
+                        title={`Filter strictly to ${ev.title} (${c} registrations) and display its specific form columns`}
+                      >
+                        {shortTitle} ({c})
+                      </button>
+                    );
+                  })}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Right: Search + Refresh + Export + Bulk Tools Toggle */}
@@ -44375,6 +44653,7 @@ function AdminRegistrations({ mob, C, setC, auth, onPreviewDashboard, onOpenUser
           onResetDefault={handleResetColumnConfig}
           C={C}
           saveToFb={saveToFb}
+          eventName={activeEventObj?.title || (selectedEventId === "all" ? "All Events" : selectedEventId)}
         />
       )}
 
