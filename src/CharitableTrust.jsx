@@ -14018,19 +14018,38 @@ function Donations({ mob, auth, C }) {
   };
 
   const allData = Array.isArray(data) ? data : [];
+
+  const resolveRecordEventCode = (r) => {
+    if (!r) return "GEN";
+    if (r.eventCode && r.eventCode !== "GEN" && r.eventCode !== "EVT") return r.eventCode;
+    const text = `${r.program || ""} ${r.purpose || ""} ${r.formName || ""} ${r.eventName || ""} ${r.eventTitle || ""}`.toLowerCase();
+    if (text.includes("6th") || text.includes("dec") || text.includes("mahaparinirvan")) return "6THDEC";
+    if (text.includes("edu") || text.includes("felicitation")) return "EDU26";
+    if (text.includes("blood")) return "BLOOD";
+    if (text.includes("tree")) return "TREE";
+    if (text.includes("scholar")) return "SCHOLAR";
+    if (text.includes("skill")) return "SKILL";
+    if (text.includes("food") || text.includes("jamnavar")) return "6THDEC";
+    return r.eventCode || "GEN";
+  };
+
   const uniqueIds = [...new Set(allData.map(d => d.id).filter(Boolean))];
   const uniqueDonors = [...new Set(allData.map(d => d.name).filter(Boolean))];
   const uniqueVibhags = [...new Set(allData.map(d => d.vibhag).filter(Boolean))];
-  const uniquePrograms = [...new Set(allData.map(d => d.program || d.purpose).filter(Boolean))];
+  const uniquePrograms = [...new Set(allData.flatMap(d => [d.program, d.purpose, resolveRecordEventCode(d)]).filter(Boolean))];
   const uniqueDates = [...new Set(allData.map(d => d.date).filter(Boolean))];
   const uniquePans = [...new Set(allData.map(d => d.pan).filter(Boolean))];
   const uniqueStatuses = ["Verified", "Pending", "Pending (Payment Link)"];
 
   const rows = allData.filter(d => {
+    const dEvCode = resolveRecordEventCode(d);
     const matchQ = d.name?.toLowerCase().includes(q.toLowerCase()) || 
                    d.id?.toLowerCase().includes(q.toLowerCase()) || 
                    (d.vibhag && d.vibhag.toLowerCase().includes(q.toLowerCase())) || 
-                   (d.receiptNo && d.receiptNo.toLowerCase().includes(q.toLowerCase()));
+                   (d.receiptNo && d.receiptNo.toLowerCase().includes(q.toLowerCase())) ||
+                   (dEvCode && dEvCode.toLowerCase().includes(q.toLowerCase())) ||
+                   (d.program && d.program.toLowerCase().includes(q.toLowerCase())) ||
+                   (d.purpose && d.purpose.toLowerCase().includes(q.toLowerCase()));
     
     const matchId = colF.id.length === 0 || colF.id.includes(d.id);
     const matchDonor = colF.donor.length === 0 || colF.donor.includes(d.name);
@@ -14049,7 +14068,10 @@ function Donations({ mob, auth, C }) {
       }
     }
 
-    const matchProgram = colF.program.length === 0 || colF.program.includes(d.program || d.purpose);
+    const matchProgram = colF.program.length === 0 || 
+                         colF.program.includes(d.program) || 
+                         colF.program.includes(d.purpose) || 
+                         colF.program.includes(dEvCode);
     const matchDate = colF.date.length === 0 || colF.date.includes(d.date);
     const matchPan = colF.pan.length === 0 || colF.pan.includes(d.pan);
     
@@ -14076,7 +14098,7 @@ function Donations({ mob, auth, C }) {
   const totalActiveCount = allData.filter(d => !isRecordArchived(d)).length;
 
   const downloadCSV = () => {
-    const headers = ["ID", "Donor", "Vibhag", "Amount", "Program", "Date", "PAN", "Status", "Archived", "Receipt_URL"];
+    const headers = ["ID", "Donor", "Vibhag", "Amount", "Program", "Event_Code", "Date", "PAN", "Status", "Archived", "Receipt_URL"];
     const csvRows = [headers.join(",")];
     rows.forEach(r => {
       const csvRow = [
@@ -14085,6 +14107,7 @@ function Donations({ mob, auth, C }) {
         `"${(r.vibhag || "General").replace(/"/g, '""')}"`,
         r.amount || 0,
         `"${(r.program || r.purpose || "").replace(/"/g, '""')}"`,
+        `"${resolveRecordEventCode(r)}"`,
         r.date || "",
         r.pan || "",
         r.status || "Pending",
@@ -14236,7 +14259,7 @@ function Donations({ mob, auth, C }) {
                 </div>
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
-                <div style={{marginBottom:4}}>PROGRAM</div>
+                <div style={{marginBottom:4}}>PROGRAM / EVENT</div>
                 <MultiSelect options={uniquePrograms} value={colF.program} onChange={v=>setColF({...colF, program: v})} width={110} />
               </th>
               <th style={{padding:"9px 12px",textAlign:"left",fontSize:".72rem",letterSpacing:.5,textTransform:"uppercase"}}>
@@ -14259,6 +14282,11 @@ function Donations({ mob, auth, C }) {
               <td style={{padding:"10px 12px",color:"var(--mu)",fontFamily:"monospace",fontSize:".75rem"}}>
                 <strong style={{color:"var(--dt)"}}>{r.receiptNo || r.id}</strong>
                 {r.receiptNo && <div style={{fontSize:".65rem",color:"#aaa"}}>{r.id}</div>}
+                {resolveRecordEventCode(r) && (
+                  <div style={{fontSize:".65rem",color:"#059669",fontWeight:700,marginTop:2,fontFamily:"monospace"}}>
+                    Event: {resolveRecordEventCode(r)}
+                  </div>
+                )}
                 {r.razorpay_payment_id && <div style={{fontSize:".65rem",color:"var(--sf)"}} title="Razorpay Txn ID">{r.razorpay_payment_id}</div>}
                 {isRecordArchived(r) && (
                   <div style={{marginTop:3}}>
@@ -14273,7 +14301,49 @@ function Donations({ mob, auth, C }) {
                 </span>
               </td>
               <td style={{padding:"10px 12px",fontWeight:700,color:"var(--sf)"}}>Rs.{(parseFloat(r.amount)||0).toLocaleString()}</td>
-              <td style={{padding:"10px 12px"}}><span style={{fontSize:".72rem",padding:"3px 9px",borderRadius:12,background:"var(--tl)",color:"var(--dt)",fontWeight:600}}>{r.program || r.purpose || "General"}</span></td>
+              <td style={{padding:"10px 12px"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                  <span style={{fontSize:".72rem",padding:"3px 9px",borderRadius:12,background:"var(--tl)",color:"var(--dt)",fontWeight:600}}>
+                    {r.program || r.purpose || "General"}
+                  </span>
+                  {(() => {
+                    const evC = resolveRecordEventCode(r);
+                    return evC && evC !== "GEN" ? (
+                      <span style={{
+                        display:"inline-flex",
+                        alignItems:"center",
+                        gap:3,
+                        background:"#ECFDF5",
+                        color:"#065F46",
+                        fontSize:".68rem",
+                        padding:"1px 6px",
+                        borderRadius:4,
+                        fontWeight:800,
+                        border:"1px solid #86EFAC",
+                        fontFamily:"monospace",
+                        letterSpacing:"0.5px"
+                      }} title={`Event Code: ${evC}`}>
+                        🏷️ {evC}
+                      </span>
+                    ) : (
+                      <span style={{
+                        display:"inline-flex",
+                        alignItems:"center",
+                        gap:2,
+                        background:"#F1F5F9",
+                        color:"#64748B",
+                        fontSize:".65rem",
+                        padding:"1px 5px",
+                        borderRadius:4,
+                        fontWeight:600,
+                        fontFamily:"monospace"
+                      }}>
+                        🏷️ GEN
+                      </span>
+                    );
+                  })()}
+                </div>
+              </td>
               <td style={{padding:"10px 12px",color:"var(--mu)",fontSize:".78rem"}}>{r.date}</td>
               <td style={{padding:"10px 12px"}}>
                 <input type="text" defaultValue={r.pan || ""} onBlur={(e)=>handlePanChange(r, e.target.value)} placeholder="PAN No." style={{fontSize:".75rem", padding:"4px 8px", borderRadius:6, border:"1px solid var(--bd)", width: 100, outline:"none"}} />
@@ -52517,8 +52587,9 @@ function OfflineDonationEntryCard({ initialData, onSubmit, C }) {
   const [date, setDate] = useState(initialData?.initialDate || new Date().toISOString().split('T')[0]);
   const [amount, setAmount] = useState("");
   
-  // Available events from C.events
-  const eventList = Array.isArray(C?.events) ? C.events.map(e => e.title || e.name).filter(Boolean) : [];
+  // Available events from getDistinctEventOptions(C)
+  const distinctEvs = getDistinctEventOptions(C);
+  const eventList = distinctEvs.map(e => e.title).filter(Boolean);
   const defaultProg = initialData?.defaultPurpose || (eventList.length > 0 ? eventList[0] : "General Donation");
   const [purpose, setPurpose] = useState(defaultProg);
   const [customPurpose, setCustomPurpose] = useState("");
@@ -52529,8 +52600,10 @@ function OfflineDonationEntryCard({ initialData, onSubmit, C }) {
   
   const deriveCode = (p) => {
     if (!p || p === "General Donation") return "GEN";
+    const found = distinctEvs.find(e => e.title.toLowerCase() === String(p).toLowerCase() || e.id === String(p).toLowerCase() || (e.code && e.code.toUpperCase() === String(p).toUpperCase()));
+    if (found && found.code) return found.code;
     const cleaned = String(p).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    return cleaned.slice(0, 5) || "EVT";
+    return cleaned.slice(0, 6) || "EVT";
   };
 
   const [eventCode, setEventCode] = useState(initialData?.defaultEventCode || deriveCode(defaultProg));
@@ -56022,10 +56095,21 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
   const [formData, setFormData] = useState(() => {
     const init = {};
     if (initialData) {
-      if (initialData.defaultVibhag) init["Vibhag"] = initialData.defaultVibhag;
+      if (initialData.defaultVibhag) {
+        init["Vibhag"] = initialData.defaultVibhag;
+        init["vibhag"] = initialData.defaultVibhag;
+      }
       if (initialData.defaultName) init["Full Name"] = initialData.defaultName;
       if (initialData.defaultAmount) init["Amount"] = initialData.defaultAmount;
-      if (initialData.defaultPurpose) init["Purpose"] = initialData.defaultPurpose;
+      if (initialData.defaultPurpose) {
+        init["Purpose"] = initialData.defaultPurpose;
+        init["purpose"] = initialData.defaultPurpose;
+        init["Purpose of Donation"] = initialData.defaultPurpose;
+      }
+      if (initialData.defaultEventCode) {
+        init["Event Code"] = initialData.defaultEventCode;
+        init["eventCode"] = initialData.defaultEventCode;
+      }
     }
     return init;
   });
@@ -56082,8 +56166,31 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
       if (destination === "donations") {
         const amt = parseFloat(formData["Amount"] || formData["amount"] || 0);
         const receiptNoVal = formData["Internal Receipt Number"] || formData["receiptNo"] || formData["Receipt No"] || "";
-        const purposeVal = formData["Purpose of Donation"] || formData["Purpose"] || formData["Purpose / Event Code"] || formData["purpose"] || activeFormDef?.name || "General Donation";
-        const eventCodeVal = formData["Event Code"] || formData["eventCode"] || "GEN";
+        const rawEvent = formData["Event Code"] || formData["eventCode"] || formData["Select Events"] || formData["Event"] || formData["event"] || "";
+        let resolvedEventCode = "GEN";
+        let resolvedEventTitle = "";
+
+        if (rawEvent) {
+          if (rawEvent.includes(" - ")) {
+            const spl = rawEvent.split(" - ");
+            resolvedEventCode = spl[0].trim().toUpperCase();
+            resolvedEventTitle = spl.slice(1).join(" - ").trim();
+          } else {
+            resolvedEventCode = rawEvent.trim().toUpperCase();
+            const allEvs = getDistinctEventOptions(C);
+            const matchedEv = allEvs.find(e => 
+              (e.code && e.code.toUpperCase() === resolvedEventCode) ||
+              (e.id && e.id.toLowerCase() === resolvedEventCode.toLowerCase()) ||
+              (e.title && e.title.toLowerCase() === rawEvent.toLowerCase())
+            );
+            if (matchedEv) {
+              resolvedEventTitle = matchedEv.title;
+              if (matchedEv.code) resolvedEventCode = matchedEv.code;
+            }
+          }
+        }
+
+        const purposeVal = formData["Purpose of Donation"] || formData["Purpose"] || formData["Purpose / Event Code"] || formData["purpose"] || resolvedEventTitle || activeFormDef?.name || "General Donation";
 
         const customWordDict = C?.gujaratiWordDictionary || {};
         const finalGu = (nameGu && nameGu.trim()) ? nameGu.trim() : transliterateEnglishToGujaratiPhonetic(donorName, customWordDict);
@@ -56093,9 +56200,12 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
           mobile: userPhone,
           amount: amt,
           date: submitDate,
-          purpose: purposeVal,
+          program: resolvedEventTitle || purposeVal || "General Donation",
+          purpose: purposeVal || resolvedEventTitle || "General Donation",
+          eventName: resolvedEventTitle || purposeVal || "General Donation",
+          eventTitle: resolvedEventTitle || purposeVal || "General Donation",
           vibhag: vibhagVal,
-          eventCode: eventCodeVal,
+          eventCode: resolvedEventCode,
           receiptNo: receiptNoVal,
           internalReceiptNo: receiptNoVal,
           paymentMode: "Offline",
@@ -56106,7 +56216,9 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
           recordedAt: new Date().toISOString(),
           formId: activeFormDef?.id,
           formName: activeFormDef?.name,
-          ...formData
+          ...formData,
+          eventCode: resolvedEventCode,
+          program: resolvedEventTitle || purposeVal || "General Donation"
         };
 
         const res = await fbSubmitDonation(donRecord, idToken);
@@ -56255,15 +56367,60 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
             fieldOpts = vibhagList;
           }
 
+          // 2. Dynamic Event Code / Event options fallback
+          const isEventField = label.toLowerCase().includes("event") ||
+            (field.placeholder && field.placeholder.toLowerCase().includes("event")) ||
+            (field.dataKey && field.dataKey.toLowerCase().includes("event")) ||
+            (fieldKey && fieldKey.toLowerCase().includes("event"));
+
+          if (isEventField && fieldOpts.length === 0) {
+            const allEvs = getDistinctEventOptions(C);
+            const evOptions = allEvs.map(ev => ev.code ? `${ev.code} - ${ev.title}` : ev.title);
+            if (!evOptions.some(o => o.startsWith("GEN"))) {
+              evOptions.push("GEN - General Donation");
+            }
+            fieldOpts = evOptions;
+          }
+
           if (type === "select" || type === "dropdown" || fieldOpts.length > 0) {
+            let currentSelectVal = val;
+            if (isEventField && currentSelectVal) {
+              const matched = fieldOpts.find(o => o === currentSelectVal || o.startsWith(currentSelectVal + " - ") || o.endsWith(" - " + currentSelectVal));
+              if (matched) currentSelectVal = matched;
+            } else if (isEventField && !currentSelectVal && initialData?.defaultEventCode) {
+              const matched = fieldOpts.find(o => o.startsWith(initialData.defaultEventCode + " - ") || o === initialData.defaultEventCode);
+              if (matched) currentSelectVal = matched;
+            }
+
             return (
               <div key={idx} style={{gridColumn: "1/-1"}}>
                 <label style={{display:"block",fontSize:".7rem",fontWeight:700,color:"#374151",marginBottom:2}}>
                   {label} {isReq ? "*" : ""}
                 </label>
                 <select
-                  value={val || (isVibhagField ? (initialData?.defaultVibhag || fieldOpts[0] || "") : "")}
-                  onChange={e => handleFieldChange(label, e.target.value, field.dataKey)}
+                  value={currentSelectVal || (isVibhagField ? (initialData?.defaultVibhag || fieldOpts[0] || "") : "")}
+                  onChange={e => {
+                    const chosen = e.target.value;
+                    handleFieldChange(label, chosen, field.dataKey);
+                    if (isEventField && chosen) {
+                      const codePart = chosen.includes(" - ") ? chosen.split(" - ")[0].trim() : chosen.trim();
+                      const titlePart = chosen.includes(" - ") ? chosen.split(" - ").slice(1).join(" - ").trim() : chosen.trim();
+                      setFormData(prev => ({
+                        ...prev,
+                        [label]: chosen,
+                        "Event Code": codePart,
+                        "eventCode": codePart,
+                        "program": titlePart,
+                        "eventName": titlePart,
+                        ...(field.dataKey ? { [field.dataKey]: codePart } : {}),
+                        ...((!prev["Purpose"] || prev["Purpose"] === "Purpose of Donation" || prev["Purpose"] === "General Donation" || !prev["Purpose of Donation"] || prev["Purpose of Donation"] === "Purpose of Donation") ? {
+                          "Purpose": titlePart,
+                          "purpose": titlePart,
+                          "Purpose of Donation": titlePart
+                        } : {})
+                      }));
+                    }
+                  }}
                   required={isReq}
                   style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".78rem",background:"white",boxSizing:"border-box",fontWeight:600}}
                 >
@@ -57357,12 +57514,29 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         if (attachedCustomForm) {
           botType = "dynamic_form";
           botReply = matchedKb?.answer || `✍️ **${attachedCustomForm.name}**\n\nPlease complete the interactive form below:`;
+          const scopedEvents = matchedKb?.targetEventIds || ["all"];
+          let defaultPurpose = "General Donation";
+          let defaultEventCode = "GEN";
+          if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
+            const evOpt = getDistinctEventOptions(C).find(e => e.id === scopedEvents[0] || e.code === scopedEvents[0] || e.title === scopedEvents[0]);
+            if (evOpt) {
+              defaultPurpose = evOpt.title;
+              defaultEventCode = evOpt.code || "GEN";
+            } else {
+              defaultPurpose = formatEventTitle(scopedEvents[0]);
+              const cleanT = defaultPurpose.toLowerCase();
+              defaultEventCode = (cleanT.includes("6th") || cleanT.includes("dec")) ? "6THDEC" : (cleanT.includes("edu") ? "EDU26" : "EVT");
+            }
+          }
           cardData = {
             formDef: attachedCustomForm,
             destination: matchedKb?.storageDestination || "donations",
             introTitle: matchedKb?.title || attachedCustomForm.name,
             introText: matchedKb?.answer,
-            attachedFormId: customFormId
+            attachedFormId: customFormId,
+            defaultPurpose,
+            defaultEventCode,
+            targetEventIds: scopedEvents
           };
         } else {
           // Standard / Built-in Offline Donation Entry Form (with scoped event defaults)
@@ -57656,6 +57830,21 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           ? { name: "Offline Donation Entry", id: "builtin_offline_donation" }
           : ((C.forms || []).find(f => f.id === matchedKb.attachedFormId || f.name === matchedKb.attachedFormId) || { name: matchedKb.title, id: matchedKb.attachedFormId });
 
+        const scopedEvents = matchedKb?.targetEventIds || ["all"];
+        let defaultPurpose = "General Donation";
+        let defaultEventCode = "GEN";
+        if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
+          const evOpt = getDistinctEventOptions(C).find(e => e.id === scopedEvents[0] || e.code === scopedEvents[0] || e.title === scopedEvents[0]);
+          if (evOpt) {
+            defaultPurpose = evOpt.title;
+            defaultEventCode = evOpt.code || "GEN";
+          } else {
+            defaultPurpose = formatEventTitle(scopedEvents[0]);
+            const cleanT = defaultPurpose.toLowerCase();
+            defaultEventCode = (cleanT.includes("6th") || cleanT.includes("dec")) ? "6THDEC" : (cleanT.includes("edu") ? "EDU26" : "EVT");
+          }
+        }
+
         botType = "dynamic_form";
         botReply = matchedKb.title ? `📝 **${matchedKb.title}**` : "Please fill out the form below:";
         cardData = {
@@ -57664,7 +57853,10 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           introTitle: matchedKb.title,
           introText: matchedKb.answer,
           attachedFormId: matchedKb.attachedFormId,
-          attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId
+          attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId,
+          defaultPurpose,
+          defaultEventCode,
+          targetEventIds: scopedEvents
         };
       } else if (matchedKb.attachedWhatsAppTplId || matchedKb.actionType === "whatsapp") {
         botType = "whatsapp_broadcast_card";
@@ -58316,6 +58508,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                             introText={m.cardData.introText}
                             initialData={{
                               defaultVibhag: sessionVibhag && sessionVibhag !== "All Vibhags" ? sessionVibhag : "10 MAHALAXMI",
+                              defaultPurpose: m.cardData.defaultPurpose,
+                              defaultEventCode: m.cardData.defaultEventCode,
                               attachedFormId: m.cardData.attachedFormId || m.cardData.formDef?.id || m.cardData.form?.id
                             }}
                             C={C}
