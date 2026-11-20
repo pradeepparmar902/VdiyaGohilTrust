@@ -26568,6 +26568,19 @@ function ChatbotAccessManager({ C, setC, auth }) {
         })
         .catch(() => {});
     }
+    if (typeof fbFetchRegistrations === "function") {
+      fbFetchRegistrations(token)
+        .then(regs => {
+          if (isMounted && Array.isArray(regs)) {
+            setRecordedRegistrations(regs);
+            if (typeof window !== 'undefined') {
+              window.__MMP_ALL_REGS_RAW__ = regs;
+              window.__MMP_REGS_CACHE__ = regs;
+            }
+          }
+        })
+        .catch(() => {});
+    }
     return () => { isMounted = false; };
   }, [auth]);
 
@@ -26635,10 +26648,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
       return true;
     });
 
-    // 1. Extract from recorded registrations in database
+    // 1. Extract from recorded registrations in database (REAL events only - strictly exclude form IDs)
     validRegs.forEach(r => {
-      let rawCode = String(r.eventId || r.eventCode || r.formId || "").trim().toUpperCase();
-      let title = String(r.eventName || r.eventTitle || r.formName || "").trim();
+      let rawCode = String(r.eventId || r.eventCode || "").trim().toUpperCase();
+      let title = String(r.eventName || r.eventTitle || "").trim();
+
+      // Skip internal form IDs from event list
+      if (rawCode.startsWith("FORM_") || rawCode.startsWith("FORM-")) {
+        rawCode = "";
+      }
 
       let code = rawCode;
       const combined = `${rawCode} ${title}`.toUpperCase();
@@ -26657,19 +26675,18 @@ function ChatbotAccessManager({ C, setC, auth }) {
       } else if (combined.includes("SCHOLAR")) {
         code = "SCHOLAR";
         if (!title) title = "Scholarship Distribution Ceremony";
+      } else if (combined.includes("SAMUH") || combined.includes("LAGAN")) {
+        code = "SAMUH";
+        if (!title) title = "Samuh Lagan Mahotsav";
       }
 
       if (!code) code = rawCode || "GENERAL";
-      if (hiddenEventCodes.includes(code)) return;
+      if (code.startsWith("FORM_") || code.startsWith("FORM-") || hiddenEventCodes.includes(code)) return;
 
       if (!title || title.toUpperCase() === code) {
         const evFound = (C?.events || []).find(e => String(e.id || '').toUpperCase() === code || String(e.code || '').toUpperCase() === code);
         if (evFound) title = evFound.title;
-        else {
-          const formFound = (C?.forms || []).find(f => String(f.id || '').toUpperCase() === code);
-          if (formFound) title = formFound.name;
-          else title = (code === "EDU26" ? "Education Felicitation 2026" : code === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : `Event / Form: ${code}`);
-        }
+        else title = (code === "EDU26" ? "Education Felicitation 2026" : code === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : code === "SAMUH" ? "Samuh Lagan Mahotsav" : `Event: ${code}`);
       }
 
       if (!codeMap.has(code)) {
@@ -26688,29 +26705,33 @@ function ChatbotAccessManager({ C, setC, auth }) {
       }
     });
 
-    // 2. Also include defined custom forms from C.forms if any
-    (C?.forms || []).forEach(f => {
-      const fId = String(f.id || f.name || "").trim().toUpperCase();
-      if (!fId || hiddenEventCodes.includes(fId)) return;
-      if (!codeMap.has(fId)) {
-        const count = validRegs.filter(r => String(r.formId || r.formName || "").trim().toUpperCase() === fId).length;
-        codeMap.set(fId, {
-          code: fId,
-          title: f.name || fId,
+    // 2. Also include defined events from C.events
+    (C?.events || []).forEach(ev => {
+      const evCode = String(ev.code || ev.id || "").trim().toUpperCase();
+      if (!evCode || evCode.startsWith("FORM_") || evCode.startsWith("FORM-") || hiddenEventCodes.includes(evCode)) return;
+      if (!codeMap.has(evCode)) {
+        const count = validRegs.filter(r => {
+          const rEvId = String(r.eventId || r.eventCode || '').toUpperCase().trim();
+          const rEvName = String(r["Event Name"] || r.eventName || '').toUpperCase().trim();
+          return rEvId === evCode || rEvName.includes(evCode);
+        }).length;
+        codeMap.set(evCode, {
+          code: evCode,
+          title: ev.title || ev.name || evCode,
           count: count,
           isManual: count === 0
         });
       }
     });
 
-    // 3. Include custom event codes added by user
+    // 3. Include custom event codes added by user (e.g. 6THDEC, EDU26, SAMUH, BLOOD)
     (customEventCodes || []).forEach(manualCode => {
       const cleanC = String(manualCode).trim().toUpperCase();
-      if (!cleanC || hiddenEventCodes.includes(cleanC)) return;
+      if (!cleanC || cleanC.startsWith("FORM_") || cleanC.startsWith("FORM-") || hiddenEventCodes.includes(cleanC)) return;
       if (!codeMap.has(cleanC)) {
         codeMap.set(cleanC, {
           code: cleanC,
-          title: cleanC === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : cleanC === "EDU26" ? "Education Felicitation 2026" : cleanC === "BLOOD" ? "Annual Blood Donation Camp" : `Upcoming Code: ${cleanC}`,
+          title: cleanC === "6THDEC" ? "6th Dec Mahaparinirvan Diwas" : cleanC === "EDU26" ? "Education Felicitation 2026" : cleanC === "BLOOD" ? "Annual Blood Donation Camp" : cleanC === "SAMUH" ? "Samuh Lagan Mahotsav" : `Upcoming Code: ${cleanC}`,
           count: 0,
           isManual: true
         });
@@ -26718,7 +26739,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
     });
 
     return Array.from(codeMap.values());
-  }, [recordedRegistrations, customEventCodes, hiddenEventCodes, C?.events, C?.forms]);
+  }, [recordedRegistrations, customEventCodes, hiddenEventCodes, C?.events]);
+
+  const getFormNameById = (id) => {
+    if (!id || id === "all") return "All Forms Combined";
+    if (id === "builtin_offline_donation") return "Built-in Offline Donation Entry Form";
+    if (id === "standard_event_registration") return "Standard Event Registration Form";
+    const found = (C?.forms || []).find(f => f.id === id || f.name === id);
+    return found ? (found.name || found.title || found.id) : id;
+  };
 
   const handleAddCustomEventCode = () => {
     const clean = (newEventCodeInput || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
@@ -26864,31 +26893,36 @@ function ChatbotAccessManager({ C, setC, auth }) {
       return s && s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
     });
 
-    const isAll = (!activeFormId || activeFormId === "all" || activeFormId === "builtin_offline_donation") && activeTargets.length === 0;
-    if (isAll) return validRegs;
+    const isAllForms = !activeFormId || activeFormId === "all" || activeFormId === "builtin_offline_donation" || activeFormId === "standard_event_registration";
+    const isAllEvents = activeTargets.length === 0;
+
+    if (isAllForms && isAllEvents) return validRegs;
 
     return validRegs.filter(r => {
       const rFormId = String(r.formId || r.formName || "").toLowerCase().trim();
       const rEvId = String(r.eventId || "").toLowerCase().trim();
-      const rEvName = String(r.eventName || r.eventTitle || r.program || r.title || "").toLowerCase().trim();
-      const combined = `${rFormId} ${rEvId} ${rEvName}`.toLowerCase();
+      const rEvCode = String(r.eventCode || r["Event Code"] || "").toLowerCase().trim();
+      const rEvName = String(r["Event Name"] || r.eventName || r.eventTitle || r.program || r.title || "").toLowerCase().trim();
+      const combined = `${rFormId} ${rEvId} ${rEvCode} ${rEvName}`.toLowerCase();
 
-      if (activeFormId && activeFormId !== "all" && activeFormId !== "builtin_offline_donation") {
+      let matchForm = true;
+      if (!isAllForms) {
         const tFormLow = activeFormId.toLowerCase().trim();
-        if (rFormId === tFormLow || (r.formName && r.formName.toLowerCase() === tFormLow) || rEvId === tFormLow) return true;
+        matchForm = (rFormId === tFormLow || (r.formName && r.formName.toLowerCase() === tFormLow) || rEvId === tFormLow);
       }
 
-      if (activeTargets.length > 0) {
-        return activeTargets.some(t => {
+      let matchEvent = true;
+      if (!isAllEvents) {
+        matchEvent = activeTargets.some(t => {
           const tLow = String(t).toLowerCase().trim();
-          if (rEvId === tLow || rFormId === tLow) return true;
+          if (rEvId === tLow || rEvCode === tLow || rFormId === tLow) return true;
           if (tLow.includes("edu") && (combined.includes("edu") || combined.includes("felicitation") || combined.includes("student"))) return true;
           if (tLow.includes("6th") && (combined.includes("6th") || combined.includes("dec"))) return true;
           return combined.includes(tLow);
         });
       }
 
-      return false;
+      return matchForm && matchEvent;
     });
   }, [recordedRegistrations, kbForm.attachedFormId, kbForm.targetEventIds]);
 
@@ -27119,8 +27153,16 @@ function ChatbotAccessManager({ C, setC, auth }) {
       }
     });
 
+    if (kbForm.storageDestination === "donations" || kbForm.actionType === "donation") {
+      DONATION_AVAILABLE_FIELDS.forEach(df => {
+        if (!list.some(item => item.key === df.key)) {
+          list.push(df);
+        }
+      });
+    }
+
     return list;
-  }, [C?.forms, C?.events, kbForm.targetEventIds, previewFilteredRegistrations]);
+  }, [C?.forms, C?.events, kbForm.targetEventIds, kbForm.storageDestination, kbForm.actionType, previewFilteredRegistrations]);
 
   const activeFormGroupKey = useMemo(() => {
     const defaultFieldKeys = formAvailableFields.slice(0, Math.min(4, formAvailableFields.length)).map(f => f.key);
@@ -30865,32 +30907,49 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           </div>
                         </div>
 
-                        {/* Form Selector for Interactive Entry */}
-                        {kbForm.summaryType === "offline_form" && (
+                        {/* 2. THREE-AREA SEGREGATED CONNECTION & STORAGE PIPELINE */}
+                        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                          {/* AREA 1: SELECT FORM (ફોર્મ પસંદ કરો) */}
                           <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                              <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                                <span>📋</span> Choose Form to Present in Chatbot:
+                              <label style={{fontSize:".84rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>📋</span> 1. Select Form (ફોર્મ પસંદ કરો):
                               </label>
-                              <span style={{fontSize:".7rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                {kbForm.attachedFormId ? `Attached: ${kbForm.attachedFormId}` : "Please Select a Form"}
-                              </span>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{fontSize:".72rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                  {(!kbForm.attachedFormId || kbForm.attachedFormId === "all") ? "🌐 All Forms Combined" : `📝 ${getFormNameById(kbForm.attachedFormId)}`}
+                                </span>
+                                <span style={{fontSize:".7rem",background:"#EFF6FF",color:"#1D4ED8",padding:"2px 8px",borderRadius:4,fontWeight:700}}>
+                                  {(C?.forms || []).length + 2} Forms Available
+                                </span>
+                              </div>
                             </div>
+
                             <p style={{fontSize:".74rem",color:"#64748B",margin:"0 0 10px 0"}}>
-                              Select which registration form from Form Builder should appear inside the chatbot when this command or button is clicked:
+                              Select form definition (e.g. Education 2026 Registration, Offline Donation, Samuh Lagan, etc.). For interactive entry, this form renders in Chatbot. For summaries/registries, it filters submissions:
                             </p>
+
                             <select
-                              value={kbForm.attachedFormId || ""}
+                              value={kbForm.attachedFormId || "all"}
                               onChange={e => {
                                 const selId = e.target.value;
                                 const formObj = (C?.forms || []).find(f => f.id === selId);
                                 const evId = formObj?.eventId || formObj?.eventCode;
-                                setKbForm({
+                                const nextForm = {
                                   ...kbForm,
-                                  attachedFormId: selId,
-                                  storageDestination: formObj?.destination || "registrations",
-                                  targetEventIds: evId ? [evId] : (kbForm.targetEventIds || ["all"])
-                                });
+                                  attachedFormId: selId
+                                };
+                                if (selId === "builtin_offline_donation") {
+                                  nextForm.storageDestination = "donations";
+                                } else if (selId === "standard_event_registration") {
+                                  nextForm.storageDestination = "registrations";
+                                } else if (formObj?.destination) {
+                                  nextForm.storageDestination = formObj.destination;
+                                }
+                                if (evId) {
+                                  nextForm.targetEventIds = [evId];
+                                }
+                                setKbForm(nextForm);
                               }}
                               style={{
                                 width: "100%",
@@ -30904,252 +30963,444 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 cursor: "pointer"
                               }}
                             >
-                              <option value="">-- Choose from available forms in Form Builder --</option>
+                              <option value="all">🌐 All Forms Combined (કોઈપણ ફોર્મ / ઓલ ફોર્મ)</option>
+                              <option value="standard_event_registration">📝 Standard Event Registration Form</option>
+                              <option value="builtin_offline_donation">💰 Built-in Offline Cash/Cheque Donation Entry Form</option>
                               {(C?.forms || []).map(f => (
                                 <option key={f.id} value={f.id}>
                                   📝 {f.name || f.title || f.id} ({Array.isArray(f.fields) ? f.fields.length : 0} fields)
                                 </option>
                               ))}
-                              <option value="builtin_offline_donation">💰 Built-in Offline Donation Entry Form</option>
                             </select>
                           </div>
-                        )}
 
-                        {/* 2. FORM & EVENT CONNECTION (FILTER STRICTLY FOR SPECIFIC EVENT / FORM ONLY) */}
-                        <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                            <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                              <span>📌</span> 2. Form & Event Connection (Filter Strictly for Specific Event / Form Only):
-                            </label>
-                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                              <span style={{fontSize:".72rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all'))
-                                  ? "🌐 All Forms & Events Combined"
-                                  : (kbForm.targetEventIds.length === 1 ? `📌 Scoped: ${formatEventTitle(kbForm.targetEventIds[0])}` : `📌 ${kbForm.targetEventIds.length} Events/Forms Selected`)}
-                              </span>
-                              <span style={{fontSize:".72rem",color:"#1D4ED8",background:"#EFF6FF",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                                {previewFilteredRegistrations.length} {previewFilteredRegistrations.length === 1 ? 'Submission' : 'Submissions'} Matching
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setKbForm({ ...kbForm, targetEventIds: ['all'], attachedFormId: 'all' })}
-                                style={{
-                                  padding:"3px 8px",borderRadius:4,fontSize:".7rem",fontWeight:800,
-                                  background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#16A34A" : "#F1F5F9",
-                                  color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "white" : "#475569",
-                                  border: "1px solid #CBD5E1",cursor:"pointer"
-                                }}
-                              >
-                                ✅ Select All
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setKbForm({ ...kbForm, targetEventIds: [] })}
-                                style={{
-                                  padding:"3px 8px",borderRadius:4,fontSize:".7rem",fontWeight:700,
-                                  background:"#F1F5F9",color:"#475569",border:"1px solid #CBD5E1",cursor:"pointer"
-                                }}
-                              >
-                                Clear
-                              </button>
-                              {hiddenEventCodes.length > 0 && (
+                          {/* AREA 2: SELECT EVENT (કાર્યક્રમ / EVENT પસંદ કરો) */}
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".84rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>📌</span> 2. Select Event (કાર્યક્રમ / Event પસંદ કરો):
+                              </label>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{fontSize:".72rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                  {(!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all'))
+                                    ? "🌐 All Events Combined"
+                                    : (kbForm.targetEventIds.length === 1 ? `📌 Scoped: ${formatEventTitle(kbForm.targetEventIds[0])}` : `📌 ${kbForm.targetEventIds.length} Events Selected`)}
+                                </span>
+                                <span style={{fontSize:".72rem",color:"#1D4ED8",background:"#EFF6FF",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                  {kbForm.storageDestination === "donations" ? previewFilteredDonations.length : previewFilteredRegistrations.length} Matching
+                                </span>
                                 <button
                                   type="button"
-                                  onClick={handleRestoreHiddenCodes}
-                                  title="Unhide all removed event/form badges"
+                                  onClick={() => setKbForm({ ...kbForm, targetEventIds: ['all'] })}
                                   style={{
-                                    padding:"3px 8px",borderRadius:4,fontSize:".68rem",fontWeight:700,
-                                    background:"#EFF6FF",color:"#2563EB",border:"1px solid #BFDBFE",cursor:"pointer"
+                                    padding:"3px 8px",borderRadius:4,fontSize:".7rem",fontWeight:800,
+                                    background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#16A34A" : "#F1F5F9",
+                                    color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "white" : "#475569",
+                                    border: "1px solid #CBD5E1",cursor:"pointer"
                                   }}
                                 >
-                                  ↺ Restore ({hiddenEventCodes.length})
+                                  ✅ Select All
                                 </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{fontSize:".73rem",color:"#475569",marginBottom:8}}>
-                            <em>Showing only distinct event codes & forms with recorded entries. Select <strong>Select All</strong> or choose individual event code(s) below:</em>
-                          </div>
-
-                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
-                            {/* All Events Combined */}
-                            <label style={{
-                              display:"inline-flex",
-                              alignItems:"center",
-                              gap:6,
-                              background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#DCFCE7" : "white",
-                              padding:"6px 12px",
-                              borderRadius:6,
-                              border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
-                              fontSize:".78rem",
-                              fontWeight:800,
-                              cursor:"pointer",
-                              color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#166534" : "#475569"
-                            }}>
-                              <input
-                                type="checkbox"
-                                checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
-                                onChange={(e) => {
-                                  if (e.target.checked) setKbForm({ ...kbForm, targetEventIds: ['all'], attachedFormId: 'all' });
-                                  else setKbForm({ ...kbForm, targetEventIds: [] });
-                                }}
-                                style={{cursor:"pointer",accentColor:"#16A34A"}}
-                              />
-                              <span>🌐 All Events & Forms Combined (Select All)</span>
-                            </label>
-
-                            {/* Distinct Recorded Form & Event Badges */}
-                            {distinctFormEvents.map(evItem => {
-                              const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
-                              const isSelected = !isAll && (
-                                Array.isArray(kbForm.targetEventIds) && (
-                                  kbForm.targetEventIds.includes(evItem.code) ||
-                                  kbForm.targetEventIds.includes(evItem.code.toLowerCase()) ||
-                                  (evItem.title && kbForm.targetEventIds.includes(evItem.title))
-                                )
-                              );
-
-                              return (
-                                <div
-                                  key={evItem.code}
+                                <button
+                                  type="button"
+                                  onClick={() => setKbForm({ ...kbForm, targetEventIds: [] })}
                                   style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    background: isSelected ? "#DCFCE7" : "white",
-                                    padding: "6px 10px",
-                                    borderRadius: 6,
-                                    border: isSelected ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
-                                    fontSize: ".78rem",
-                                    fontWeight: 700,
-                                    color: isSelected ? "#166534" : "#334155",
-                                    transition: "all 0.15s ease"
+                                    padding:"3px 8px",borderRadius:4,fontSize:".7rem",fontWeight:700,
+                                    background:"#F1F5F9",color:"#475569",border:"1px solid #CBD5E1",cursor:"pointer"
                                   }}
                                 >
-                                  <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) => {
-                                        const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => {
-                                          const s = String(x || '').trim().toLowerCase();
-                                          return s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
-                                        }) : [];
-                                        const evKey = evItem.code;
-                                        let updated = e.target.checked 
-                                          ? [...cur, evKey] 
-                                          : cur.filter(x => x !== evKey && x !== evKey.toLowerCase() && x !== evItem.title);
-                                        if (updated.length === 0) updated = ['all'];
-                                        setKbForm({ ...kbForm, targetEventIds: updated, attachedFormId: updated.length === 1 ? updated[0] : 'all' });
-                                      }}
-                                      style={{cursor:"pointer",accentColor:"#16A34A"}}
-                                    />
-                                    <span style={{
-                                      background: isSelected ? "#16A34A" : "#F1F5F9",
-                                      color: isSelected ? "white" : "#166534",
-                                      padding: "1px 7px",
-                                      borderRadius: 4,
-                                      fontWeight: 800,
-                                      fontFamily: "monospace",
-                                      fontSize: ".74rem",
-                                      border: isSelected ? "1px solid #15803D" : "1px solid #CBD5E1"
-                                    }}>
-                                      🏷️ {evItem.code}
-                                    </span>
-                                    <span>{evItem.title && evItem.title !== evItem.code ? evItem.title : ""}</span>
-                                    {evItem.count > 0 ? (
-                                      <span style={{fontSize:".68rem",color:"#15803D",background:"#F0FDF4",padding:"1px 6px",borderRadius:4,fontWeight:800}}>
-                                        ({evItem.count} {evItem.count === 1 ? 'submission' : 'submissions'})
-                                      </span>
-                                    ) : (
-                                      <span style={{fontSize:".65rem",color:"#64748B",background:"#F8FAFC",padding:"1px 5px",borderRadius:4,fontStyle:"italic"}}>
-                                        (Manual / No entries yet)
-                                      </span>
-                                    )}
-                                  </label>
-
+                                  Clear
+                                </button>
+                                {hiddenEventCodes.length > 0 && (
                                   <button
                                     type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRemoveOrHideEventBadge(evItem.code);
-                                    }}
-                                    title={`Remove / hide ${evItem.code} event badge`}
+                                    onClick={handleRestoreHiddenCodes}
+                                    title="Unhide all removed event badges"
                                     style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "#EF4444",
-                                      fontSize: ".85rem",
-                                      cursor: "pointer",
-                                      padding: "0 2px",
-                                      marginLeft: 3,
-                                      fontWeight: 800
+                                      padding:"3px 8px",borderRadius:4,fontSize:".68rem",fontWeight:700,
+                                      background:"#EFF6FF",color:"#2563EB",border:"1px solid #BFDBFE",cursor:"pointer"
                                     }}
                                   >
-                                    ✕
+                                    ↺ Restore ({hiddenEventCodes.length})
                                   </button>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                )}
+                              </div>
+                            </div>
 
-                          {/* Manual Event / Form Code Entry Box */}
-                          <div style={{marginTop:12,paddingTop:10,borderTop:"1px dashed #CBD5E1",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                            <span style={{fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:4}}>
-                              <span>➕</span> Add Upcoming / New Event Code (if no entries received yet):
-                            </span>
-                            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                              <input
-                                type="text"
-                                placeholder="e.g. 6THDEC, EDU26, BLOOD, TREE"
-                                value={newEventCodeInput}
-                                onChange={e => setNewEventCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleAddCustomEventCode();
-                                  }
-                                }}
-                                style={{
-                                  padding: "5px 10px",
-                                  borderRadius: 6,
-                                  border: "1.5px solid #CBD5E1",
-                                  fontSize: ".76rem",
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                  minWidth: 220,
-                                  fontFamily: "monospace",
-                                  background: "white"
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={handleAddCustomEventCode}
-                                style={{
-                                  padding: "5px 12px",
-                                  borderRadius: 6,
-                                  background: "#16A34A",
-                                  color: "white",
-                                  border: "none",
-                                  fontSize: ".75rem",
-                                  fontWeight: 800,
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  boxShadow: "0 1px 3px rgba(22,163,74,0.2)"
-                                }}
-                              >
-                                <span>➕</span> Add Code
-                              </button>
+                            <div style={{fontSize:".73rem",color:"#475569",marginBottom:8}}>
+                              <em>Choose which event to connect with (e.g. 6th Dec, Education 2026, Samuh Lagan, etc.). Form IDs are strictly excluded:</em>
+                            </div>
+
+                            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
+                              {/* All Events Combined */}
+                              <label style={{
+                                display:"inline-flex",
+                                alignItems:"center",
+                                gap:6,
+                                background: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#DCFCE7" : "white",
+                                padding:"6px 12px",
+                                borderRadius:6,
+                                border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                fontSize:".78rem",
+                                fontWeight:800,
+                                cursor:"pointer",
+                                color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#166534" : "#475569"
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setKbForm({ ...kbForm, targetEventIds: ['all'] });
+                                    else setKbForm({ ...kbForm, targetEventIds: [] });
+                                  }}
+                                  style={{cursor:"pointer",accentColor:"#16A34A"}}
+                                />
+                                <span>🌐 All Events Combined (Select All)</span>
+                              </label>
+
+                              {/* Real Event Badges (Form IDs filtered out) */}
+                              {distinctFormEvents.map(evItem => {
+                                const isAll = !kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all');
+                                const isSelected = !isAll && (
+                                  Array.isArray(kbForm.targetEventIds) && (
+                                    kbForm.targetEventIds.includes(evItem.code) ||
+                                    kbForm.targetEventIds.includes(evItem.code.toLowerCase()) ||
+                                    (evItem.title && kbForm.targetEventIds.includes(evItem.title))
+                                  )
+                                );
+
+                                return (
+                                  <div
+                                    key={evItem.code}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      background: isSelected ? "#DCFCE7" : "white",
+                                      padding: "6px 10px",
+                                      borderRadius: 6,
+                                      border: isSelected ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                                      fontSize: ".78rem",
+                                      fontWeight: 700,
+                                      color: isSelected ? "#166534" : "#334155",
+                                      transition: "all 0.15s ease"
+                                    }}
+                                  >
+                                    <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => {
+                                            const s = String(x || '').trim().toLowerCase();
+                                            return s !== 'all' && s !== 'ev_donor_data' && s !== 'donor data' && s !== 'donor_data';
+                                          }) : [];
+                                          const evKey = evItem.code;
+                                          let updated = e.target.checked 
+                                            ? [...cur, evKey] 
+                                            : cur.filter(x => x !== evKey && x !== evKey.toLowerCase() && x !== evItem.title);
+                                          if (updated.length === 0) updated = ['all'];
+                                          setKbForm({ ...kbForm, targetEventIds: updated });
+                                        }}
+                                        style={{cursor:"pointer",accentColor:"#16A34A"}}
+                                      />
+                                      <span style={{
+                                        background: isSelected ? "#16A34A" : "#F1F5F9",
+                                        color: isSelected ? "white" : "#166534",
+                                        padding: "1px 7px",
+                                        borderRadius: 4,
+                                        fontWeight: 800,
+                                        fontFamily: "monospace",
+                                        fontSize: ".74rem",
+                                        border: isSelected ? "1px solid #15803D" : "1px solid #CBD5E1"
+                                      }}>
+                                        🏷️ {evItem.code}
+                                      </span>
+                                      <span>{evItem.title && evItem.title !== evItem.code ? evItem.title : ""}</span>
+                                      {evItem.count > 0 ? (
+                                        <span style={{fontSize:".68rem",color:"#15803D",background:"#F0FDF4",padding:"1px 6px",borderRadius:4,fontWeight:800}}>
+                                          ({evItem.count} {evItem.count === 1 ? 'submission' : 'submissions'})
+                                        </span>
+                                      ) : (
+                                        <span style={{fontSize:".65rem",color:"#64748B",background:"#F8FAFC",padding:"1px 5px",borderRadius:4,fontStyle:"italic"}}>
+                                          (Manual / Upcoming)
+                                        </span>
+                                      )}
+                                    </label>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveOrHideEventBadge(evItem.code);
+                                      }}
+                                      title={`Remove / hide ${evItem.code} event badge`}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        color: "#EF4444",
+                                        fontSize: ".85rem",
+                                        cursor: "pointer",
+                                        padding: "0 2px",
+                                        marginLeft: 3,
+                                        fontWeight: 800
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Manual Event Code Entry Box */}
+                            <div style={{marginTop:12,paddingTop:10,borderTop:"1px dashed #CBD5E1",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                              <span style={{fontSize:".74rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:4}}>
+                                <span>➕</span> Add Upcoming / New Event Code (zero hardcoding):
+                              </span>
+                              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 6THDEC, EDU26, BLOOD, SAMUH, TREE"
+                                  value={newEventCodeInput}
+                                  onChange={e => setNewEventCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleAddCustomEventCode();
+                                    }
+                                  }}
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderRadius: 6,
+                                    border: "1.5px solid #CBD5E1",
+                                    fontSize: ".76rem",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    minWidth: 220,
+                                    fontFamily: "monospace",
+                                    background: "white"
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddCustomEventCode}
+                                  style={{
+                                    padding: "5px 12px",
+                                    borderRadius: 6,
+                                    background: "#16A34A",
+                                    color: "white",
+                                    border: "none",
+                                    fontSize: ".75rem",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    boxShadow: "0 1px 3px rgba(22,163,74,0.2)"
+                                  }}
+                                >
+                                  <span>➕</span> Add Code
+                                </button>
+                              </div>
+                            </div>
+
+                            <div style={{fontSize:".72rem",color:"#166534",marginTop:8,lineHeight:1.4}}>
+                              💡 <em>Type any event code above (e.g. <strong>SAMUH</strong>, <strong>6THDEC</strong>, <strong>EDU26</strong>) to add it instantly without any code changes.</em>
                             </div>
                           </div>
 
-                          <div style={{fontSize:".72rem",color:"#166534",marginTop:8,lineHeight:1.4}}>
-                            💡 <em>Only distinct event codes from verified submissions appear above. If an event code or form has not received any entry yet, type its code above to add it manually and connect it to this flow.</em>
+                          {/* AREA 3: WHERE TO STORE (ડેટા ક્યાં સાચવવો / STORAGE DESTINATION) */}
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".84rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>💾</span> 3. Where to Store / Target Database (ડેટા ક્યાં સાચવવો):
+                              </label>
+                              <span style={{
+                                fontSize:".72rem",
+                                background: (kbForm.storageDestination === "donations" ? "#FEF3C7" : kbForm.storageDestination === "volunteers" ? "#F3E8FF" : "#EFF6FF"),
+                                color: (kbForm.storageDestination === "donations" ? "#92400E" : kbForm.storageDestination === "volunteers" ? "#6B21A8" : "#1D4ED8"),
+                                padding:"2px 8px",
+                                borderRadius:4,
+                                fontWeight:800,
+                                border: "1px solid " + (kbForm.storageDestination === "donations" ? "#FCD34D" : kbForm.storageDestination === "volunteers" ? "#D8B4FE" : "#BFDBFE")
+                              }}>
+                                Selected Target: {kbForm.storageDestination === "donations" ? "💰 Donations Table" : kbForm.storageDestination === "volunteers" ? "👥 Volunteers Table" : "📥 Event Registrations Table"}
+                              </span>
+                            </div>
+
+                            <p style={{fontSize:".74rem",color:"#64748B",margin:"0 0 10px 0"}}>
+                              Choose where submissions save or where summaries pull from. Completely flexible with zero hardcoded destinations:
+                            </p>
+
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10}}>
+                              {/* Option 1: Event Registrations */}
+                              <div
+                                onClick={() => setKbForm({ ...kbForm, storageDestination: "registrations" })}
+                                style={{
+                                  border: (kbForm.storageDestination === "registrations" || !kbForm.storageDestination) ? "2px solid #2563EB" : "1.5px solid #CBD5E1",
+                                  background: (kbForm.storageDestination === "registrations" || !kbForm.storageDestination) ? "#EFF6FF" : "white",
+                                  borderRadius: 8,
+                                  padding: "10px 12px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  boxShadow: (kbForm.storageDestination === "registrations" || !kbForm.storageDestination) ? "0 2px 6px rgba(37,99,235,0.15)" : "none"
+                                }}
+                              >
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                  <span style={{fontSize:".83rem",fontWeight:800,color:"#1E40AF"}}>📥 Event Registrations</span>
+                                  <input
+                                    type="radio"
+                                    name="storageDestinationRadio"
+                                    checked={kbForm.storageDestination === "registrations" || !kbForm.storageDestination}
+                                    onChange={() => {}}
+                                    style={{accentColor:"#2563EB",cursor:"pointer"}}
+                                  />
+                                </div>
+                                <p style={{fontSize:".72rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                  Save student felicitation entries, event attendee passes, or applicant submissions.
+                                </p>
+                                <div style={{marginTop:6,fontSize:".68rem",fontWeight:700,color:"#2563EB"}}>
+                                  Database: <code>registrations</code>
+                                </div>
+                              </div>
+
+                              {/* Option 2: Donations & Collections */}
+                              <div
+                                onClick={() => setKbForm({ ...kbForm, storageDestination: "donations" })}
+                                style={{
+                                  border: kbForm.storageDestination === "donations" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                  background: kbForm.storageDestination === "donations" ? "#F0FDF4" : "white",
+                                  borderRadius: 8,
+                                  padding: "10px 12px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  boxShadow: kbForm.storageDestination === "donations" ? "0 2px 6px rgba(22,163,74,0.15)" : "none"
+                                }}
+                              >
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                  <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>💰 Donations & Collections</span>
+                                  <input
+                                    type="radio"
+                                    name="storageDestinationRadio"
+                                    checked={kbForm.storageDestination === "donations"}
+                                    onChange={() => {}}
+                                    style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                  />
+                                </div>
+                                <p style={{fontSize:".72rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                  Save offline cash/cheque contributions, trust funds, vibhag receipts, donor lists.
+                                </p>
+                                <div style={{marginTop:6,fontSize:".68rem",fontWeight:700,color:"#166534"}}>
+                                  Database: <code>donations</code>
+                                </div>
+                              </div>
+
+                              {/* Option 3: Volunteers */}
+                              <div
+                                onClick={() => setKbForm({ ...kbForm, storageDestination: "volunteers" })}
+                                style={{
+                                  border: kbForm.storageDestination === "volunteers" ? "2px solid #9333EA" : "1.5px solid #CBD5E1",
+                                  background: kbForm.storageDestination === "volunteers" ? "#FAF5FF" : "white",
+                                  borderRadius: 8,
+                                  padding: "10px 12px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  boxShadow: kbForm.storageDestination === "volunteers" ? "0 2px 6px rgba(147,51,234,0.15)" : "none"
+                                }}
+                              >
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                  <span style={{fontSize:".83rem",fontWeight:800,color:"#7E22CE"}}>👥 Volunteers & Seva</span>
+                                  <input
+                                    type="radio"
+                                    name="storageDestinationRadio"
+                                    checked={kbForm.storageDestination === "volunteers"}
+                                    onChange={() => {}}
+                                    style={{accentColor:"#9333EA",cursor:"pointer"}}
+                                  />
+                                </div>
+                                <p style={{fontSize:".72rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                  Save volunteer signups, seva helpers, committee assignments.
+                                </p>
+                                <div style={{marginTop:6,fontSize:".68rem",fontWeight:700,color:"#7E22CE"}}>
+                                  Database: <code>volunteers</code>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
+
+                        {/* Interactive Form Live Preview Card (Shown when offline_form is active) */}
+                        {kbForm.summaryType === "offline_form" && (
+                          <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                              <label style={{fontSize:".84rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                <span>✍️</span> Interactive Form Live Preview (What User Sees in Chatbot):
+                              </label>
+                              <span style={{fontSize:".72rem",background:"#DCFCE7",color:"#166534",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                Mode: Interactive Form Entry
+                              </span>
+                            </div>
+
+                            {(() => {
+                              const activeFormDef = kbForm.attachedFormId === "builtin_offline_donation"
+                                ? { name: "Offline Donation Entry Form", fields: [{ label: "Donor Name", type: "text" }, { label: "Amount", type: "number" }, { label: "Vibhag", type: "select" }, { label: "Receipt Number", type: "text" }] }
+                                : (kbForm.attachedFormId === "standard_event_registration"
+                                    ? { name: "Standard Event Registration Form", fields: [{ label: "Participant Name", type: "text" }, { label: "Mobile", type: "tel" }, { label: "Vibhag", type: "select" }, { label: "Stream / Standard", type: "text" }] }
+                                    : ((C?.forms || []).find(f => f.id === kbForm.attachedFormId) || { name: kbForm.title || "Selected Form", fields: [] }));
+
+                              const fieldsList = Array.isArray(activeFormDef.fields) && activeFormDef.fields.length > 0
+                                ? activeFormDef.fields
+                                : [
+                                    { label: "Full Name", type: "text", required: true },
+                                    { label: "Mobile Number", type: "tel", required: true },
+                                    { label: "Vibhag", type: "select", required: true }
+                                  ];
+
+                              return (
+                                <div style={{background:"#F8FAFC",border:"1.5px solid #CBD5E1",borderRadius:8,padding:14}}>
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,borderBottom:"1px solid #E2E8F0",paddingBottom:8}}>
+                                    <div>
+                                      <strong style={{fontSize:".9rem",color:"#0F172A"}}>📝 {activeFormDef.name || "Custom Form"}</strong>
+                                      <div style={{fontSize:".72rem",color:"#64748B",marginTop:2}}>
+                                        Event Scope: <span style={{fontWeight:700,color:"#166534"}}>{formatEventTitle(kbForm.targetEventIds?.[0] || 'all')}</span> • Saves to: <span style={{fontWeight:700,color:"#2563EB"}}>{kbForm.storageDestination || "registrations"}</span>
+                                      </div>
+                                    </div>
+                                    <span style={{background:"#DCFCE7",color:"#166534",fontSize:".7rem",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                      {fieldsList.length} Input Fields
+                                    </span>
+                                  </div>
+
+                                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:10,marginBottom:12}}>
+                                    {fieldsList.map((fld, idx) => (
+                                      <div key={idx} style={{background:"white",border:"1px solid #CBD5E1",borderRadius:6,padding:"8px 10px"}}>
+                                        <div style={{fontSize:".75rem",fontWeight:700,color:"#334155",marginBottom:4}}>
+                                          {fld.label || fld.name || `Field #${idx + 1}`} {fld.required && <span style={{color:"#EF4444"}}>*</span>}
+                                        </div>
+                                        <div style={{height:28,background:"#F1F5F9",borderRadius:4,border:"1px solid #E2E8F0",display:"flex",alignItems:"center",padding:"0 8px",fontSize:".7rem",color:"#94A3B8"}}>
+                                          [User Input: {fld.type || "text"}]
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  <div style={{display:"flex",justifyContent:"flex-end"}}>
+                                    <div style={{
+                                      padding: "8px 16px",
+                                      borderRadius: 6,
+                                      background: kbForm.storageDestination === "donations" ? "#16A34A" : "#2563EB",
+                                      color: "white",
+                                      fontSize: ".78rem",
+                                      fontWeight: 800
+                                    }}>
+                                      ✓ Submit & Save to {kbForm.storageDestination === "donations" ? "Donations" : kbForm.storageDestination === "volunteers" ? "Volunteers" : "Registrations"}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
 
                         {/* 3. DYNAMIC FIELD EXTRACTION & AGGREGATION LAYOUT TABLE (Shown for Summary & Registry modes) */}
                         {kbForm.summaryType !== "offline_form" && (
@@ -61428,8 +61679,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
         if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
-        } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
-          targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
+        }
+        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation" && attachedFId !== "standard_event_registration") {
+          const fLow = String(attachedFId).toLowerCase().trim();
+          const filteredByForm = targetRegs.filter(r => {
+            const rf = String(r.formId || r.formName || "").toLowerCase().trim();
+            const re = String(r.eventId || "").toLowerCase().trim();
+            return rf === fLow || (r.formName && r.formName.toLowerCase() === fLow) || re === fLow;
+          });
+          if (filteredByForm.length > 0) targetRegs = filteredByForm;
         }
 
         if (targetRegs.length === 0) {
@@ -61439,7 +61697,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           if (fallbackPool.length > 0) {
             if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
               targetRegs = filterRegsByKbTargetEvents(fallbackPool, scopedEvents);
-            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation" && attachedFId !== "standard_event_registration") {
               targetRegs = filterRegsByKbTargetEvents(fallbackPool, [attachedFId]);
             } else {
               targetRegs = fallbackPool;
@@ -61643,8 +61901,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
         if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
           targetRegs = filterRegsByKbTargetEvents(targetRegs, scopedEvents);
-        } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
-          targetRegs = filterRegsByKbTargetEvents(targetRegs, [attachedFId]);
+        }
+        if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation" && attachedFId !== "standard_event_registration") {
+          const fLow = String(attachedFId).toLowerCase().trim();
+          const filteredByForm = targetRegs.filter(r => {
+            const rf = String(r.formId || r.formName || "").toLowerCase().trim();
+            const re = String(r.eventId || "").toLowerCase().trim();
+            return rf === fLow || (r.formName && r.formName.toLowerCase() === fLow) || re === fLow;
+          });
+          if (filteredByForm.length > 0) targetRegs = filteredByForm;
         }
 
         if (targetRegs.length === 0) {
@@ -61658,7 +61923,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           if (fallbackPool.length > 0) {
             if (scopedEvents.length > 0 && !scopedEvents.includes("all")) {
               targetRegs = filterRegsByKbTargetEvents(fallbackPool, scopedEvents);
-            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation") {
+            } else if (attachedFId && attachedFId !== "all" && attachedFId !== "builtin_offline_donation" && attachedFId !== "standard_event_registration") {
               targetRegs = filterRegsByKbTargetEvents(fallbackPool, [attachedFId]);
             } else {
               targetRegs = fallbackPool;
@@ -62167,18 +62432,20 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
       if (!isPermitted) {
         botReply = `🔒 **Access Restricted**\n\nThis action / form is restricted to **${reqRole === "donation_collector" ? "Donation Collectors" : reqRole === "vibhag_admin" ? "Vibhag Admins" : "Super Admins"}**.\n\n👉 Please enter your authorized mobile number to unlock.`;
-      } else if (matchedKb.attachedFormId || matchedKb.summaryType === "offline_form") {
+      } else if (matchedKb.summaryType === "offline_form" || (matchedKb.actionType === "donation" && (matchedKb.attachedFormId === "builtin_offline_donation" || matchedKb.summaryType === "offline_form"))) {
         const scopedEvents = matchedKb?.targetEventIds || ["all"];
-        const formDef = matchedKb.attachedFormId === "builtin_offline_donation"
+        const formDef = (matchedKb.attachedFormId === "builtin_offline_donation" || (matchedKb.actionType === "donation" && !matchedKb.attachedFormId))
           ? { name: "Offline Donation Entry", id: "builtin_offline_donation" }
-          : ((C.forms || []).find(f => (
-              f.id === matchedKb.attachedFormId || 
-              f.name === matchedKb.attachedFormId ||
-              (f.id && String(f.id).toLowerCase() === String(matchedKb.attachedFormId).toLowerCase()) ||
-              (f.eventId && scopedEvents.includes(f.eventId)) ||
-              (f.eventCode && scopedEvents.includes(f.eventCode)) ||
-              (scopedEvents.some(ev => String(f.name || '').toLowerCase().includes(String(ev).toLowerCase()) || String(f.id || '').toLowerCase().includes(String(ev).toLowerCase())))
-            )) || (C.events || []).map(ev => (C.forms || []).find(f => f.id === ev.formId)).filter(Boolean)[0] || { name: matchedKb.title, id: matchedKb.attachedFormId });
+          : (matchedKb.attachedFormId === "standard_event_registration"
+              ? { name: "Event Registration", id: "standard_event_registration" }
+              : ((C.forms || []).find(f => (
+                  f.id === matchedKb.attachedFormId || 
+                  f.name === matchedKb.attachedFormId ||
+                  (f.id && String(f.id).toLowerCase() === String(matchedKb.attachedFormId).toLowerCase()) ||
+                  (f.eventId && scopedEvents.includes(f.eventId)) ||
+                  (f.eventCode && scopedEvents.includes(f.eventCode)) ||
+                  (scopedEvents.some(ev => String(f.name || '').toLowerCase().includes(String(ev).toLowerCase()) || String(f.id || '').toLowerCase().includes(String(ev).toLowerCase())))
+                )) || (C.events || []).map(ev => (C.forms || []).find(f => f.id === ev.formId)).filter(Boolean)[0] || { name: matchedKb.title, id: matchedKb.attachedFormId }));
 
         let defaultPurpose = matchedKb.actionType === "form" ? (formDef?.name || "Event Registration") : "General Donation";
         let defaultEventCode = "GEN";
