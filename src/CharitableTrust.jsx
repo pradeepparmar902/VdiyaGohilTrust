@@ -27610,12 +27610,17 @@ function ChatbotAccessManager({ C, setC, auth }) {
       return alert("Please enter a Button Label.");
     }
 
+    let cleanCmd = (btnForm.command || "").trim();
+    if (btnForm.type === "send_command" && cleanCmd && !cleanCmd.startsWith("/") && !cleanCmd.includes(" ")) {
+      cleanCmd = "/" + cleanCmd;
+    }
+
     const newBtn = {
       id: btnForm.id || `btn_${Date.now()}`,
       icon: btnForm.icon || "🔘",
       label: btnForm.label.trim(),
       type: btnForm.type || "send_command",
-      command: (btnForm.command || "").trim(),
+      command: cleanCmd,
       roleAccess: btnForm.roleAccess || "public",
       enabled: btnForm.enabled !== false,
       order: btnForm.order ? Number(btnForm.order) : (quickButtonsList.length + 1),
@@ -27649,6 +27654,36 @@ function ChatbotAccessManager({ C, setC, auth }) {
       borderColor: "#1E293B",
       tooltip: ""
     });
+  };
+
+  const pinKbToQuickButton = async (kbItem) => {
+    const cleanCmd = (kbItem.cmd || "").trim();
+    const alreadyIdx = quickButtonsList.findIndex(b => (b.command || "").trim().toLowerCase() === cleanCmd.toLowerCase());
+    if (alreadyIdx !== -1) {
+      if (!confirm(`Shortcut "${cleanCmd}" is already in the Top Header Bar. Remove it from header?`)) return;
+      const updated = quickButtonsList.filter((_, idx) => idx !== alreadyIdx);
+      await saveQuickButtonsToFirebase(updated);
+      return;
+    }
+
+    const newBtn = {
+      id: `btn_${Date.now()}`,
+      icon: kbItem.icon || "⚡",
+      label: kbItem.title ? (kbItem.title.length > 20 ? kbItem.title.slice(0, 18) + "..." : kbItem.title) : cleanCmd,
+      type: "send_command",
+      command: cleanCmd,
+      roleAccess: kbItem.roleAccess || "public",
+      enabled: true,
+      order: quickButtonsList.length + 1,
+      bgColor: "#1E293B",
+      textColor: "#FFFFFF",
+      borderColor: "#1E293B",
+      tooltip: kbItem.title || cleanCmd
+    };
+
+    const updated = [...quickButtonsList, newBtn].sort((a, b) => (a.order || 999) - (b.order || 999));
+    await saveQuickButtonsToFirebase(updated);
+    alert(`✅ Shortcut "${cleanCmd}" has been pinned as a Top Header Button!`);
   };
 
   const handleLoadButtonToEdit = (btn) => {
@@ -28664,7 +28699,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                   {/* 4. Target Command / Question / URL */}
                   <div>
                     <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
-                      {btnForm.type === "open_url" ? "Target Web URL (વેબસાઇટ લિંક):" : "Target Command / Shortcut (કયો કમાન્ડ ચલાવવો?):"}
+                      {btnForm.type === "open_url" ? "Target Web URL (વેબસાઇટ લિંક):" : "Connected Shortcut Key \"/\" (કયો સ્લેશ શોર્ટકટ કમાન્ડ ચલાવવો?):"}
                     </label>
                     {btnForm.type === "send_command" ? (
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -28686,7 +28721,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           }}
                           style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".82rem"}}
                         >
-                          <option value="">-- Quick Select from Question & Action Studio --</option>
+                          <option value="">-- Quick Select Existing "/" Shortcut from Studio --</option>
                           <optgroup label="✨ Available Questions in Chatbot Studio:">
                             {kbList.map(k => (
                               <option key={k.id || k.cmd} value={k.cmd}>
@@ -28706,9 +28741,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           type="text"
                           value={btnForm.command}
                           onChange={e => setBtnForm(prev => ({ ...prev, command: e.target.value }))}
-                          placeholder="Or type custom command (e.g. /education2026form, /don_entry)"
+                          placeholder="Or type custom '/' shortcut key (e.g. /education2026form, /don_entry)"
                           style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem"}}
                         />
+                        <span style={{fontSize:".7rem",color:"#64748B"}}>
+                          💡 Tip: When users click this button, it executes this exact <code>/shortcut</code> key in the chat.
+                        </span>
                       </div>
                     ) : btnForm.type === "open_url" ? (
                       <input
@@ -29037,7 +29075,39 @@ function ChatbotAccessManager({ C, setC, auth }) {
 
                         {/* Actions */}
                         <td style={{padding:"10px 14px",textAlign:"right"}}>
-                          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                          <div style={{display:"flex",gap:6,justifyContent:"flex-end",alignItems:"center"}}>
+                            {(() => {
+                              const cleanTarget = (btn.command || "").trim().toLowerCase();
+                              const matchedKb = kbList.find(k => (k.cmd || "").trim().toLowerCase() === cleanTarget);
+                              if (matchedKb) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveTab("kb");
+                                      handleLoadItemToEdit(matchedKb);
+                                    }}
+                                    style={{
+                                      background: "#F0FDF4",
+                                      color: "#166534",
+                                      border: "1px solid #BBF7D0",
+                                      padding: "4px 8px",
+                                      borderRadius: 6,
+                                      fontSize: ".72rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 3
+                                    }}
+                                    title={`Jump to Question Studio and edit shortcut "${matchedKb.cmd}"`}
+                                  >
+                                    <span>⚙️</span> Edit Q&A
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
                             <button
                               type="button"
                               onClick={() => handleLoadButtonToEdit(btn)}
@@ -34372,6 +34442,26 @@ function ChatbotAccessManager({ C, setC, auth }) {
                           {/* 7. Actions */}
                           <td style={{padding:"12px 14px",textAlign:"right"}}>
                             <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                              <button
+                                type="button"
+                                onClick={() => pinKbToQuickButton(item)}
+                                style={{
+                                  background: quickButtonsList.some(b => (b.command || "").trim().toLowerCase() === (item.cmd || "").trim().toLowerCase()) ? "#F5F3FF" : "#F8FAFC",
+                                  color: quickButtonsList.some(b => (b.command || "").trim().toLowerCase() === (item.cmd || "").trim().toLowerCase()) ? "#7C3AED" : "#475569",
+                                  border: quickButtonsList.some(b => (b.command || "").trim().toLowerCase() === (item.cmd || "").trim().toLowerCase()) ? "1.5px solid #DDD6FE" : "1px solid #CBD5E1",
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: ".72rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4
+                                }}
+                                title={quickButtonsList.some(b => (b.command || "").trim().toLowerCase() === (item.cmd || "").trim().toLowerCase()) ? "Click to remove from Chatbot Top Header Bar" : "Click to pin this shortcut as a button in Chatbot Top Header Bar"}
+                              >
+                                {quickButtonsList.some(b => (b.command || "").trim().toLowerCase() === (item.cmd || "").trim().toLowerCase()) ? "📌 In Header" : "📌 Pin Button"}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleLoadItemToEdit(item)}
