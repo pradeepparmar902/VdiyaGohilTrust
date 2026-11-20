@@ -26264,6 +26264,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
     label: "",
     type: "send_command",
     command: "",
+    filterCategory: "all",
+    allowedCmds: [],
     roleAccess: "public",
     enabled: true,
     order: 1,
@@ -27621,6 +27623,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
       label: btnForm.label.trim(),
       type: btnForm.type || "send_command",
       command: cleanCmd,
+      filterCategory: btnForm.filterCategory || "all",
+      allowedCmds: Array.isArray(btnForm.allowedCmds) ? btnForm.allowedCmds : [],
       roleAccess: btnForm.roleAccess || "public",
       enabled: btnForm.enabled !== false,
       order: btnForm.order ? Number(btnForm.order) : (quickButtonsList.length + 1),
@@ -27646,6 +27650,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
       label: "",
       type: "send_command",
       command: "",
+      filterCategory: "all",
+      allowedCmds: [],
       roleAccess: "public",
       enabled: true,
       order: quickButtonsList.length + 1,
@@ -27672,6 +27678,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
       label: kbItem.title ? (kbItem.title.length > 20 ? kbItem.title.slice(0, 18) + "..." : kbItem.title) : cleanCmd,
       type: "send_command",
       command: cleanCmd,
+      filterCategory: "all",
+      allowedCmds: [],
       roleAccess: kbItem.roleAccess || "public",
       enabled: true,
       order: quickButtonsList.length + 1,
@@ -27694,6 +27702,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
       label: btn.label || "",
       type: btn.type || "send_command",
       command: btn.command || "",
+      filterCategory: btn.filterCategory || "all",
+      allowedCmds: Array.isArray(btn.allowedCmds) ? btn.allowedCmds : [],
       roleAccess: btn.roleAccess || "public",
       enabled: btn.enabled !== false,
       order: btn.order || 1,
@@ -28689,7 +28699,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                       onChange={e => setBtnForm(prev => ({ ...prev, type: e.target.value }))}
                       style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",fontWeight:700}}
                     >
-                      <option value="send_command">💬 Execute Question / Slash Command (કમાન્ડ ચલાવો)</option>
+                      <option value="send_command">💬 Execute Single Question / Shortcut (એક કમાન્ડ ચલાવો)</option>
+                      <option value="show_buttons_list">🔘 Display List of Shortcut Buttons (બટન્સ કાર્ડ લિસ્ટ બતાવો)</option>
                       <option value="toggle_slash_menu">⚡ Toggle Questions Menu (પ્રશ્નોનું મેનુ ખોલો)</option>
                       <option value="open_vibhag_menu">📍 Open Vibhag Picker (વિભાગ મેનુ ખોલો)</option>
                       <option value="open_url">🔗 Open External Link / URL (લિંક ખોલો)</option>
@@ -28699,7 +28710,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                   {/* 4. Target Command / Question / URL */}
                   <div>
                     <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
-                      {btnForm.type === "open_url" ? "Target Web URL (વેબસાઇટ લિંક):" : "Connected Shortcut Key \"/\" (કયો સ્લેશ શોર્ટકટ કમાન્ડ ચલાવવો?):"}
+                      {btnForm.type === "open_url" ? "Target Web URL (વેબસાઇટ લિંક):" : btnForm.type === "show_buttons_list" ? "Button Card Shortcuts Scope (કયા શોર્ટકટ્સ બટનમાં બતાવવા?):" : "Connected Shortcut Key \"/\" (કયો સ્લેશ શોર્ટકટ કમાન્ડ ચલાવવો?):"}
                     </label>
                     {btnForm.type === "send_command" ? (
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -28746,6 +28757,56 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         />
                         <span style={{fontSize:".7rem",color:"#64748B"}}>
                           💡 Tip: When users click this button, it executes this exact <code>/shortcut</code> key in the chat.
+                        </span>
+                      </div>
+                    ) : btnForm.type === "show_buttons_list" ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <select
+                          value={btnForm.filterCategory}
+                          onChange={e => setBtnForm(prev => ({ ...prev, filterCategory: e.target.value }))}
+                          style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #818CF8",fontSize:".82rem",fontWeight:700,background:"#EEF2FF"}}
+                        >
+                          <option value="all">🔘 All Categories (Complete Questions Card - like /buttons)</option>
+                          <option value="forms">📝 Interactive Forms & Event Applications only</option>
+                          <option value="donations">💰 Donations & Donor Registry only</option>
+                          <option value="registrations">📊 Live Registrations & Analytics only</option>
+                          <option value="committee">👥 Committee & Leadership only</option>
+                          <option value="events">🗓️ Events & General Guidelines only</option>
+                          <option value="custom">✨ Custom Selected Shortcuts (Pick from list below)</option>
+                        </select>
+
+                        {btnForm.filterCategory === "custom" && (
+                          <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:8,padding:"8px 10px",maxHeight:140,overflowY:"auto",display:"flex",flexDirection:"column",gap:5}}>
+                            <span style={{fontSize:".7rem",fontWeight:700,color:"#64748B"}}>Check each shortcut to include in this button's menu:</span>
+                            {kbList.map(k => {
+                              const checked = Array.isArray(btnForm.allowedCmds) && btnForm.allowedCmds.includes(k.cmd);
+                              return (
+                                <label key={k.id || k.cmd} style={{display:"flex",alignItems:"center",gap:6,fontSize:".75rem",cursor:"pointer",color:"#1E293B"}}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={e => {
+                                      const isChk = e.target.checked;
+                                      setBtnForm(prev => {
+                                        const cur = Array.isArray(prev.allowedCmds) ? [...prev.allowedCmds] : [];
+                                        if (isChk) {
+                                          if (!cur.includes(k.cmd)) cur.push(k.cmd);
+                                        } else {
+                                          const idx = cur.indexOf(k.cmd);
+                                          if (idx !== -1) cur.splice(idx, 1);
+                                        }
+                                        return { ...prev, allowedCmds: cur };
+                                      });
+                                    }}
+                                  />
+                                  <span>{k.icon || "⚡"} <strong>{k.cmd}</strong> - {k.title || k.cmd}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <span style={{fontSize:".7rem",color:"#64748B"}}>
+                          💡 Clicking this button will display an interactive card in the chat with clickable tiles for these shortcuts!
                         </span>
                       </div>
                     ) : btnForm.type === "open_url" ? (
@@ -29027,7 +29088,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
                               padding:"2px 7px",
                               borderRadius:6
                             }}>
-                              {btn.type === "toggle_slash_menu" ? "⚡ Open Questions Menu" : btn.type === "open_vibhag_menu" ? "📍 Open Vibhag Picker" : btn.type === "open_url" ? "🔗 Open URL" : "💬 Execute Command"}
+                              {btn.type === "toggle_slash_menu" 
+                                ? "⚡ Open Questions Menu" 
+                                : btn.type === "open_vibhag_menu" 
+                                ? "📍 Open Vibhag Picker" 
+                                : btn.type === "show_buttons_list"
+                                ? `🔘 Show Buttons List (${btn.filterCategory === "custom" ? (btn.allowedCmds?.length || 0) + " selected" : btn.filterCategory || "all"})`
+                                : btn.type === "open_url" 
+                                ? "🔗 Open URL" 
+                                : "💬 Execute Command"}
                             </span>
                             {btn.command && (
                               <code style={{fontSize:".75rem",background:"#F1F5F9",padding:"2px 6px",borderRadius:4,color:"#0F172A",fontWeight:700}}>
@@ -56692,6 +56761,45 @@ function FormattedChatText({ text, onQuickClick }) {
           </a>
         );
       }
+
+      // Check if word is a slash shortcut command (e.g. /don_6th, /buttons, /donate, /help)
+      if (part.startsWith("/") && part.length >= 3) {
+        const cmdMatch = part.match(/^\/[a-zA-Z0-9_\-]+/);
+        if (cmdMatch) {
+          const cleanCmd = cmdMatch[0];
+          const punctuation = part.slice(cleanCmd.length);
+          return (
+            <span key={`${keyPrefix}_cmd_${pIdx}`}>
+              <button
+                type="button"
+                onClick={() => onQuickClick && onQuickClick(cleanCmd)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  color: "#4338CA",
+                  background: "#EEF2FF",
+                  border: "1.5px solid #C7D2FE",
+                  padding: "2px 8px",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: ".78rem",
+                  cursor: "pointer",
+                  margin: "1px 3px",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                  verticalAlign: "middle"
+                }}
+                title={`Click to execute ${cleanCmd}`}
+              >
+                <span>⚡</span>
+                <span>{cleanCmd}</span>
+              </button>
+              {punctuation}
+            </span>
+          );
+        }
+      }
+
       return part;
     });
   };
@@ -61588,7 +61696,7 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
 
 
 // ── Interactive Question Buttons Grid Card Component ────────────────────────
-function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCommands = [] }) {
+function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCommands = [], filterCategory = "all", allowedCmds = [], title }) {
   const categories = [
     {
       title: "📊 Live Registrations & Analytics",
@@ -61698,6 +61806,29 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
     }
   });
 
+  // Filter categories and items if allowedCmds or filterCategory specified
+  const cleanAllowed = (allowedCmds || []).map(c => String(c).toLowerCase().trim()).filter(Boolean);
+
+  let activeCategories = categories.map(cat => {
+    let items = cat.items;
+    if (cleanAllowed.length > 0) {
+      items = items.filter(i => cleanAllowed.includes((i.cmd || "").toLowerCase()));
+    }
+    return { ...cat, items };
+  });
+
+  if (filterCategory && filterCategory !== "all") {
+    activeCategories = activeCategories.filter(cat => {
+      const cTitle = cat.title.toLowerCase();
+      if (filterCategory === "forms") return cTitle.includes("form") || cTitle.includes("application");
+      if (filterCategory === "donations") return cTitle.includes("donation") || cTitle.includes("donor");
+      if (filterCategory === "registrations") return cTitle.includes("registration") || cTitle.includes("analytics");
+      if (filterCategory === "committee") return cTitle.includes("committee") || cTitle.includes("leadership");
+      if (filterCategory === "events") return cTitle.includes("event") || cTitle.includes("guideline");
+      return cTitle.includes(filterCategory.toLowerCase());
+    });
+  }
+
   return (
     <div style={{
       marginTop: 8,
@@ -61712,12 +61843,12 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
     }}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #F1F5F9",paddingBottom:6}}>
         <span style={{fontSize:".82rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
-          <span>🔘</span> Interactive Question Buttons:
+          <span>🔘</span> {title ? `${title} Shortcuts:` : "Interactive Question Buttons:"}
         </span>
         <span style={{fontSize:".7rem",color:"#64748B",fontWeight:600}}>Click any button below 👇</span>
       </div>
 
-      {categories.map((cat, cIdx) => {
+      {activeCategories.map((cat, cIdx) => {
         const visibleItems = cat.items.filter(item => {
           if (item.adminOnly && !isAnyAdmin) return false;
           if (item.collectorOnly && !isDonationCollector && !isAnyAdmin) return false;
@@ -63987,6 +64118,24 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                       setSlashSubmenu("vibhags");
                     } else if (btn.type === "open_url") {
                       if (btn.command) window.open(btn.command, "_blank");
+                    } else if (btn.type === "show_buttons_list") {
+                      const displayTitle = btn.label;
+                      setMessages(prev => [
+                        ...prev,
+                        { id: "m_u_" + Date.now(), sender: "user", text: displayTitle },
+                        {
+                          id: "m_b_" + Date.now(),
+                          sender: "bot",
+                          type: "question_buttons_card",
+                          text: btn.customText || `Here are the available shortcut buttons for **${displayTitle}**. Simply tap any button below:`,
+                          cardData: {
+                            filterCategory: btn.filterCategory || "all",
+                            allowedCmds: Array.isArray(btn.allowedCmds) ? btn.allowedCmds : [],
+                            title: displayTitle
+                          },
+                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        }
+                      ]);
                     } else {
                       handleSendMessage(btn.command, btn.label);
                     }
@@ -64076,6 +64225,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                             isAnyAdmin={isAnyAdmin}
                             isDonationCollector={isDonationCollector}
                             allCommands={ALL_SLASH_COMMANDS}
+                            filterCategory={m.cardData?.filterCategory}
+                            allowedCmds={m.cardData?.allowedCmds}
+                            title={m.cardData?.title}
                           />
                         )}
 
