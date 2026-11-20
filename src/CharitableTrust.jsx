@@ -27531,8 +27531,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
       customWaSignatory: kbForm.customWaSignatory || "",
       customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
       customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
-      attachedFormId: kbForm.actionType === "form" ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
-      storageDestination: kbForm.storageDestination || (kbForm.actionType === "form" ? "registrations" : "donations"),
+      attachedFormId: (kbForm.actionType === "form" || kbForm.actionType === "summary") ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
+      storageDestination: kbForm.storageDestination || ((kbForm.actionType === "form" || kbForm.actionType === "summary") ? "registrations" : "donations"),
       selectedFields: (Array.isArray(kbForm.selectedFields) && kbForm.selectedFields.length > 0) ? kbForm.selectedFields : ["name", "amount", "vibhag"],
       fieldActions: kbForm.fieldActions || {
         name: "distinct_count",
@@ -29245,6 +29245,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 if (newObj.attachedFormId === "builtin_offline_donation") {
                                   newObj.attachedFormId = "";
                                 }
+                              } else if (cap.type === "summary") {
+                                newObj.storageDestination = "registrations";
+                                newObj.roleAccess = "vibhag_admin";
+                                newObj.adminOnly = true;
+                                if (!newObj.summaryType || newObj.summaryType === "offline_form") {
+                                  newObj.summaryType = "summary";
+                                }
                               }
                               setKbForm(newObj);
                             }}
@@ -30774,8 +30781,8 @@ function ChatbotAccessManager({ C, setC, auth }) {
                       </div>
                     )}
 
-                    {/* A. If Action Type is INTERACTIVE FORM */}
-                    {kbForm.actionType === "form" && (
+                    {/* A. If Action Type is INTERACTIVE FORM OR SUMMARY */}
+                    {(kbForm.actionType === "form" || kbForm.actionType === "summary") && (
                       <div style={{
                         background: "#F0FDF4",
                         border: "2px solid #86EFAC",
@@ -30788,10 +30795,10 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         {/* Header Banner */}
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                           <div style={{fontSize:".92rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
-                            <span>📝</span> Interactive Form & Submissions Flow Setup:
+                            <span>{kbForm.actionType === "summary" ? "📊" : "📝"}</span> {kbForm.actionType === "summary" ? "Registrations Analytics & Submissions Flow Setup:" : "Interactive Form & Submissions Flow Setup:"}
                           </div>
                           <span style={{fontSize:".72rem",background:"#DCFCE7",color:"#166534",padding:"3px 8px",borderRadius:6,fontWeight:800}}>
-                            Step 2 of Flow: Form & Output Configuration
+                            {kbForm.actionType === "summary" ? "Step 2 of Flow: Scoped Analytics & Output Layout" : "Step 2 of Flow: Form & Output Configuration"}
                           </span>
                         </div>
 
@@ -32440,168 +32447,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                       </div>
                     )}
 
-                    {/* B. If Action Type is LIVE ANALYTICS & SUMMARY */}
-                    {kbForm.actionType === "summary" && (
-                      <div style={{
-                        background: "#EFF6FF",
-                        border: "1.5px solid #93C5FD",
-                        borderRadius: 12,
-                        padding: "18px 20px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 14
-                      }}>
-                        <div style={{fontSize:".86rem",fontWeight:800,color:"#1D4ED8",display:"flex",alignItems:"center",gap:8}}>
-                          <span>📊</span> Live Analytics & Scoped Metrics Setup:
-                        </div>
 
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:14}}>
-                          {/* 1. Summary Metric Type */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
-                              1. Select Metric / Summary Type:
-                            </label>
-                            <select
-                              value={kbForm.summaryType || "donation"}
-                              onChange={e => {
-                                const val = e.target.value;
-                                setKbForm({
-                                  ...kbForm,
-                                  summaryType: val,
-                                  roleAccess: (val === "donation" || val === "donor_list") ? "donation_collector" : "vibhag_admin"
-                                });
-                              }}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #93C5FD",fontSize:".85rem",fontWeight:800,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
-                            >
-                              <option value="donation">💰 Vibhag Donation Collection Summary (Cash/Cheque + Online splits)</option>
-                              <option value="donor_list">📋 Person-wise Donor Registry (Numbered list with WhatsApp broadcast)</option>
-                              <option value="registrations">📈 All Student Registrations Summary (Totals, Approved, Pending metrics)</option>
-                              <option value="pending">⏳ Pending Review Registrations (Awaiting document verification)</option>
-                              <option value="approved">🟢 Approved Registrations List (Verified students)</option>
-                            </select>
-                          </div>
-
-                          {/* 2. WhatsApp Template for Broadcast (if donation summary or donor list) */}
-                          <div>
-                            <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
-                              2. Optional WhatsApp Broadcast Template (1-click Share & QR):
-                            </label>
-                            <select
-                              value={kbForm.attachedWhatsAppTplId || ""}
-                              onChange={e => {
-                                const tId = e.target.value;
-                                const allTpls = [...DEFAULT_WA_TEMPLATES, ...(C.whatsappBroadcastTemplates || [])];
-                                const sel = allTpls.find(t => t.id === tId);
-                                setKbForm({
-                                  ...kbForm,
-                                  attachedWhatsAppTplId: tId,
-                                  customWaHeader: sel ? sel.header : kbForm.customWaHeader,
-                                  customWaAppeal: sel ? sel.appeal : kbForm.customWaAppeal,
-                                  customWaSignatory: sel ? (sel.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી") : kbForm.customWaSignatory,
-                                  customWaUpiId: sel ? (sel.upiId || "mumba98697331@barodampay") : kbForm.customWaUpiId,
-                                  customWaIncludeQr: sel ? (sel.includeGPay !== false) : kbForm.customWaIncludeQr
-                                });
-                              }}
-                              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid #93C5FD",fontSize:".85rem",fontWeight:700,background:"white",boxSizing:"border-box",color:"#0F172A",cursor:"pointer"}}
-                            >
-                              <option value="">-- No Attached WhatsApp Template --</option>
-                              <option value="tpl_donor_summary">📊 Live Vibhag Donation Collection Summary (for /don_summary)</option>
-                              <option value="tpl_edu_appeal">🎓 Education Felicitation Donation Appeal</option>
-                              <option value="tpl_general_donation">💰 General Community Donation & QR Pay</option>
-                              {(C.whatsappBroadcastTemplates || []).map(t => (
-                                <option key={t.id} value={t.id}>
-                                  📱 {t.name || t.id}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Inline WhatsApp Message Customizer if Template Attached */}
-                        {kbForm.attachedWhatsAppTplId && (
-                          <div style={{background:"white",border:"1px solid #93C5FD",borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:10}}>
-                            <div style={{fontSize:".78rem",fontWeight:800,color:"#1D4ED8",display:"flex",alignItems:"center",gap:6}}>
-                              <span>✏️</span> Customize Broadcast Message for this Summary:
-                            </div>
-                            <textarea
-                              rows={3}
-                              value={kbForm.customWaAppeal !== undefined ? kbForm.customWaAppeal : ""}
-                              onChange={e => setKbForm({ ...kbForm, customWaAppeal: e.target.value })}
-                              placeholder="Enter custom appeal message to accompany the live totals..."
-                              style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem",fontFamily:"inherit",boxSizing:"border-box"}}
-                            />
-                            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",fontSize:".74rem",color:"#475569"}}>
-                              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontWeight:700}}>
-                                <input
-                                  type="checkbox"
-                                  checked={kbForm.customWaIncludeQr !== false}
-                                  onChange={e => setKbForm({ ...kbForm, customWaIncludeQr: e.target.checked })}
-                                  style={{cursor:"pointer",accentColor:"#2563EB"}}
-                                />
-                                Include Bank QR & Pay Link
-                              </label>
-                              <span style={{color:"#64748B"}}>UPI: <strong>{kbForm.customWaUpiId || "mumba98697331@barodampay"}</strong></span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 3. Event Scope Filter */}
-                        <div>
-                          <label style={{fontSize:".75rem",fontWeight:800,color:"#1D4ED8",display:"block",marginBottom:6}}>
-                            3. Event Scope Filter (Select one or more events to scope the metrics):
-                          </label>
-                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                            <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"white",padding:"6px 12px",borderRadius:6,border: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "1.5px solid #2563EB" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:800,cursor:"pointer",color: (!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')) ? "#1D4ED8" : "#475569"}}>
-                              <input
-                                type="checkbox"
-                                checked={!kbForm.targetEventIds || kbForm.targetEventIds.length === 0 || kbForm.targetEventIds.includes('all')}
-                                onChange={(e) => {
-                                  if (e.target.checked) setKbForm({ ...kbForm, targetEventIds: ['all'] });
-                                  else setKbForm({ ...kbForm, targetEventIds: [] });
-                                }}
-                                style={{cursor:"pointer",accentColor:"#2563EB"}}
-                              />
-                              <span>🌐 All Events Combined</span>
-                            </label>
-
-                            {(C.events || []).map(evItem => {
-                              const evKey = evItem.id || evItem.title;
-                              const isSelected = Array.isArray(kbForm.targetEventIds) && kbForm.targetEventIds.includes(evKey);
-                              return (
-                                <label key={evKey} style={{display:"inline-flex",alignItems:"center",gap:6,background: isSelected ? "#DBEAFE" : "white",padding:"6px 12px",borderRadius:6,border: isSelected ? "1.5px solid #2563EB" : "1px solid #CBD5E1",fontSize:".78rem",fontWeight:700,cursor:"pointer",color: isSelected ? "#1E40AF" : "#334155"}}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      const cur = Array.isArray(kbForm.targetEventIds) ? kbForm.targetEventIds.filter(x => x !== 'all') : [];
-                                      let updated = e.target.checked ? [...cur, evKey] : cur.filter(x => x !== evKey);
-                                      if (updated.length === 0) updated = ['all'];
-                                      setKbForm({ ...kbForm, targetEventIds: updated });
-                                    }}
-                                    style={{cursor:"pointer",accentColor:"#2563EB"}}
-                                  />
-                                  <span>📌 {evItem.title || evItem.id}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Answer text */}
-                        <div>
-                          <label style={{fontSize:".75rem",fontWeight:700,color:"#1D4ED8",display:"block",marginBottom:4}}>
-                            4. Custom Header / Guidance (Optional):
-                          </label>
-                          <input
-                            type="text"
-                            value={kbForm.answer || ""}
-                            onChange={e => setKbForm({ ...kbForm, answer: e.target.value })}
-                            placeholder="e.g. 📊 Real-time breakdown of total collections and Vibhag-by-Vibhag financial metrics."
-                            style={{width:"100%",padding:"9px 12px",borderRadius:6,border:"1px solid #93C5FD",fontSize:".85rem",boxSizing:"border-box"}}
-                          />
-                        </div>
-                      </div>
-                    )}
 
                     {/* C. If Action Type is WORKSPACE & PASSES DISPATCHER */}
                     {kbForm.actionType === "workspace" && (
@@ -61634,7 +61480,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         matchedKb.actionType === "donation_summary" ||
         (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
         (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations")) ||
-        (matchedKb.actionType === "summary" && (matchedKb.summaryType === "donation" || matchedKb.summaryType === "donations") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry") ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.summaryType !== "pending" && matchedKb.summaryType !== "approved") ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry")
       ))
     );
@@ -61657,7 +61503,11 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
     );
 
     if (isDonSummary) {
-      const isFormSummary = matchedKb && matchedKb.actionType === "form";
+      const isFormSummary = matchedKb && (
+        matchedKb.actionType === "form" ||
+        matchedKb.storageDestination === "registrations" ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType !== "donation" && matchedKb.summaryType !== "donations")
+      );
       const reqRole = matchedKb?.roleAccess || (isFormSummary ? "vibhag_admin" : "donation_collector");
       const isPermitted =
         reqRole === "public" ||
@@ -61879,7 +61729,11 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         }
       }
     } else if (isDonorList) {
-      const isFormList = matchedKb && matchedKb.actionType === "form";
+      const isFormList = matchedKb && (
+        matchedKb.actionType === "form" ||
+        matchedKb.storageDestination === "registrations" ||
+        (matchedKb.actionType === "summary" && matchedKb.storageDestination !== "donations")
+      );
       const reqRole = matchedKb?.roleAccess || (isFormList ? "vibhag_admin" : "donation_collector");
       const isPermitted =
         reqRole === "public" ||
