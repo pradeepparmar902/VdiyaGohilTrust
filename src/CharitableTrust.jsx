@@ -27478,10 +27478,16 @@ function ChatbotAccessManager({ C, setC, auth }) {
     if (!cleanCmd.startsWith("/")) cleanCmd = "/" + cleanCmd;
     if (!kbForm.title || !kbForm.title.trim()) return alert("Please enter a Question / Title Label.");
 
+    const effectiveActionType = (kbForm.summaryType === "offline_form" || (kbForm.actionType === "form" && kbForm.summaryType !== "donor_list" && kbForm.summaryType !== "summary"))
+      ? "form"
+      : (kbForm.actionType || "donation");
+
     // Generate intelligent default answer based on chosen capability if empty
     let finalAnswer = (kbForm.answer || "").trim();
-    if (!finalAnswer) {
-      if (kbForm.actionType === "donation") {
+    if (!finalAnswer || (effectiveActionType === "form" && finalAnswer.includes("Live real-time summary"))) {
+      if (effectiveActionType === "form" || kbForm.summaryType === "offline_form") {
+        finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease complete the interactive form below:`;
+      } else if (effectiveActionType === "donation") {
         if (kbForm.attachedFormId === "builtin_offline_donation") {
           finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease enter the offline donation details below:`;
         } else if (kbForm.summaryType === "donor_list") {
@@ -27489,15 +27495,13 @@ function ChatbotAccessManager({ C, setC, auth }) {
         } else {
           finalAnswer = `💰 **${kbForm.title.trim()}**\n\nReal-time Vibhag-wise Donation Summary:`;
         }
-      } else if (kbForm.actionType === "form") {
-        finalAnswer = `✍️ **${kbForm.title.trim()}**\n\nPlease complete the interactive form below:`;
-      } else if (kbForm.actionType === "summary") {
+      } else if (effectiveActionType === "summary") {
         finalAnswer = `📊 **${kbForm.title.trim()}**\n\nLive real-time summary metrics dashboard.`;
-      } else if (kbForm.actionType === "workspace") {
+      } else if (effectiveActionType === "workspace") {
         finalAnswer = `💌 **${kbForm.title.trim()}**\n\nSub-workspace contacts and personalized passes dispatcher.`;
-      } else if (kbForm.actionType === "whatsapp") {
+      } else if (effectiveActionType === "whatsapp") {
         finalAnswer = `📱 **${kbForm.title.trim()}**\n\nOfficial WhatsApp broadcast message:`;
-      } else if (kbForm.actionType === "committee") {
+      } else if (effectiveActionType === "committee") {
         finalAnswer = `🏛️ **${kbForm.title.trim()}**\n\nCentral Working Committee directory and verified contacts.`;
       } else {
         finalAnswer = `Information and guidance for ${kbForm.title.trim()}`;
@@ -27508,15 +27512,15 @@ function ChatbotAccessManager({ C, setC, auth }) {
       ? Number(kbForm.order) 
       : (editingKbId ? (kbList.find(k => k.id === editingKbId)?.order || 1) : (kbList.length + 1));
 
-    const defaultRole = kbForm.actionType === "donation" ? "donation_collector" : "public";
+    const defaultRole = effectiveActionType === "donation" ? "donation_collector" : "public";
 
     const payload = {
       ...kbForm,
       cmd: cleanCmd,
       title: kbForm.title.trim(),
       answer: finalAnswer,
-      actionType: kbForm.actionType || "donation",
-      summaryType: kbForm.summaryType || (kbForm.actionType === "form" ? "offline_form" : (kbForm.actionType === "summary" ? "summary" : "donation")),
+      actionType: effectiveActionType,
+      summaryType: kbForm.summaryType || (effectiveActionType === "form" ? "offline_form" : (effectiveActionType === "summary" ? "summary" : "donation")),
       columnOrder: kbForm.columnOrder || "count_first",
       fieldOrder: Array.isArray(kbForm.fieldOrder) ? kbForm.fieldOrder : [],
       groupedCols: Array.isArray(kbForm.groupedCols) ? kbForm.groupedCols : [],
@@ -60446,13 +60450,13 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                     <label style={{fontSize:".74rem",fontWeight:800,color:"#15803D",textAlign:"left",whiteSpace:"nowrap"}}>
-                      દાતાનું નામ (ગુજરાતી) *
+                      {destination === "registrations" ? "અરજદાર / સભ્યનું નામ (ગુજરાતી) *" : "દાતાનું નામ (ગુજરાતી) *"}
                     </label>
                     <span style={{fontSize:".62rem",color:"#166534",background:"#DCFCE7",padding:"1px 6px",borderRadius:4,fontWeight:700}}>✏️ Edit if needed</span>
                   </div>
                   <input
                     type="text"
-                    placeholder="દાતાનું ગુજરાતી નામ (e.g. પ્રદીપ પરમાર)"
+                    placeholder={destination === "registrations" ? "અરજદારનું ગુજરાતી નામ (e.g. પ્રદીપ પરમાર)" : "દાતાનું ગુજરાતી નામ (e.g. પ્રદીપ પરમાર)"}
                     value={nameGu}
                     onChange={e => setNameGu(e.target.value)}
                     style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1.5px solid #86EFAC",fontSize:".9rem",fontWeight:700,color:"#14532D",background:"#F0FDF4",boxSizing:"border-box"}}
@@ -61481,8 +61485,23 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       return false;
     });
 
+    // ── Interactive Form Trigger Check (High Priority) ──
+    const isInteractiveFormTrigger = Boolean(
+      matchedKb && (
+        matchedKb.summaryType === "offline_form" ||
+        (matchedKb.actionType === "form" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry") ||
+        (matchedKb.attachedFormId && matchedKb.attachedFormId !== "all" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && (
+          matchedKb.actionType === "form" ||
+          matchedKb.summaryType === "offline_form" ||
+          matchedKb.cmd?.toLowerCase().includes("form") ||
+          matchedKb.title?.toLowerCase().includes("form") ||
+          qLower.includes("form")
+        ))
+      )
+    );
+
     // ── Command 2: Person-wise Donor / Form Registry ──
-    const isDonorList = (
+    const isDonorList = !isInteractiveFormTrigger && (
       qLower === "/don_list" || qLower === "don_list" || qLower === "/don list" ||
       qLower === "/donerlist" || qLower === "/donorlist" || qLower === "/donnerlist" ||
       qLower === "donerlist" || qLower === "donorlist" || qLower === "donnerlist" ||
@@ -61500,7 +61519,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
     );
 
     // ── Command 1: Live Vibhag Donation / Form Summary ──
-    const isDonSummary = !isDonorList && (
+    const isDonSummary = !isDonorList && !isInteractiveFormTrigger && (
       qLower === "/don_summary" || qLower === "don_summary" || qLower === "/don summary" ||
       qLower === "/donation sumary" || qLower === "/donation summary" || qLower === "donation sumary" || qLower === "donation summary" ||
       qLower === "/donationsummary" || qLower === "/donationsumary" ||
@@ -61509,8 +61528,8 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
         (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
-        (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations") && !matchedKb.attachedFormId && matchedKb.summaryType !== "offline_form") ||
-        (matchedKb.actionType === "summary" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.summaryType !== "pending" && matchedKb.summaryType !== "approved") ||
+        (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations") && !matchedKb.attachedFormId && matchedKb.summaryType !== "offline_form" && !matchedKb.cmd?.toLowerCase().includes("form") && !matchedKb.title?.toLowerCase().includes("form") && !qLower.includes("form")) ||
+        (matchedKb.actionType === "summary" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.summaryType !== "pending" && matchedKb.summaryType !== "approved" && (!matchedKb.attachedFormId || matchedKb.attachedFormId === "all") && !matchedKb.cmd?.toLowerCase().includes("form") && !matchedKb.title?.toLowerCase().includes("form") && !qLower.includes("form")) ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry")
       ))
     );
@@ -62317,6 +62336,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       if (!isPermitted) {
         botReply = `🔒 **Access Restricted**\n\nThis action / form is restricted to **${reqRole === "donation_collector" ? "Donation Collectors" : reqRole === "vibhag_admin" ? "Vibhag Admins" : "Super Admins"}**.\n\n👉 Please enter your authorized mobile number to unlock.`;
       } else if (
+        isInteractiveFormTrigger ||
         matchedKb.summaryType === "offline_form" ||
         (matchedKb.actionType === "form" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry") ||
         (matchedKb.actionType === "donation" && (matchedKb.attachedFormId === "builtin_offline_donation" || matchedKb.summaryType === "offline_form"))
@@ -62335,7 +62355,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
                   (scopedEvents.some(ev => String(f.name || '').toLowerCase().includes(String(ev).toLowerCase()) || String(f.id || '').toLowerCase().includes(String(ev).toLowerCase())))
                 )) || (C.events || []).map(ev => (C.forms || []).find(f => f.id === ev.formId)).filter(Boolean)[0] || { name: matchedKb.title, id: matchedKb.attachedFormId }));
 
-        let defaultPurpose = matchedKb.actionType === "form" ? (formDef?.name || "Event Registration") : "General Donation";
+        let defaultPurpose = (matchedKb.actionType === "form" || isInteractiveFormTrigger) ? (formDef?.name || "Event Registration") : "General Donation";
         let defaultEventCode = "GEN";
         if (scopedEvents.length > 0 && scopedEvents[0] !== "all") {
           const evOpt = getDistinctEventOptions(C).find(e => e.id === scopedEvents[0] || e.code === scopedEvents[0] || e.title === scopedEvents[0]);
@@ -62353,9 +62373,9 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         botReply = matchedKb.title ? `📝 **${matchedKb.title}**` : "Please fill out the form below:";
         cardData = {
           formDef,
-          destination: matchedKb.storageDestination || (matchedKb.actionType === "form" ? "registrations" : "donations"),
+          destination: matchedKb.storageDestination || ((matchedKb.actionType === "form" || isInteractiveFormTrigger) ? "registrations" : "donations"),
           introTitle: matchedKb.title || formDef?.name,
-          introText: matchedKb.answer,
+          introText: (matchedKb.answer && !matchedKb.answer.includes("Live real-time summary") && !matchedKb.answer.includes("Real-time Vibhag-wise")) ? matchedKb.answer : "Please complete the interactive form below:",
           attachedFormId: matchedKb.attachedFormId || formDef?.id,
           attachedWhatsAppTplId: matchedKb.attachedWhatsAppTplId,
           defaultPurpose,
