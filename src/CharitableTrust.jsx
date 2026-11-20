@@ -27516,7 +27516,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
       title: kbForm.title.trim(),
       answer: finalAnswer,
       actionType: kbForm.actionType || "donation",
-      summaryType: kbForm.summaryType || "donation",
+      summaryType: kbForm.summaryType || (kbForm.actionType === "form" ? "offline_form" : (kbForm.actionType === "summary" ? "summary" : "donation")),
       columnOrder: kbForm.columnOrder || "count_first",
       fieldOrder: Array.isArray(kbForm.fieldOrder) ? kbForm.fieldOrder : [],
       groupedCols: Array.isArray(kbForm.groupedCols) ? kbForm.groupedCols : [],
@@ -29242,6 +29242,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 newObj.storageDestination = "registrations";
                                 newObj.roleAccess = "public";
                                 newObj.adminOnly = false;
+                                newObj.summaryType = "offline_form";
                                 if (newObj.attachedFormId === "builtin_offline_donation") {
                                   newObj.attachedFormId = "";
                                 }
@@ -29249,9 +29250,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 newObj.storageDestination = "registrations";
                                 newObj.roleAccess = "vibhag_admin";
                                 newObj.adminOnly = true;
-                                if (!newObj.summaryType || newObj.summaryType === "offline_form") {
-                                  newObj.summaryType = "summary";
-                                }
+                                newObj.summaryType = "summary";
                               }
                               setKbForm(newObj);
                             }}
@@ -30803,116 +30802,133 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         </div>
 
                         {/* 1. SELECT FORM OUTPUT MODE */}
-                        <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
-                            <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
-                              <span>🎯</span> 1. Select Form Output Mode (Choose Submissions Summary vs Registry vs Interactive Entry):
-                            </label>
-                            <span style={{fontSize:".74rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
-                              Mode: {kbForm.summaryType === "offline_form" ? "Interactive Entry Form" : (kbForm.summaryType === "donor_list" ? "Person-wise Submissions Registry" : "Form Submissions Summary")}
-                            </span>
-                          </div>
+                        {(() => {
+                          const currentMode = kbForm.summaryType === "donor_list"
+                            ? "donor_list"
+                            : ((kbForm.summaryType === "summary" && kbForm.actionType === "summary")
+                              ? "summary"
+                              : (kbForm.summaryType === "offline_form" || kbForm.actionType === "form"
+                                ? "offline_form"
+                                : (kbForm.actionType === "summary" ? "summary" : "offline_form")));
 
-                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:10}}>
-                            {/* Option 1: Form Submissions Summary */}
-                            <div
-                              onClick={() => {
-                                setKbForm({
-                                  ...kbForm,
-                                  summaryType: "summary",
-                                  roleAccess: kbForm.roleAccess || "vibhag_admin"
-                                });
-                              }}
-                              style={{
-                                border: (kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType) ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
-                                background: (kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType) ? "#F0FDF4" : "white",
-                                borderRadius: 8,
-                                padding: "10px 14px",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease"
-                              }}
-                            >
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📊 Form Submissions Summary</span>
-                                <input
-                                  type="radio"
-                                  name="formOutputModeSelector"
-                                  checked={kbForm.summaryType === "summary" || kbForm.summaryType === "donation" || !kbForm.summaryType}
-                                  onChange={() => {}}
-                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
-                                />
+                          return (
+                            <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                                <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+                                  <span>🎯</span> 1. Select Form Output Mode (Choose Interactive Entry vs Submissions Summary vs Registry):
+                                </label>
+                                <span style={{fontSize:".74rem",color:"#166534",background:"#DCFCE7",padding:"2px 8px",borderRadius:4,fontWeight:800}}>
+                                  Mode: {currentMode === "offline_form" ? "✍️ Interactive Entry Form" : (currentMode === "donor_list" ? "📋 Person-wise Submissions Registry" : "📊 Form Submissions Summary")}
+                                </span>
                               </div>
-                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
-                                Live submission totals, Vibhag-by-Vibhag breakdown table, verification status splits & WhatsApp summary.
-                              </p>
-                            </div>
 
-                            {/* Option 2: Person-wise Submissions Registry */}
-                            <div
-                              onClick={() => {
-                                setKbForm({
-                                  ...kbForm,
-                                  summaryType: "donor_list",
-                                  roleAccess: kbForm.roleAccess || "vibhag_admin"
-                                });
-                              }}
-                              style={{
-                                border: kbForm.summaryType === "donor_list" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
-                                background: kbForm.summaryType === "donor_list" ? "#F0FDF4" : "white",
-                                borderRadius: 8,
-                                padding: "10px 14px",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease"
-                              }}
-                            >
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📋 Person-wise Submissions Registry</span>
-                                <input
-                                  type="radio"
-                                  name="formOutputModeSelector"
-                                  checked={kbForm.summaryType === "donor_list"}
-                                  onChange={() => {}}
-                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
-                                />
-                              </div>
-                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
-                                Numbered list of individual registered applicants (૧. રમેશભાઈ... ૨. વિનોદભાઈ...) with dynamic custom fields & 1-click WhatsApp share.
-                              </p>
-                            </div>
+                              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:10}}>
+                                {/* Option 1: Interactive Form Entry Form */}
+                                <div
+                                  onClick={() => {
+                                    setKbForm({
+                                      ...kbForm,
+                                      summaryType: "offline_form",
+                                      roleAccess: "public",
+                                      adminOnly: false
+                                    });
+                                  }}
+                                  style={{
+                                    border: currentMode === "offline_form" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                    background: currentMode === "offline_form" ? "#F0FDF4" : "white",
+                                    borderRadius: 8,
+                                    padding: "10px 14px",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    boxShadow: currentMode === "offline_form" ? "0 2px 6px rgba(22,163,74,0.18)" : "none"
+                                  }}
+                                >
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                    <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>✍️ Interactive Form Entry in Chatbot</span>
+                                    <input
+                                      type="radio"
+                                      name="formOutputModeSelector"
+                                      checked={currentMode === "offline_form"}
+                                      onChange={() => {}}
+                                      style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                    />
+                                  </div>
+                                  <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                    Interactive form presented inside the chatbot for applicants or collectors to fill and save directly into database.
+                                  </p>
+                                </div>
 
-                            {/* Option 3: Interactive Form Entry Form */}
-                            <div
-                              onClick={() => {
-                                setKbForm({
-                                  ...kbForm,
-                                  summaryType: "offline_form"
-                                });
-                              }}
-                              style={{
-                                border: kbForm.summaryType === "offline_form" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
-                                background: kbForm.summaryType === "offline_form" ? "#F0FDF4" : "white",
-                                borderRadius: 8,
-                                padding: "10px 14px",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease"
-                              }}
-                            >
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                                <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>✍️ Interactive Form Entry in Chatbot</span>
-                                <input
-                                  type="radio"
-                                  name="formOutputModeSelector"
-                                  checked={kbForm.summaryType === "offline_form"}
-                                  onChange={() => {}}
-                                  style={{accentColor:"#16A34A",cursor:"pointer"}}
-                                />
+                                {/* Option 2: Form Submissions Summary */}
+                                <div
+                                  onClick={() => {
+                                    setKbForm({
+                                      ...kbForm,
+                                      summaryType: "summary",
+                                      roleAccess: kbForm.roleAccess || "vibhag_admin"
+                                    });
+                                  }}
+                                  style={{
+                                    border: currentMode === "summary" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                    background: currentMode === "summary" ? "#F0FDF4" : "white",
+                                    borderRadius: 8,
+                                    padding: "10px 14px",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    boxShadow: currentMode === "summary" ? "0 2px 6px rgba(22,163,74,0.18)" : "none"
+                                  }}
+                                >
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                    <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📊 Form Submissions Summary</span>
+                                    <input
+                                      type="radio"
+                                      name="formOutputModeSelector"
+                                      checked={currentMode === "summary"}
+                                      onChange={() => {}}
+                                      style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                    />
+                                  </div>
+                                  <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                    Live submission totals, Vibhag-by-Vibhag breakdown table, verification status splits & WhatsApp summary.
+                                  </p>
+                                </div>
+
+                                {/* Option 3: Person-wise Submissions Registry */}
+                                <div
+                                  onClick={() => {
+                                    setKbForm({
+                                      ...kbForm,
+                                      summaryType: "donor_list",
+                                      roleAccess: kbForm.roleAccess || "vibhag_admin"
+                                    });
+                                  }}
+                                  style={{
+                                    border: currentMode === "donor_list" ? "2px solid #16A34A" : "1.5px solid #CBD5E1",
+                                    background: currentMode === "donor_list" ? "#F0FDF4" : "white",
+                                    borderRadius: 8,
+                                    padding: "10px 14px",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    boxShadow: currentMode === "donor_list" ? "0 2px 6px rgba(22,163,74,0.18)" : "none"
+                                  }}
+                                >
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                                    <span style={{fontSize:".83rem",fontWeight:800,color:"#166534"}}>📋 Person-wise Submissions Registry</span>
+                                    <input
+                                      type="radio"
+                                      name="formOutputModeSelector"
+                                      checked={currentMode === "donor_list"}
+                                      onChange={() => {}}
+                                      style={{accentColor:"#16A34A",cursor:"pointer"}}
+                                    />
+                                  </div>
+                                  <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
+                                    Numbered list of individual registered applicants (૧. રમેશભાઈ... ૨. વિનોદભાઈ...) with dynamic custom fields & 1-click WhatsApp share.
+                                  </p>
+                                </div>
                               </div>
-                              <p style={{fontSize:".73rem",color:"#64748B",margin:0,lineHeight:1.35}}>
-                                Interactive form presented inside the chatbot for applicants or collectors to fill and save directly into database.
-                              </p>
                             </div>
-                          </div>
-                        </div>
+                          );
+                        })()}
 
                         {/* 2. THREE-AREA SEGREGATED CONNECTION & STORAGE PIPELINE */}
                         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -31338,7 +31354,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         </div>
 
                         {/* Interactive Form Live Preview Card (Shown when offline_form is active) */}
-                        {kbForm.summaryType === "offline_form" && (
+                        {(kbForm.summaryType === "offline_form" || (kbForm.actionType === "form" && kbForm.summaryType !== "summary" && kbForm.summaryType !== "donor_list")) && (
                           <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
                               <label style={{fontSize:".84rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
@@ -31410,7 +31426,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         )}
 
                         {/* 3. DYNAMIC FIELD EXTRACTION & AGGREGATION LAYOUT TABLE (Shown for Summary & Registry modes) */}
-                        {kbForm.summaryType !== "offline_form" && (
+                        {(kbForm.summaryType === "summary" || kbForm.summaryType === "donor_list" || (kbForm.actionType === "summary" && kbForm.summaryType !== "offline_form")) && (
                           <div style={{background:"white",border:"2px solid #86EFAC",borderRadius:10,padding:14,boxShadow:"0 2px 6px rgba(22,101,52,0.08)"}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
                               <label style={{fontSize:".82rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
@@ -60206,7 +60222,13 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
   const fields = Array.isArray(activeFormDef?.fields) && activeFormDef.fields.length > 0 ? activeFormDef.fields : null;
 
   // If no custom fields, render fallback standard fields
-  const standardFields = [
+  const standardFields = destination === "registrations" ? [
+    { label: "Full Name", type: "text", required: true, placeholder: "Enter applicant / student name" },
+    { label: "Mobile Number", type: "tel", required: true, placeholder: "10-digit mobile number" },
+    { label: "Vibhag", type: "select", required: true, options: vibhagList },
+    { label: "Stream / Standard", type: "text", required: false, placeholder: "e.g. 10th / 12th / B.Com / Engineering" },
+    { label: "Obtained Marks / %", type: "text", required: false, placeholder: "e.g. 85%" }
+  ] : [
     { label: "Full Name", type: "text", required: true, placeholder: "Enter donor / applicant name" },
     { label: "Mobile Number", type: "tel", required: true, placeholder: "10-digit mobile number" },
     { label: "Date", type: "date", required: true, defaultValue: new Date().toISOString().split("T")[0] },
@@ -60304,15 +60326,23 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
         if (onSubmitSuccess) onSubmitSuccess(donRecord);
       } else if (destination === "registrations") {
         const regRecord = {
-          eventId: activeFormDef?.id || "custom_reg",
+          eventId: activeFormDef?.eventId || activeFormDef?.eventCode || activeFormDef?.id || "custom_reg",
+          eventName: activeFormDef?.name || "Event Registration",
           eventTitle: activeFormDef?.name || "Event Registration",
           submitterMob: userPhone,
+          Status: "Pending",
+          status: "Pending",
+          date: submitDate,
+          created_at: new Date().toISOString(),
+          formId: activeFormDef?.id || "custom_reg",
+          formName: activeFormDef?.name || "Event Registration",
           formData: {
             "Full Name": donorName,
             "Mobile Number": userPhone,
             "Vibhag": vibhagVal,
             ...formData
-          }
+          },
+          ...formData
         };
 
         const res = await fbSubmitRegistration(regRecord, idToken);
@@ -61479,7 +61509,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
         matchedKb.id === "kb_donationsummary" ||
         matchedKb.actionType === "donation_summary" ||
         (matchedKb.actionType === "donation" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.attachedFormId !== "builtin_offline_donation") ||
-        (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations")) ||
+        (matchedKb.actionType === "form" && (matchedKb.summaryType === "summary" || matchedKb.summaryType === "submissions_summary" || matchedKb.summaryType === "registrations") && !matchedKb.attachedFormId && matchedKb.summaryType !== "offline_form") ||
         (matchedKb.actionType === "summary" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry" && matchedKb.summaryType !== "offline_form" && matchedKb.summaryType !== "pending" && matchedKb.summaryType !== "approved") ||
         (matchedKb.title && matchedKb.title.toLowerCase().includes("donation summary") && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry")
       ))
@@ -62286,7 +62316,11 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
       if (!isPermitted) {
         botReply = `🔒 **Access Restricted**\n\nThis action / form is restricted to **${reqRole === "donation_collector" ? "Donation Collectors" : reqRole === "vibhag_admin" ? "Vibhag Admins" : "Super Admins"}**.\n\n👉 Please enter your authorized mobile number to unlock.`;
-      } else if (matchedKb.summaryType === "offline_form" || (matchedKb.actionType === "donation" && (matchedKb.attachedFormId === "builtin_offline_donation" || matchedKb.summaryType === "offline_form"))) {
+      } else if (
+        matchedKb.summaryType === "offline_form" ||
+        (matchedKb.actionType === "form" && matchedKb.summaryType !== "donor_list" && matchedKb.summaryType !== "registry") ||
+        (matchedKb.actionType === "donation" && (matchedKb.attachedFormId === "builtin_offline_donation" || matchedKb.summaryType === "offline_form"))
+      ) {
         const scopedEvents = matchedKb?.targetEventIds || ["all"];
         const formDef = (matchedKb.attachedFormId === "builtin_offline_donation" || (matchedKb.actionType === "donation" && !matchedKb.attachedFormId))
           ? { name: "Offline Donation Entry", id: "builtin_offline_donation" }
