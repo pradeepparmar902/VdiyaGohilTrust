@@ -28776,33 +28776,77 @@ function ChatbotAccessManager({ C, setC, auth }) {
                         </select>
 
                         {btnForm.filterCategory === "custom" && (
-                          <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:8,padding:"8px 10px",maxHeight:140,overflowY:"auto",display:"flex",flexDirection:"column",gap:5}}>
-                            <span style={{fontSize:".7rem",fontWeight:700,color:"#64748B"}}>Check each shortcut to include in this button's menu:</span>
-                            {kbList.map(k => {
-                              const checked = Array.isArray(btnForm.allowedCmds) && btnForm.allowedCmds.includes(k.cmd);
-                              return (
-                                <label key={k.id || k.cmd} style={{display:"flex",alignItems:"center",gap:6,fontSize:".75rem",cursor:"pointer",color:"#1E293B"}}>
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={e => {
-                                      const isChk = e.target.checked;
+                          <div style={{background:"#F8FAFC",border:"1.5px solid #CBD5E1",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                            <div>
+                              <span style={{fontSize:".75rem",fontWeight:800,color:"#1E293B",display:"block",marginBottom:4}}>
+                                ✏️ Enter Shortcut Keys (separated by comma):
+                              </span>
+                              <input
+                                type="text"
+                                value={Array.isArray(btnForm.allowedCmds) ? btnForm.allowedCmds.join(", ") : ""}
+                                onChange={e => {
+                                  const parts = e.target.value.split(",").map(p => p.trim()).filter(Boolean);
+                                  setBtnForm(prev => ({ ...prev, allowedCmds: parts }));
+                                }}
+                                placeholder="e.g. /don_6th, /don_summ_6thdec"
+                                style={{width:"100%",padding:"7px 10px",borderRadius:6,border:"1.5px solid #818CF8",fontSize:".82rem",fontWeight:700,background:"#FFFFFF"}}
+                              />
+                              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginTop:6}}>
+                                <span style={{fontSize:".68rem",color:"#64748B",fontWeight:600}}>⚡ 1-Click Quick Add:</span>
+                                {["/don_6th", "/don_summ_6thdec", "/donate", "/don_list", "/don_entry"].map(qc => (
+                                  <button
+                                    key={qc}
+                                    type="button"
+                                    onClick={() => {
                                       setBtnForm(prev => {
                                         const cur = Array.isArray(prev.allowedCmds) ? [...prev.allowedCmds] : [];
-                                        if (isChk) {
-                                          if (!cur.includes(k.cmd)) cur.push(k.cmd);
-                                        } else {
-                                          const idx = cur.indexOf(k.cmd);
-                                          if (idx !== -1) cur.splice(idx, 1);
-                                        }
+                                        const cleanQc = qc.startsWith("/") ? qc : `/${qc}`;
+                                        if (!cur.some(x => x.toLowerCase() === cleanQc.toLowerCase())) cur.push(cleanQc);
                                         return { ...prev, allowedCmds: cur };
                                       });
                                     }}
-                                  />
-                                  <span>{k.icon || "⚡"} <strong>{k.cmd}</strong> - {k.title || k.cmd}</span>
-                                </label>
-                              );
-                            })}
+                                    style={{fontSize:".68rem",padding:"2px 8px",borderRadius:5,border:"1px solid #CBD5E1",background:"#EEF2FF",cursor:"pointer",color:"#4338CA",fontWeight:700}}
+                                  >
+                                    + {qc}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div style={{borderTop:"1px dashed #CBD5E1",paddingTop:6}}>
+                              <span style={{fontSize:".7rem",fontWeight:700,color:"#64748B",display:"block",marginBottom:4}}>
+                                Or check from available questions & shortcuts:
+                              </span>
+                              <div style={{maxHeight:140,overflowY:"auto",display:"flex",flexDirection:"column",gap:5,paddingRight:4}}>
+                                {kbList.map(k => {
+                                  const cmdClean = (k.cmd || "").toLowerCase().replace(/^\//, "");
+                                  const checked = Array.isArray(btnForm.allowedCmds) && btnForm.allowedCmds.some(c => String(c).toLowerCase().replace(/^\//, "") === cmdClean);
+                                  return (
+                                    <label key={k.id || k.cmd} style={{display:"flex",alignItems:"center",gap:6,fontSize:".75rem",cursor:"pointer",color:"#1E293B"}}>
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={e => {
+                                          const isChk = e.target.checked;
+                                          setBtnForm(prev => {
+                                            const cur = Array.isArray(prev.allowedCmds) ? [...prev.allowedCmds] : [];
+                                            const targetCmd = k.cmd.startsWith("/") ? k.cmd : `/${k.cmd}`;
+                                            if (isChk) {
+                                              if (!cur.some(x => x.toLowerCase().replace(/^\//, "") === cmdClean)) cur.push(targetCmd);
+                                            } else {
+                                              const idx = cur.findIndex(x => x.toLowerCase().replace(/^\//, "") === cmdClean);
+                                              if (idx !== -1) cur.splice(idx, 1);
+                                            }
+                                            return { ...prev, allowedCmds: cur };
+                                          });
+                                        }}
+                                      />
+                                      <span>{k.icon || "⚡"} <strong>{k.cmd}</strong> - {k.title || k.cmd}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
                         )}
                         <span style={{fontSize:".7rem",color:"#64748B"}}>
@@ -61807,17 +61851,20 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
   });
 
   // Filter categories and items if allowedCmds or filterCategory specified
-  const cleanAllowed = (allowedCmds || []).map(c => String(c).toLowerCase().trim()).filter(Boolean);
+  const cleanAllowed = (allowedCmds || []).map(c => String(c).toLowerCase().trim().replace(/^\//, "")).filter(Boolean);
 
   let activeCategories = categories.map(cat => {
     let items = cat.items;
     if (cleanAllowed.length > 0) {
-      items = items.filter(i => cleanAllowed.includes((i.cmd || "").toLowerCase()));
+      items = items.filter(i => {
+        const itemCmdClean = (i.cmd || "").toLowerCase().trim().replace(/^\//, "");
+        return cleanAllowed.includes(itemCmdClean);
+      });
     }
     return { ...cat, items };
   });
 
-  if (filterCategory && filterCategory !== "all") {
+  if (filterCategory && filterCategory !== "all" && filterCategory !== "custom") {
     activeCategories = activeCategories.filter(cat => {
       const cTitle = cat.title.toLowerCase();
       if (filterCategory === "forms") return cTitle.includes("form") || cTitle.includes("application");
@@ -61827,6 +61874,41 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
       if (filterCategory === "events") return cTitle.includes("event") || cTitle.includes("guideline");
       return cTitle.includes(filterCategory.toLowerCase());
     });
+  }
+
+  // Keep only categories that have items
+  activeCategories = activeCategories.filter(cat => cat.items && cat.items.length > 0);
+
+  // If any allowedCmds were specified but not yet found in activeCategories, add them!
+  if (cleanAllowed.length > 0) {
+    const presentCmds = new Set();
+    activeCategories.forEach(cat => cat.items.forEach(it => presentCmds.add((it.cmd || "").toLowerCase().trim().replace(/^\//, ""))));
+    const missing = cleanAllowed.filter(c => !presentCmds.has(c));
+    if (missing.length > 0) {
+      const extraItems = missing.map(cmd => {
+        const withSlash = `/${cmd}`;
+        const kbMatch = (allCommands || []).find(k => (k.cmd || "").toLowerCase().trim().replace(/^\//, "") === cmd);
+        let niceLabel = kbMatch?.label || kbMatch?.title;
+        if (!niceLabel) {
+          if (cmd.includes("summ")) niceLabel = "Donation Summary";
+          else if (cmd.includes("don")) niceLabel = "Donation Form";
+          else niceLabel = cmd.replace(/_/g, " ");
+        }
+        return {
+          cmd: withSlash,
+          label: niceLabel,
+          icon: kbMatch?.icon || (cmd.includes("don") ? "💰" : "⚡"),
+          adminOnly: false
+        };
+      });
+      activeCategories.unshift({
+        title: "⚡ Quick Action Shortcuts",
+        color: "#059669",
+        bg: "#ECFDF5",
+        border: "#A7F3D0",
+        items: extraItems
+      });
+    }
   }
 
   return (
