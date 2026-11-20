@@ -26171,6 +26171,66 @@ export const renderRegFieldValue = (r, k) => {
   return String(getRegRowValue(r, k));
 };
 
+// ── Default Top Header Quick Action Buttons ─────────────────────────────────
+const DEFAULT_CHATBOT_QUICK_BUTTONS = [
+  {
+    id: "btn_questions",
+    icon: "⚡",
+    label: "Questions (/)",
+    type: "toggle_slash_menu",
+    command: "/",
+    roleAccess: "public",
+    enabled: true,
+    order: 1,
+    bgColor: "#1E293B",
+    textColor: "#FFFFFF",
+    borderColor: "#1E293B",
+    tooltip: "Open Question Commands Menu"
+  },
+  {
+    id: "btn_buttons",
+    icon: "🔘",
+    label: "Buttons",
+    type: "send_command",
+    command: "/buttons",
+    roleAccess: "public",
+    enabled: true,
+    order: 2,
+    bgColor: "#7C3AED",
+    textColor: "#FFFFFF",
+    borderColor: "#7C3AED",
+    tooltip: "Display Clickable Question Buttons in Chat"
+  },
+  {
+    id: "btn_all_entries",
+    icon: "📊",
+    label: "All Entries",
+    type: "send_command",
+    command: "Summary data of all entry ALL",
+    roleAccess: "admin",
+    enabled: true,
+    order: 3,
+    bgColor: "#EFF6FF",
+    textColor: "#1D4ED8",
+    borderColor: "#BFDBFE",
+    tooltip: "Summary data of all registrations"
+  },
+  {
+    id: "btn_vibhag",
+    icon: "📍",
+    label: "Vibhag #",
+    type: "open_vibhag_menu",
+    command: "/vibhag",
+    roleAccess: "admin",
+    enabled: true,
+    order: 4,
+    bgColor: "#FFFFFF",
+    textColor: "#1E293B",
+    borderColor: "#CBD5E1",
+    tooltip: "Select and filter by Vibhag"
+  }
+];
+
 function ChatbotAccessManager({ C, setC, auth }) {
   const [activeTab, setActiveTab] = useState("kb"); // Default to 1-Flow Question & Action Studio ("kb" / "studio")
   const [accessScope, setAccessScope] = useState("individual"); // Default to "individual" (Mobile/Txn only)
@@ -26188,6 +26248,30 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [tableSearchQuery, setTableSearchQuery] = useState("");
   const [isStudioOpen, setIsStudioOpen] = useState(true);
   const [showGuideModal, setShowGuideModal] = useState(false);
+
+  // Chatbot Top Header Quick Action Buttons State
+  const quickButtonsList = useMemo(() => {
+    if (Array.isArray(C.chatbotQuickButtons) && C.chatbotQuickButtons.length > 0) {
+      return [...C.chatbotQuickButtons].sort((a, b) => (a.order || 999) - (b.order || 999));
+    }
+    return DEFAULT_CHATBOT_QUICK_BUTTONS;
+  }, [C.chatbotQuickButtons]);
+
+  const [editingBtnId, setEditingBtnId] = useState(null);
+  const [btnForm, setBtnForm] = useState({
+    id: "",
+    icon: "⚡",
+    label: "",
+    type: "send_command",
+    command: "",
+    roleAccess: "public",
+    enabled: true,
+    order: 1,
+    bgColor: "#1E293B",
+    textColor: "#FFFFFF",
+    borderColor: "#1E293B",
+    tooltip: ""
+  });
 
   // Default Knowledge Base entries
   const DEFAULT_KB = [
@@ -27471,6 +27555,121 @@ function ChatbotAccessManager({ C, setC, auth }) {
     await saveKnowledgeBaseToFirebase(updated);
   };
 
+  // ── Quick Buttons Admin Handlers ──────────────────────────────────────────
+  const saveQuickButtonsToFirebase = async (updatedList) => {
+    const newC = {
+      ...C,
+      chatbotQuickButtons: updatedList
+    };
+    if (setC) setC(newC);
+    try {
+      await fbSave(newC, auth?.idToken);
+      alert("✅ Chatbot top header buttons saved successfully to database!");
+    } catch(e) {
+      alert("Failed to save to database: " + e.message);
+    }
+  };
+
+  const toggleQuickBtnEnabled = (btnId) => {
+    const updated = quickButtonsList.map(b => b.id === btnId ? { ...b, enabled: b.enabled === false ? true : false } : b);
+    saveQuickButtonsToFirebase(updated);
+  };
+
+  const deleteQuickBtn = (btnId) => {
+    if (!confirm("Are you sure you want to delete this top header button?")) return;
+    const updated = quickButtonsList.filter(b => b.id !== btnId);
+    saveQuickButtonsToFirebase(updated);
+  };
+
+  const moveQuickBtnOrder = async (btnId, direction) => {
+    const curIdx = quickButtonsList.findIndex(b => b.id === btnId);
+    if (curIdx === -1) return;
+    const targetIdx = direction === "up" ? curIdx - 1 : curIdx + 1;
+    if (targetIdx < 0 || targetIdx >= quickButtonsList.length) return;
+
+    const listCopy = [...quickButtonsList];
+    const temp = listCopy[curIdx];
+    listCopy[curIdx] = listCopy[targetIdx];
+    listCopy[targetIdx] = temp;
+
+    const reordered = listCopy.map((item, idx) => ({
+      ...item,
+      order: idx + 1
+    }));
+    await saveQuickButtonsToFirebase(reordered);
+  };
+
+  const resetQuickButtonsToDefault = () => {
+    if (!confirm("Reset all top header buttons to standard default 4 buttons (Questions, Buttons, All Entries, Vibhag)?")) return;
+    saveQuickButtonsToFirebase(DEFAULT_CHATBOT_QUICK_BUTTONS);
+  };
+
+  const handleSaveButtonForm = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!btnForm.label || !btnForm.label.trim()) {
+      return alert("Please enter a Button Label.");
+    }
+
+    const newBtn = {
+      id: btnForm.id || `btn_${Date.now()}`,
+      icon: btnForm.icon || "🔘",
+      label: btnForm.label.trim(),
+      type: btnForm.type || "send_command",
+      command: (btnForm.command || "").trim(),
+      roleAccess: btnForm.roleAccess || "public",
+      enabled: btnForm.enabled !== false,
+      order: btnForm.order ? Number(btnForm.order) : (quickButtonsList.length + 1),
+      bgColor: btnForm.bgColor || "#1E293B",
+      textColor: btnForm.textColor || "#FFFFFF",
+      borderColor: btnForm.borderColor || btnForm.bgColor || "#1E293B",
+      tooltip: btnForm.tooltip || btnForm.label.trim()
+    };
+
+    let updated;
+    if (editingBtnId) {
+      updated = quickButtonsList.map(b => b.id === editingBtnId ? newBtn : b);
+    } else {
+      updated = [...quickButtonsList, newBtn];
+    }
+    updated.sort((a, b) => (a.order || 999) - (b.order || 999));
+
+    await saveQuickButtonsToFirebase(updated);
+    setEditingBtnId(null);
+    setBtnForm({
+      id: "",
+      icon: "⚡",
+      label: "",
+      type: "send_command",
+      command: "",
+      roleAccess: "public",
+      enabled: true,
+      order: quickButtonsList.length + 1,
+      bgColor: "#1E293B",
+      textColor: "#FFFFFF",
+      borderColor: "#1E293B",
+      tooltip: ""
+    });
+  };
+
+  const handleLoadButtonToEdit = (btn) => {
+    setEditingBtnId(btn.id);
+    setBtnForm({
+      id: btn.id,
+      icon: btn.icon || "🔘",
+      label: btn.label || "",
+      type: btn.type || "send_command",
+      command: btn.command || "",
+      roleAccess: btn.roleAccess || "public",
+      enabled: btn.enabled !== false,
+      order: btn.order || 1,
+      bgColor: btn.bgColor || "#1E293B",
+      textColor: btn.textColor || "#FFFFFF",
+      borderColor: btn.borderColor || btn.bgColor || "#1E293B",
+      tooltip: btn.tooltip || ""
+    });
+    window.scrollTo({ top: 120, behavior: "smooth" });
+  };
+
   const handleSaveKbForm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     let cleanCmd = (kbForm.cmd || "").trim();
@@ -27793,6 +27992,22 @@ function ChatbotAccessManager({ C, setC, auth }) {
             ⚡ Question & Action Studio ({kbList.length})
           </button>
           <button
+            onClick={() => setActiveTab("quick_buttons")}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: ".82rem",
+              fontWeight: 800,
+              background: activeTab === "quick_buttons" ? "linear-gradient(135deg, #7C3AED, #6D28D9)" : "transparent",
+              color: activeTab === "quick_buttons" ? "white" : "#475569",
+              border: activeTab === "quick_buttons" ? "1px solid #6D28D9" : "1px solid transparent",
+              cursor: "pointer",
+              boxShadow: activeTab === "quick_buttons" ? "0 2px 6px rgba(124,58,237,0.3)" : "none"
+            }}
+          >
+            🔘 Top Header Buttons & Menu ({quickButtonsList.length})
+          </button>
+          <button
             onClick={() => setActiveTab("users")}
             style={{
               padding: "8px 14px",
@@ -27823,6 +28038,22 @@ function ChatbotAccessManager({ C, setC, auth }) {
             }}
           >
             ⚙️ Bot Branding & Security Rules
+          </button>
+          <button
+            onClick={() => setActiveTab("whatsapp")}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: ".82rem",
+              fontWeight: 800,
+              background: activeTab === "whatsapp" ? "linear-gradient(135deg, #10B981, #059669)" : "transparent",
+              color: activeTab === "whatsapp" ? "white" : "#475569",
+              border: activeTab === "whatsapp" ? "1px solid #059669" : "1px solid transparent",
+              cursor: "pointer",
+              boxShadow: activeTab === "whatsapp" ? "0 2px 6px rgba(16,185,129,0.3)" : "none"
+            }}
+          >
+            📱 WhatsApp Broadcast Templates
           </button>
         </div>
       </div>
@@ -28202,6 +28433,654 @@ function ChatbotAccessManager({ C, setC, auth }) {
           </div>
         </div>
       )}
+
+      {/* SUB-TAB: 🔘 Chatbot Top Header Buttons & Quick Actions Manager */}
+      {activeTab === "quick_buttons" && (() => {
+        const PRESET_COLOR_THEMES = [
+          { name: "🌙 Dark Slate", bg: "#1E293B", text: "#FFFFFF", border: "#1E293B" },
+          { name: "💜 Royal Purple", bg: "#7C3AED", text: "#FFFFFF", border: "#7C3AED" },
+          { name: "💎 Ocean Blue", bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" },
+          { name: "⚪ Minimal White", bg: "#FFFFFF", text: "#1E293B", border: "#CBD5E1" },
+          { name: "🌿 Forest Green", bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0" },
+          { name: "☀️ Amber Gold", bg: "#FFFBEB", text: "#D97706", border: "#FDE68A" },
+          { name: "🔴 Crimson Red", bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" }
+        ];
+
+        return (
+          <div style={{animation:"fadeIn .2s ease",display:"flex",flexDirection:"column",gap:20}}>
+            {/* Header Description & Reset */}
+            <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"20px 24px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
+              <div>
+                <div style={{fontSize:"1.15rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:8}}>
+                  <span>🔘</span> Chatbot Top Header Buttons & Quick Actions Manager
+                </div>
+                <p style={{fontSize:".85rem",color:"#64748B",margin:"4px 0 0 0"}}>
+                  Configure, add, customize, reorder, or delete the quick action buttons that appear directly at the top of the chatbot window. When clicked, these buttons trigger questions, open menus, or display interactive forms.
+                </p>
+              </div>
+
+              <div style={{display:"flex",gap:8}}>
+                <button
+                  type="button"
+                  onClick={resetQuickButtonsToDefault}
+                  style={{
+                    background:"#F1F5F9",
+                    color:"#475569",
+                    border:"1px solid #CBD5E1",
+                    borderRadius:8,
+                    padding:"8px 14px",
+                    fontSize:".78rem",
+                    fontWeight:700,
+                    cursor:"pointer",
+                    display:"flex",
+                    alignItems:"center",
+                    gap:6
+                  }}
+                  title="Reset to 4 default buttons: Questions (/), Buttons, All Entries, Vibhag #"
+                >
+                  <span>🔄</span> Reset to 4 Default Buttons
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Live Chatbot Top Header Preview */}
+            <div style={{
+              background: "#0F172A",
+              borderRadius: 14,
+              padding: "16px 20px",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+              border: "1px solid #334155"
+            }}>
+              <div style={{fontSize:".78rem",color:"#94A3B8",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+                <span style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span>👁️</span> Live Preview: Top Header Quick Buttons Bar
+                </span>
+                <span style={{fontSize:".72rem",color:"#38BDF8",fontWeight:600}}>
+                  This is exactly how users see and tap the buttons at the top of the chatbot window
+                </span>
+              </div>
+              
+              {/* Mock Chatbot Window Header */}
+              <div style={{borderRadius: 10, overflow: "hidden", border: "1px solid #334155", background: "white"}}>
+                {/* Titlebar */}
+                <div style={{background: "#0F172A", color: "white", padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+                  <div style={{display: "flex", alignItems: "center", gap: 8}}>
+                    <span style={{fontSize: "1.2rem"}}>🤖</span>
+                    <div>
+                      <div style={{fontSize: ".84rem", fontWeight: 800}}>{C.chatbotTitle || "Mumbai Meghwal Panchayat Assistant"}</div>
+                      <div style={{fontSize: ".68rem", color: "#4ADE80", fontWeight: 700}}>● Online & Connected</div>
+                    </div>
+                  </div>
+                  <div style={{color: "#94A3B8", fontSize: ".85rem", cursor: "pointer"}}>✕</div>
+                </div>
+
+                {/* The Rendered Quick Buttons Bar */}
+                <div style={{
+                  padding: "8px 12px",
+                  background: "#F8FAFC",
+                  borderBottom: "1px solid #E2E8F0",
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "center",
+                  overflowX: "auto",
+                  whiteSpace: "nowrap"
+                }}>
+                  {quickButtonsList.map((btn) => {
+                    if (btn.enabled === false) return null;
+                    return (
+                      <div
+                        key={btn.id}
+                        style={{
+                          fontSize: ".75rem",
+                          background: btn.bgColor || "#F1F5F9",
+                          color: btn.textColor || "#0F172A",
+                          border: btn.borderColor ? `1px solid ${btn.borderColor}` : "none",
+                          borderRadius: 12,
+                          padding: "5px 10px",
+                          fontWeight: 700,
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          whiteSpace: "nowrap",
+                          flexShrink: 0
+                        }}
+                      >
+                        {btn.icon && <span>{btn.icon}</span>}
+                        <span>{btn.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Mock Chat Area */}
+                <div style={{padding: "16px", background: "#F8FAFC", color: "#94A3B8", fontSize: ".76rem", textAlign: "center"}}>
+                  💬 User questions, live responses & interactive cards render below this bar
+                </div>
+              </div>
+            </div>
+
+            {/* Add / Edit Form Card */}
+            <div style={{
+              background: "white",
+              border: "1.5px solid #CBD5E1",
+              borderRadius: 14,
+              padding: "22px 24px",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.05)"
+            }}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+                <div style={{fontSize:"1.05rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:8}}>
+                  <span>{editingBtnId ? "✏️ Edit Header Quick Button" : "➕ Add New Header Quick Button"}</span>
+                </div>
+                {editingBtnId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBtnId(null);
+                      setBtnForm({
+                        id: "",
+                        icon: "⚡",
+                        label: "",
+                        type: "send_command",
+                        command: "",
+                        roleAccess: "public",
+                        enabled: true,
+                        order: quickButtonsList.length + 1,
+                        bgColor: "#1E293B",
+                        textColor: "#FFFFFF",
+                        borderColor: "#1E293B",
+                        tooltip: ""
+                      });
+                    }}
+                    style={{fontSize:".75rem",background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontWeight:700}}
+                  >
+                    Cancel Editing
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveButtonForm}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",gap:16,marginBottom:16}}>
+                  {/* 1. Label */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      Button Label / Text (બટન પર દેખાતું નામ): *
+                    </label>
+                    <input
+                      type="text"
+                      value={btnForm.label}
+                      onChange={e => setBtnForm(prev => ({ ...prev, label: e.target.value }))}
+                      placeholder="e.g. Questions (/), Buttons, All Entries, 2026 Form..."
+                      required
+                      style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".88rem",fontWeight:700}}
+                    />
+                  </div>
+
+                  {/* 2. Icon */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      Icon / Emoji (આઇકોન):
+                    </label>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input
+                        type="text"
+                        value={btnForm.icon}
+                        onChange={e => setBtnForm(prev => ({ ...prev, icon: e.target.value }))}
+                        placeholder="e.g. ⚡, 🔘, 📊, 📍, 📝, 💰"
+                        style={{width:70,padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:"1.1rem",textAlign:"center"}}
+                      />
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {["⚡", "🔘", "📊", "📍", "📝", "💰", "🎓", "📞", "🔍", "📋"].map(emoji => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setBtnForm(prev => ({ ...prev, icon: emoji }))}
+                            style={{background:"#F1F5F9",border:"1px solid #CBD5E1",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:".95rem"}}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Action Type */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      Action Type (બટન ક્લિક પર શું કાર્ય થશે?):
+                    </label>
+                    <select
+                      value={btnForm.type}
+                      onChange={e => setBtnForm(prev => ({ ...prev, type: e.target.value }))}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",fontWeight:700}}
+                    >
+                      <option value="send_command">💬 Execute Question / Slash Command (કમાન્ડ ચલાવો)</option>
+                      <option value="toggle_slash_menu">⚡ Toggle Questions Menu (પ્રશ્નોનું મેનુ ખોલો)</option>
+                      <option value="open_vibhag_menu">📍 Open Vibhag Picker (વિભાગ મેનુ ખોલો)</option>
+                      <option value="open_url">🔗 Open External Link / URL (લિંક ખોલો)</option>
+                    </select>
+                  </div>
+
+                  {/* 4. Target Command / Question / URL */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      {btnForm.type === "open_url" ? "Target Web URL (વેબસાઇટ લિંક):" : "Target Command / Shortcut (કયો કમાન્ડ ચલાવવો?):"}
+                    </label>
+                    {btnForm.type === "send_command" ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <select
+                          value={btnForm.command}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val) {
+                              setBtnForm(prev => {
+                                const matched = kbList.find(k => k.cmd === val);
+                                return {
+                                  ...prev,
+                                  command: val,
+                                  label: prev.label || (matched ? (matched.title || val) : val),
+                                  icon: prev.icon || (matched ? (matched.icon || "⚡") : "⚡")
+                                };
+                              });
+                            }
+                          }}
+                          style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".82rem"}}
+                        >
+                          <option value="">-- Quick Select from Question & Action Studio --</option>
+                          <optgroup label="✨ Available Questions in Chatbot Studio:">
+                            {kbList.map(k => (
+                              <option key={k.id || k.cmd} value={k.cmd}>
+                                {k.icon || "⚡"} {k.cmd} - {k.title || k.cmd}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="⚡ Built-in Commands:">
+                            <option value="/buttons">🔘 /buttons - Interactive Question Buttons Card</option>
+                            <option value="/help">⚡ /help - Capabilities & Commands Guide</option>
+                            <option value="Summary data of all entry ALL">📊 Summary data of all entry ALL</option>
+                            <option value="/vibhag">📍 /vibhag - Vibhag Selection</option>
+                            <option value="/donate">💰 /donate - Bank Account & QR Code</option>
+                          </optgroup>
+                        </select>
+                        <input
+                          type="text"
+                          value={btnForm.command}
+                          onChange={e => setBtnForm(prev => ({ ...prev, command: e.target.value }))}
+                          placeholder="Or type custom command (e.g. /education2026form, /don_entry)"
+                          style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:".82rem"}}
+                        />
+                      </div>
+                    ) : btnForm.type === "open_url" ? (
+                      <input
+                        type="url"
+                        value={btnForm.command}
+                        onChange={e => setBtnForm(prev => ({ ...prev, command: e.target.value }))}
+                        placeholder="https://example.com/page"
+                        style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem"}}
+                      />
+                    ) : (
+                      <div style={{padding:"8px 12px",background:"#F1F5F9",borderRadius:8,fontSize:".82rem",color:"#64748B"}}>
+                        ⚡ Automatically controlled by {btnForm.type === "toggle_slash_menu" ? "Questions Menu popup" : "Vibhag Picker popup"}.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. Access Permission */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      Who Can See & Access (કોણ જોઈ શકે?):
+                    </label>
+                    <select
+                      value={btnForm.roleAccess}
+                      onChange={e => setBtnForm(prev => ({ ...prev, roleAccess: e.target.value }))}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",fontWeight:700}}
+                    >
+                      <option value="public">🌐 Public (Visible to Everyone)</option>
+                      <option value="admin">📍 Any Admin (Super Admin + Vibhag Admin)</option>
+                      <option value="super_admin">🛡️ Super Admin Only</option>
+                      <option value="donation_collector">💰 Donation Collector Only</option>
+                    </select>
+                  </div>
+
+                  {/* 6. Order / Priority */}
+                  <div>
+                    <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:5}}>
+                      Order / Position (# ક્રમ):
+                    </label>
+                    <input
+                      type="number"
+                      value={btnForm.order}
+                      onChange={e => setBtnForm(prev => ({ ...prev, order: Number(e.target.value) }))}
+                      min="1"
+                      max="99"
+                      style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #CBD5E1",fontSize:".85rem",fontWeight:700}}
+                    />
+                  </div>
+                </div>
+
+                {/* 7. Color Theme Presets */}
+                <div style={{marginBottom:16}}>
+                  <label style={{fontSize:".8rem",fontWeight:700,color:"#334155",display:"block",marginBottom:6}}>
+                    Button Color Theme (કલર થીમ પસંદ કરો):
+                  </label>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                    {PRESET_COLOR_THEMES.map((theme, tIdx) => (
+                      <button
+                        key={tIdx}
+                        type="button"
+                        onClick={() => {
+                          setBtnForm(prev => ({
+                            ...prev,
+                            bgColor: theme.bg,
+                            textColor: theme.text,
+                            borderColor: theme.border
+                          }));
+                        }}
+                        style={{
+                          background: theme.bg,
+                          color: theme.text,
+                          border: `1.5px solid ${theme.border}`,
+                          borderRadius: 20,
+                          padding: "5px 12px",
+                          fontSize: ".75rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <span>{theme.name}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Hex Pickers */}
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",background:"#F8FAFC",padding:"10px 14px",borderRadius:8,border:"1px solid #E2E8F0"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:".75rem",color:"#475569",fontWeight:700}}>Background:</span>
+                      <input
+                        type="color"
+                        value={btnForm.bgColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, bgColor: e.target.value }))}
+                        style={{width:30,height:26,padding:0,border:"none",borderRadius:4,cursor:"pointer"}}
+                      />
+                      <input
+                        type="text"
+                        value={btnForm.bgColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, bgColor: e.target.value }))}
+                        style={{width:75,padding:"3px 6px",fontSize:".75rem",borderRadius:4,border:"1px solid #CBD5E1"}}
+                      />
+                    </div>
+
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:".75rem",color:"#475569",fontWeight:700}}>Text Color:</span>
+                      <input
+                        type="color"
+                        value={btnForm.textColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, textColor: e.target.value }))}
+                        style={{width:30,height:26,padding:0,border:"none",borderRadius:4,cursor:"pointer"}}
+                      />
+                      <input
+                        type="text"
+                        value={btnForm.textColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, textColor: e.target.value }))}
+                        style={{width:75,padding:"3px 6px",fontSize:".75rem",borderRadius:4,border:"1px solid #CBD5E1"}}
+                      />
+                    </div>
+
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:".75rem",color:"#475569",fontWeight:700}}>Border:</span>
+                      <input
+                        type="color"
+                        value={btnForm.borderColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, borderColor: e.target.value }))}
+                        style={{width:30,height:26,padding:0,border:"none",borderRadius:4,cursor:"pointer"}}
+                      />
+                      <input
+                        type="text"
+                        value={btnForm.borderColor}
+                        onChange={e => setBtnForm(prev => ({ ...prev, borderColor: e.target.value }))}
+                        style={{width:75,padding:"3px 6px",fontSize:".75rem",borderRadius:4,border:"1px solid #CBD5E1"}}
+                      />
+                    </div>
+
+                    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:".75rem",fontWeight:700,color:"#475569"}}>Sample Button:</span>
+                      <div style={{
+                        fontSize: ".75rem",
+                        background: btnForm.bgColor,
+                        color: btnForm.textColor,
+                        border: `1.5px solid ${btnForm.borderColor}`,
+                        borderRadius: 12,
+                        padding: "5px 10px",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4
+                      }}>
+                        {btnForm.icon && <span>{btnForm.icon}</span>}
+                        <span>{btnForm.label || "Sample Label"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Submit & Visibility */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,borderTop:"1px solid #F1F5F9",paddingTop:14}}>
+                  <label style={{display:"flex",alignItems:"center",gap:8,fontSize:".85rem",fontWeight:700,color:"#334155",cursor:"pointer"}}>
+                    <input
+                      type="checkbox"
+                      checked={btnForm.enabled}
+                      onChange={e => setBtnForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                      style={{width:18,height:18,accentColor:"#16A34A",cursor:"pointer"}}
+                    />
+                    <span>Visible in Chatbot Top Header (હેડરમાં સક્રિય / બતાવો)</span>
+                  </label>
+
+                  <button
+                    type="submit"
+                    style={{
+                      background: "linear-gradient(135deg, #16A34A, #15803D)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "10px 22px",
+                      fontSize: ".9rem",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(22,163,74,0.3)"
+                    }}
+                  >
+                    💾 {editingBtnId ? "Update Header Button" : "Add Button to Chatbot Header"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Active Top Header Buttons Table */}
+            <div style={{background:"white",border:"1px solid #CBD5E1",borderRadius:12,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{padding:"14px 18px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:".92rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
+                  <span>📋</span> Configured Top Header Buttons ({quickButtonsList.length})
+                </div>
+                <div style={{fontSize:".74rem",color:"#64748B"}}>
+                  Use ▲ and ▼ to reorder positions from left to right.
+                </div>
+              </div>
+
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:".82rem",textAlign:"left"}}>
+                  <thead>
+                    <tr style={{background:"#F1F5F9",borderBottom:"1px solid #CBD5E1",color:"#475569",fontWeight:800}}>
+                      <th style={{padding:"10px 14px",width:80,textAlign:"center"}}>Order / Move</th>
+                      <th style={{padding:"10px 14px",width:170}}>Preview</th>
+                      <th style={{padding:"10px 14px"}}>Label & Icon</th>
+                      <th style={{padding:"10px 14px"}}>Action & Command</th>
+                      <th style={{padding:"10px 14px",textAlign:"center"}}>Access Role</th>
+                      <th style={{padding:"10px 14px",textAlign:"center"}}>Visibility</th>
+                      <th style={{padding:"10px 14px",textAlign:"right"}}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quickButtonsList.map((btn, bIdx) => (
+                      <tr key={btn.id || bIdx} style={{borderBottom:"1px solid #F1F5F9",background: bIdx % 2 === 0 ? "white" : "#FAFAFA"}}>
+                        {/* Order & Move Buttons */}
+                        <td style={{padding:"10px 14px",textAlign:"center"}}>
+                          <div style={{display:"flex",gap:4,alignItems:"center",justifyContent:"center"}}>
+                            <span style={{fontWeight:800,color:"#64748B",fontSize:".78rem",width:20}}>#{btn.order || bIdx + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => moveQuickBtnOrder(btn.id, "up")}
+                              disabled={bIdx === 0}
+                              style={{padding:"2px 5px",fontSize:".7rem",cursor:bIdx === 0 ? "default" : "pointer",opacity:bIdx === 0 ? 0.3 : 1,borderRadius:4,border:"1px solid #CBD5E1",background:"white"}}
+                              title="Move Left / Earlier"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveQuickBtnOrder(btn.id, "down")}
+                              disabled={bIdx === quickButtonsList.length - 1}
+                              style={{padding:"2px 5px",fontSize:".7rem",cursor:bIdx === quickButtonsList.length - 1 ? "default" : "pointer",opacity:bIdx === quickButtonsList.length - 1 ? 0.3 : 1,borderRadius:4,border:"1px solid #CBD5E1",background:"white"}}
+                              title="Move Right / Later"
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* Preview */}
+                        <td style={{padding:"10px 14px"}}>
+                          <div style={{
+                            fontSize: ".75rem",
+                            background: btn.bgColor || "#F1F5F9",
+                            color: btn.textColor || "#0F172A",
+                            border: btn.borderColor ? `1.5px solid ${btn.borderColor}` : "none",
+                            borderRadius: 12,
+                            padding: "5px 10px",
+                            fontWeight: 700,
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            whiteSpace: "nowrap"
+                          }}>
+                            {btn.icon && <span>{btn.icon}</span>}
+                            <span>{btn.label}</span>
+                          </div>
+                        </td>
+
+                        {/* Label & Icon */}
+                        <td style={{padding:"10px 14px"}}>
+                          <div style={{fontWeight:700,color:"#0F172A"}}>{btn.label}</div>
+                          <div style={{fontSize:".7rem",color:"#64748B"}}>ID: {btn.id}</div>
+                        </td>
+
+                        {/* Action & Command */}
+                        <td style={{padding:"10px 14px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{
+                              fontSize:".72rem",
+                              fontWeight:800,
+                              background:"#EEF2FF",
+                              color:"#4338CA",
+                              padding:"2px 7px",
+                              borderRadius:6
+                            }}>
+                              {btn.type === "toggle_slash_menu" ? "⚡ Open Questions Menu" : btn.type === "open_vibhag_menu" ? "📍 Open Vibhag Picker" : btn.type === "open_url" ? "🔗 Open URL" : "💬 Execute Command"}
+                            </span>
+                            {btn.command && (
+                              <code style={{fontSize:".75rem",background:"#F1F5F9",padding:"2px 6px",borderRadius:4,color:"#0F172A",fontWeight:700}}>
+                                {btn.command}
+                              </code>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Access Role */}
+                        <td style={{padding:"10px 14px",textAlign:"center"}}>
+                          <span style={{
+                            background: btn.roleAccess === "public" ? "#F0FDF4" : btn.roleAccess === "donation_collector" ? "#FEF3C7" : btn.roleAccess === "super_admin" ? "#FEE2E2" : "#EFF6FF",
+                            color: btn.roleAccess === "public" ? "#166534" : btn.roleAccess === "donation_collector" ? "#92400E" : btn.roleAccess === "super_admin" ? "#DC2626" : "#1D4ED8",
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            fontSize: ".72rem",
+                            fontWeight: 800,
+                            display: "inline-block"
+                          }}>
+                            {btn.roleAccess === "public" ? "🌐 Public" : btn.roleAccess === "donation_collector" ? "💰 Collector" : btn.roleAccess === "super_admin" ? "🛡️ Super Admin" : "📍 Any Admin"}
+                          </span>
+                        </td>
+
+                        {/* Visibility Switch */}
+                        <td style={{padding:"10px 14px",textAlign:"center"}}>
+                          <button
+                            type="button"
+                            onClick={() => toggleQuickBtnEnabled(btn.id)}
+                            style={{
+                              background: btn.enabled !== false ? "#DCFCE7" : "#FEE2E2",
+                              color: btn.enabled !== false ? "#15803D" : "#DC2626",
+                              border: `1px solid ${btn.enabled !== false ? "#86EFAC" : "#FCA5A5"}`,
+                              padding: "4px 8px",
+                              borderRadius: 12,
+                              fontSize: ".72rem",
+                              fontWeight: 800,
+                              cursor: "pointer"
+                            }}
+                            title="Toggle visibility in Chatbot top header"
+                          >
+                            {btn.enabled !== false ? "👁️ Visible" : "🙈 Hidden"}
+                          </button>
+                        </td>
+
+                        {/* Actions */}
+                        <td style={{padding:"10px 14px",textAlign:"right"}}>
+                          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                            <button
+                              type="button"
+                              onClick={() => handleLoadButtonToEdit(btn)}
+                              style={{
+                                background: "#EFF6FF",
+                                color: "#1D4ED8",
+                                border: "1px solid #BFDBFE",
+                                padding: "4px 10px",
+                                borderRadius: 6,
+                                fontSize: ".75rem",
+                                fontWeight: 700,
+                                cursor: "pointer"
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteQuickBtn(btn.id)}
+                              style={{
+                                background: "#FEE2E2",
+                                color: "#DC2626",
+                                border: "1px solid #FCA5A5",
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                fontSize: ".75rem",
+                                fontWeight: 700,
+                                cursor: "pointer"
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       
       {/* SUB-TAB: 📡 WhatsApp Direct API Gateway */}
@@ -60646,6 +61525,13 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
       ]
     },
     {
+      title: "📝 Interactive Forms & Event Applications",
+      color: "#D97706",
+      bg: "#FFFBEB",
+      border: "#FDE68A",
+      items: []
+    },
+    {
       title: "👥 Committee & Leadership",
       color: "#7C3AED",
       bg: "#F5F3FF",
@@ -60659,15 +61545,68 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
     },
     {
       title: "🗓️ Events & General Guidelines",
-      color: "#D97706",
-      bg: "#FFFBEB",
-      border: "#FDE68A",
+      color: "#0284C7",
+      bg: "#F0F9FF",
+      border: "#BAE6FD",
       items: [
         { cmd: "/events", label: "Upcoming Community Events", icon: "🗓️", adminOnly: false },
         { cmd: "/help", label: "Full Commands Guide", icon: "⚡", adminOnly: false }
       ]
+    },
+    {
+      title: "⚡ Custom Shortcuts & Quick Inquiries",
+      color: "#4F46E5",
+      bg: "#EEF2FF",
+      border: "#C7D2FE",
+      items: []
     }
   ];
+
+  // Dynamically populate from active allCommands (from Question Studio / KB)
+  const knownCmds = new Set();
+  categories.forEach(cat => cat.items.forEach(it => knownCmds.add((it.cmd || "").toLowerCase())));
+
+  (allCommands || []).forEach(cmdItem => {
+    const cCmd = (cmdItem.cmd || "").trim();
+    if (!cCmd || cCmd.toLowerCase() === "/buttons") return;
+    const cLower = cCmd.toLowerCase();
+    const cLabel = cmdItem.label || cCmd;
+    const cIcon = cmdItem.icon || "❓";
+    const itemObj = {
+      cmd: cCmd,
+      label: cLabel,
+      icon: cIcon,
+      adminOnly: Boolean(cmdItem.adminOnly),
+      collectorOnly: Boolean(cmdItem.donationCollectorOnly)
+    };
+
+    if (knownCmds.has(cLower)) {
+      categories.forEach(cat => {
+        const found = cat.items.find(i => (i.cmd || "").toLowerCase() === cLower);
+        if (found) {
+          found.label = cLabel;
+          found.icon = cIcon;
+        }
+      });
+      return;
+    }
+
+    knownCmds.add(cLower);
+
+    if (cmdItem.attachedFormId || cLower.includes("form") || cLower.includes("entry") || cLabel.toLowerCase().includes("form")) {
+      categories[2].items.push(itemObj); // Interactive Forms
+    } else if (cLower.includes("don") || cLower.includes("pay") || cLabel.toLowerCase().includes("દાન")) {
+      categories[1].items.push(itemObj); // Donations
+    } else if (cLower.includes("cwc") || cLower.includes("comm") || cLower.includes("trust") || cLower.includes("contact")) {
+      categories[3].items.push(itemObj); // Committee
+    } else if (cLower.includes("event") || cLower.includes("guide") || cLower.includes("help")) {
+      categories[4].items.push(itemObj); // Events
+    } else if (cLower.includes("edu") || cLower.includes("reg") || cLower.includes("stat") || cLower.includes("count")) {
+      categories[0].items.push(itemObj); // Registrations
+    } else {
+      categories[5].items.push(itemObj); // Custom Shortcuts
+    }
+  });
 
   return (
     <div style={{
@@ -60847,6 +61786,14 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
   }
 
   const isAnyAdmin = userSessionScope === "all" || userSessionScope === "vibhag";
+  const isSuperAdmin = userSessionScope === "all" || Boolean(auth?.idToken);
+
+  const quickButtons = useMemo(() => {
+    if (Array.isArray(C.chatbotQuickButtons) && C.chatbotQuickButtons.length > 0) {
+      return [...C.chatbotQuickButtons].sort((a, b) => (a.order || 999) - (b.order || 999));
+    }
+    return DEFAULT_CHATBOT_QUICK_BUTTONS;
+  }, [C.chatbotQuickButtons]);
   const isDonationCollector = Boolean(
     auth?.idToken ||
     matchedCommitteeMember?.isDonationCollector === true ||
@@ -62925,38 +63872,63 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           {!isMinimized && (
             <>
               {/* Quick Actions Bar */}
-              <div style={{padding:"8px 12px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",display:"flex",gap:6,alignItems:"center"}}>
-                <button
-                  onClick={() => { setShowSlashMenu(!showSlashMenu); setSlashSubmenu(null); }}
-                  style={{fontSize:".75rem",background:"#1E293B",border:"none",borderRadius:12,padding:"5px 10px",color:"white",cursor:"pointer",fontWeight:700,boxShadow:"0 1px 3px rgba(0,0,0,0.15)",display:"flex",alignItems:"center",gap:4}}
-                  title="Open Question Commands Menu"
-                >
-                  <span>⚡</span> Questions (/)
-                </button>
-                <button
-                  onClick={() => handleSendMessage("/buttons")}
-                  style={{fontSize:".75rem",background:"#7C3AED",border:"none",borderRadius:12,padding:"5px 10px",color:"white",cursor:"pointer",fontWeight:700,boxShadow:"0 1px 4px rgba(124,58,237,0.25)",display:"flex",alignItems:"center",gap:4}}
-                  title="Display Clickable Question Buttons in Chat"
-                >
-                  <span>🔘</span> Buttons
-                </button>
-                
-                {isAnyAdmin && (
-                  <>
+              <div style={{
+                padding: "8px 12px",
+                background: "#F8FAFC",
+                borderBottom: "1px solid #E2E8F0",
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                overflowX: "auto",
+                whiteSpace: "nowrap"
+              }}>
+                {quickButtons.map((btn) => {
+                  if (btn.enabled === false) return null;
+                  if (btn.roleAccess === "super_admin" && !isSuperAdmin) return null;
+                  if (btn.roleAccess === "admin" && !isAnyAdmin) return null;
+                  if (btn.roleAccess === "donation_collector" && !isDonationCollector && !isAnyAdmin) return null;
+
+                  const handleClick = () => {
+                    if (btn.type === "toggle_slash_menu") {
+                      setShowSlashMenu(!showSlashMenu);
+                      setSlashSubmenu(null);
+                    } else if (btn.type === "open_vibhag_menu") {
+                      setShowSlashMenu(true);
+                      setSlashSubmenu("vibhags");
+                    } else if (btn.type === "open_url") {
+                      if (btn.command) window.open(btn.command, "_blank");
+                    } else {
+                      handleSendMessage(btn.command, btn.label);
+                    }
+                  };
+
+                  return (
                     <button
-                      onClick={() => handleSendMessage("Summary data of all entry ALL")}
-                      style={{fontSize:".72rem",background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:12,padding:"4px 10px",color:"#1D4ED8",cursor:"pointer",fontWeight:700}}
+                      key={btn.id || btn.label}
+                      onClick={handleClick}
+                      style={{
+                        fontSize: ".75rem",
+                        background: btn.bgColor || "#F1F5F9",
+                        border: btn.borderColor ? `1px solid ${btn.borderColor}` : "none",
+                        borderRadius: 12,
+                        padding: "5px 10px",
+                        color: btn.textColor || "#0F172A",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        whiteSpace: "nowrap",
+                        flexShrink: 0
+                      }}
+                      title={btn.tooltip || btn.label}
                     >
-                      📊 All Entries
+                      {btn.icon && <span>{btn.icon}</span>}
+                      <span>{btn.label}</span>
                     </button>
-                    <button
-                      onClick={() => { setShowSlashMenu(true); setSlashSubmenu("vibhags"); }}
-                      style={{fontSize:".72rem",background:"white",border:"1px solid #CBD5E1",borderRadius:12,padding:"4px 10px",color:"#1E293B",cursor:"pointer",fontWeight:600}}
-                    >
-                      📍 Vibhag #
-                    </button>
-                  </>
-                )}
+                  );
+                })}
               </div>
 
               {/* Messages Area */}
