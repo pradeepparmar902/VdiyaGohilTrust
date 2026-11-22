@@ -200,7 +200,24 @@
     </div>
 
     <script>
-      const vpa = "mumba98697331@barodampay";
+      let vpa = "mumba98697331@barodampay";
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const qr = p.get('qr') || p.get('img');
+        const customUpi = p.get('vpa') || p.get('upi');
+        if (customUpi) {
+          vpa = customUpi;
+          const vEl = document.getElementById("vpaVal");
+          if (vEl) vEl.innerText = customUpi;
+        }
+        if (qr) {
+          const img = document.querySelector('.qr-img');
+          if (img) img.src = qr;
+          const dlBtn = document.querySelector('.download-btn');
+          if (dlBtn) dlBtn.href = qr;
+        }
+      } catch(e) {}
+
       function copyVpa() {
         navigator.clipboard.writeText(vpa).then(() => {
           const btn = document.getElementById("copyBtn");

@@ -27780,7 +27780,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
       customWaAppeal: kbForm.customWaAppeal || "",
       customWaSignatory: kbForm.customWaSignatory || "",
       customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
-      customWaQrUrl: kbForm.customWaQrUrl || "",
+      customWaQrUrl: (() => {
+        let q = kbForm.customWaQrUrl || "";
+        const resolved = resolveMediaUrl(q, C);
+        if (resolved && (resolved.startsWith("http://") || resolved.startsWith("https://"))) return resolved;
+        return q;
+      })(),
       customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
       attachedFormId: (kbForm.actionType === "form" || kbForm.actionType === "summary") ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
       storageDestination: kbForm.storageDestination || ((kbForm.actionType === "form" || kbForm.actionType === "summary") ? "registrations" : "donations"),
@@ -35579,9 +35584,20 @@ function ChatbotAccessManager({ C, setC, auth }) {
           auth={auth}
           targetCategory="all"
           onClose={() => setShowKbQrMediaModal(false)}
-          onSelect={(asset) => {
+          onSelect={async (asset) => {
             if (asset) {
-              const chosen = asset.id ? ('media://' + asset.id) : (asset.url || "");
+              let finalUrl = asset.url || "";
+              if (finalUrl && finalUrl.startsWith("data:")) {
+                try {
+                  const uploaded = await uploadFileToHostinger(finalUrl, "branding", `qr_${asset.name || asset.id || Date.now()}.jpg`, auth?.idToken);
+                  if (uploaded && (uploaded.startsWith("http://") || uploaded.startsWith("https://"))) {
+                    finalUrl = uploaded;
+                  }
+                } catch(e) {
+                  console.warn("Could not upload to Hostinger:", e);
+                }
+              }
+              const chosen = (finalUrl && finalUrl.startsWith("http")) ? finalUrl : (asset.id ? ('media://' + asset.id) : finalUrl);
               setKbForm(prev => ({ ...prev, customWaQrUrl: chosen }));
             }
             setShowKbQrMediaModal(false);
@@ -59515,8 +59531,12 @@ function WhatsAppBroadcastCard({ cardData, C }) {
       ? "https://pradeepparmar902.github.io/MY_Community_Website/"
       : "https://mmp-cwc.com";
 
-    const targetDonateUrl = foundTpl?.donateLink || tpls.donateLink || donateUrl;
     const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
+    const resolvedCardQr = resolveMediaUrl(cardData.customWaQrUrl || foundTpl?.gpayScannerUrl, C);
+    const hasCustomCardQr = resolvedCardQr && (resolvedCardQr.startsWith("http://") || resolvedCardQr.startsWith("https://"));
+    const targetDonateUrl = hasCustomCardQr
+      ? `${donateUrl}?qr=${encodeURIComponent(resolvedCardQr)}&vpa=${encodeURIComponent(upi)}`
+      : (foundTpl?.donateLink || tpls.donateLink || donateUrl);
     const header = (cardData.customWaHeader !== undefined && cardData.customWaHeader !== "") 
       ? cardData.customWaHeader 
       : (foundTpl?.header || tpls.gujaratiHeader || ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸");
@@ -59719,8 +59739,12 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
       ? "https://pradeepparmar902.github.io/MY_Community_Website/"
       : "https://mmp-cwc.com";
 
-    const qrLink = C?.whatsappTemplates?.donateLink || donateUrl;
     const upi = customWaUpiId || C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
+    const resolvedCustomQr = resolveMediaUrl(customWaQrUrl || summaryData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
+    const hasCustomQr = resolvedCustomQr && (resolvedCustomQr.startsWith("http://") || resolvedCustomQr.startsWith("https://"));
+    const qrLink = hasCustomQr
+      ? `${donateUrl}?qr=${encodeURIComponent(resolvedCustomQr)}&vpa=${encodeURIComponent(upi)}`
+      : (C?.whatsappTemplates?.donateLink || donateUrl);
 
     // 1. QR Standee & Direct Pay URL
     let msg = "";
@@ -60038,7 +60062,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
             </div>
           </div>
           <a
-            href={C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+            href={qrLink || C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
             target="_blank"
             rel="noreferrer"
             style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
@@ -60530,7 +60554,11 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       const totalPattern = tpls.totalLabel || "💰 *કુલ દાન રકમ: ₹{TOTAL}* ({COUNT} દાતાઓ)";
       const qrHeader = customQrHeader || tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
       const upiId = customUpiId || tpls.upiId || "mumba98697331@barodampay";
-      const targetDonateUrl = tpls.donateLink || donateUrl;
+      const resolvedDonorQr = resolveMediaUrl(donorData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
+      const hasCustomDonorQr = resolvedDonorQr && (resolvedDonorQr.startsWith("http://") || resolvedDonorQr.startsWith("https://"));
+      const targetDonateUrl = hasCustomDonorQr
+        ? `${donateUrl}?qr=${encodeURIComponent(resolvedDonorQr)}&vpa=${encodeURIComponent(upiId)}`
+        : (tpls.donateLink || donateUrl);
 
       // Ensure Donate QR Link is at the top so WhatsApp ALWAYS generates the Bank of Baroda QR Standee Preview
       let msg = `💳 *દાન QR સ્કેનર:* ${targetDonateUrl}\n\n`;
@@ -60592,8 +60620,8 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
       if (includeGPay) {
         msg += `💳 *GPay / BHIM QR Scanner & Direct Pay:*\n`;
-        msg += `🔗 ${donateUrl}\n`;
-        msg += `📲 UPI ID: mumba98697331@barodampay\n\n`;
+        msg += `🔗 ${targetDonateUrl}\n`;
+        msg += `📲 UPI ID: ${upiId}\n\n`;
       }
       msg += `🌐 *View Live on Portal:* ${portalUrl}`;
       return msg;
@@ -61543,7 +61571,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
               </div>
             </div>
             <a
-              href={C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+              href={targetDonateUrl || C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
               target="_blank"
               rel="noreferrer"
               style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
