@@ -58214,7 +58214,39 @@ export const generateMergedDonorPosterCanvas = (certificateDataUrl, photoDataUrl
 
 // ── Visual Drag & Drop Poster Designer Component ──
 export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuccess }) {
-  const tplImgUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
+  const [localTplUrl, setLocalTplUrl] = useState(() => resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C));
+  const [showTplMediaModal, setShowTplMediaModal] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const tplFileInputRef = useRef(null);
+
+  useEffect(() => {
+    const nextUrl = resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C);
+    setLocalTplUrl(nextUrl);
+    setImgError(false);
+  }, [C?.donorPosterTemplateUrl]);
+
+  const handleLocalTplUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (re) => {
+      const dataUrl = re.target.result;
+      if (C) {
+        const newC = { ...C, donorPosterTemplateUrl: dataUrl };
+        if (typeof setC === "function") setC(newC);
+        try {
+          if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+        } catch(err) {
+          console.error("Save template error:", err);
+        }
+      }
+      setLocalTplUrl(dataUrl);
+      setImgError(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   const defaultPositions = {
     name: { x: 42.5, y: 52.6, fontSize: 21, color: "#0A2540", visible: true, label: "👤 Name (English)" },
     nameGu: { x: 42.5, y: 55.2, fontSize: 18, color: "#064E3B", visible: true, label: "🇮🇳 Name (ગુજરાતી)" },
@@ -58321,6 +58353,41 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
           
           {/* Interactive Drag Canvas */}
           <div style={{flex:1.4,display:"flex",flexDirection:"column",alignItems:"center"}}>
+            {/* Template Blank Selection Toolbar */}
+            <div style={{width:"100%",maxWidth:420,marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#EFF6FF",padding:"6px 10px",borderRadius:8,border:"1px solid #BFDBFE"}}>
+              <div style={{fontSize:".74rem",fontWeight:800,color:"#1E40AF",display:"flex",alignItems:"center",gap:5}}>
+                <span>🖼️</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>
+                  {C?.donorPosterTemplateUrl ? "Custom Template Blank Active" : "Default Template Blank"}
+                </span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <input
+                  type="file"
+                  ref={tplFileInputRef}
+                  accept="image/*"
+                  style={{display:"none"}}
+                  onChange={handleLocalTplUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTplMediaModal(true)}
+                  style={{padding:"4px 9px",borderRadius:5,background:"#0D9488",color:"white",border:"none",fontWeight:800,fontSize:".7rem",cursor:"pointer",display:"flex",alignItems:"center",gap:3,boxShadow:"0 1px 4px rgba(13,148,136,0.3)"}}
+                  title="Pull receipt / certificate blank directly from Central Media Library"
+                >
+                  <span>🖼️ Media Library</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => tplFileInputRef.current?.click()}
+                  style={{padding:"4px 8px",borderRadius:5,background:"#FFFFFF",color:"#0D9488",border:"1px solid #0D9488",fontWeight:800,fontSize:".7rem",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
+                  title="Upload receipt blank from your computer"
+                >
+                  <span>📤 Upload</span>
+                </button>
+              </div>
+            </div>
+
             <div 
               ref={containerRef}
               onPointerMove={handlePointerMove}
@@ -58341,11 +58408,27 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
               }}
             >
               <img 
-                src={tplImgUrl} 
+                src={localTplUrl} 
                 alt="Appreciation Poster Template" 
-                style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"fill",display:"block",pointerEvents:"none"}} 
-                onError={(e) => { e.target.style.display = 'none'; }}
+                style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"fill",display:imgError?"none":"block",pointerEvents:"none"}} 
+                onLoad={() => setImgError(false)}
+                onError={() => { setImgError(true); }}
               />
+
+              {imgError && (
+                <div style={{position:"absolute",top:"25%",left:"8%",right:"8%",textAlign:"center",background:"rgba(255,255,255,0.96)",padding:"16px 14px",borderRadius:12,boxShadow:"0 4px 16px rgba(0,0,0,0.15)",border:"1.5px dashed #F59E0B",zIndex:2}}>
+                  <div style={{fontSize:"1.8rem",marginBottom:4}}>🖼️</div>
+                  <div style={{fontSize:".84rem",fontWeight:800,color:"#92400E",marginBottom:4}}>No Receipt / Certificate Blank Loaded</div>
+                  <div style={{fontSize:".72rem",color:"#64748B",marginBottom:12}}>Pull an official receipt blank from your Media Library to accurately position Name, Amount & Receipt #.</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTplMediaModal(true)}
+                    style={{padding:"7px 14px",borderRadius:6,background:"#0D9488",color:"white",border:"none",fontWeight:800,fontSize:".78rem",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5}}
+                  >
+                    <span>🖼️ Pull Blank from Media Library</span>
+                  </button>
+                </div>
+              )}
 
               {/* Draggable Field Tags */}
               {Object.entries(positions).map(([k, p]) => {
@@ -58530,6 +58613,34 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
           </div>
         </div>
       </div>
+
+      {showTplMediaModal && (
+        <MediaLibraryModal
+          isOpen={showTplMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowTplMediaModal(false)}
+          onSelect={async (asset) => {
+            setShowTplMediaModal(false);
+            if (!asset) return;
+            const mediaRef = 'media://' + asset.id;
+            if (C) {
+              const newC = { ...C, donorPosterTemplateUrl: mediaRef };
+              if (typeof setC === "function") setC(newC);
+              try {
+                if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+              } catch(e) {
+                console.error("Save template error:", e);
+              }
+            }
+            const resolved = (typeof resolveMediaUrl === 'function' && C) ? resolveMediaUrl(mediaRef, C) : mediaRef;
+            setLocalTplUrl(resolved);
+            setImgError(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -58539,6 +58650,9 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
   const [posterUrl, setPosterUrl] = useState(null);
   const [attachedPhotoUrl, setAttachedPhotoUrl] = useState(null);
   const [showPhotoMediaModal, setShowPhotoMediaModal] = useState(false);
+  const [showTplMediaModal, setShowTplMediaModal] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState("");
+  const tplInputRef = useRef(null);
   const [mergeLayout, setMergeLayout] = useState("side-by-side");
   const [generating, setGenerating] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -58548,6 +58662,30 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
   const [targetPhone, setTargetPhone] = useState(
     donation.mobile || donation.phone || donation['Mobile Number'] || donation['Phone'] || donation['WhatsApp Number'] || ''
   );
+
+  const handleTemplateLocalUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (re) => {
+      const dataUrl = re.target.result;
+      if (C) {
+        const newC = { ...C, donorPosterTemplateUrl: dataUrl };
+        if (typeof setC === "function") setC(newC);
+        try {
+          if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+          setTemplateNotice("✅ Custom receipt template uploaded & applied!");
+          setTimeout(() => setTemplateNotice(""), 4500);
+        } catch(err) {
+          console.error("Save template error:", err);
+        }
+      }
+      loadPoster();
+      if (typeof onReload === "function") onReload();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   useEffect(() => {
     const p = donation.mobile || donation.phone || donation['Mobile Number'] || donation['Phone'] || donation['WhatsApp Number'] || '';
@@ -58741,6 +58879,52 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
         <div><span style={{color:"#64748B"}}>Receipt #:</span> <strong>{donation.receiptNo || donation.internalReceiptNo || "Receipt under process"}</strong></div>
         <div><span style={{color:"#64748B"}}>WhatsApp:</span> <strong style={{color:"#15803D"}}>{targetPhone ? ("+91 " + String(targetPhone).replace(/\D/g,'').slice(-10)) : "Not provided"}</strong></div>
         <div><span style={{color:"#64748B"}}>Event Code:</span> <strong>{donation.eventCode || 'EDU26'}</strong></div>
+      </div>
+
+      {/* Receipt & Payment Confirmation Template Bar */}
+      <div style={{marginTop:10,background:"#F0FDF4",border:"1.5px dashed #86EFAC",borderRadius:10,padding:"9px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:32,height:32,borderRadius:8,background:"#DCFCE7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.1rem"}}>
+            🧾
+          </div>
+          <div>
+            <div style={{fontSize:".78rem",fontWeight:800,color:"#166534",display:"flex",alignItems:"center",gap:6}}>
+              <span>Receipt & Confirmation Blank:</span>
+              <span style={{background:C?.donorPosterTemplateUrl ? "#059669" : "#64748B",color:"white",fontSize:".65rem",padding:"1px 6px",borderRadius:4,fontWeight:800}}>
+                {C?.donorPosterTemplateUrl ? "Custom Blank Active" : "Default Template"}
+              </span>
+            </div>
+            <div style={{fontSize:".68rem",color:templateNotice ? "#15803D" : "#64748B",fontWeight:templateNotice ? 700 : 400}}>
+              {templateNotice || "Pull official receipt blank from Media Library to generate real-time confirmation"}
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <input
+            type="file"
+            ref={tplInputRef}
+            accept="image/*"
+            style={{display:"none"}}
+            onChange={handleTemplateLocalUpload}
+          />
+          <button
+            type="button"
+            onClick={() => setShowTplMediaModal(true)}
+            style={{padding:"6px 12px",borderRadius:6,background:"#0F766E",color:"white",border:"none",fontWeight:800,fontSize:".74rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 2px 6px rgba(15,118,110,0.25)"}}
+            title="Pull receipt / certificate blank directly from Central Media Library"
+          >
+            <span>🖼️ Pull from Media Library</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => tplInputRef.current?.click()}
+            style={{padding:"6px 10px",borderRadius:6,background:"#FFFFFF",color:"#0F766E",border:"1.5px solid #0F766E",fontWeight:800,fontSize:".74rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
+            title="Upload receipt blank from local disk"
+          >
+            <span>📤 Upload Blank</span>
+          </button>
+        </div>
       </div>
 
       {/* Photo Import & Merger Bar */}
@@ -59008,6 +59192,185 @@ function OfflineDonationSuccessCard({ donation, C, setC, auth, onReload }) {
           onSelect={(asset) => {
             setAttachedPhotoUrl('media://' + asset.id);
             setShowPhotoMediaModal(false);
+          }}
+        />
+      )}
+      {showTplMediaModal && (
+        <MediaLibraryModal
+          isOpen={showTplMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowTplMediaModal(false)}
+          onSelect={async (asset) => {
+            setShowTplMediaModal(false);
+            if (!asset) return;
+            const mediaRef = 'media://' + asset.id;
+            if (C) {
+              const newC = { ...C, donorPosterTemplateUrl: mediaRef };
+              if (typeof setC === "function") setC(newC);
+              try {
+                if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+                setTemplateNotice("✅ Receipt template updated from Media Library! Confirmation re-rendered.");
+                setTimeout(() => setTemplateNotice(""), 4500);
+              } catch(e) {
+                console.error("Save template error:", e);
+              }
+            }
+            loadPoster();
+            if (typeof onReload === "function") onReload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+
+function ReceiptTemplateStudioCard({ C, setC, auth, onReload }) {
+  const [showTplMediaModal, setShowTplMediaModal] = useState(false);
+  const [showMapperModal, setShowMapperModal] = useState(false);
+  const [notice, setNotice] = useState("");
+  const fileInputRef = useRef(null);
+
+  const sampleDonation = {
+    name: "Pradeep Parmar",
+    nameGu: "પ્રદીપ પરમાર",
+    amount: "5000",
+    date: new Date().toISOString().split("T")[0],
+    vibhag: "15 RAMDEV NAGAR",
+    receiptNo: "REC-2026-101",
+    mobile: "9820785209",
+    purpose: "6th Dec Mahaparinirvan Diwas",
+    eventCode: "6THDEC"
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (re) => {
+      const dataUrl = re.target.result;
+      if (C) {
+        const newC = { ...C, donorPosterTemplateUrl: dataUrl };
+        if (typeof setC === "function") setC(newC);
+        try {
+          if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+          setNotice("✅ New receipt blank uploaded & applied in real-time!");
+          setTimeout(() => setNotice(""), 4500);
+        } catch(err) {
+          console.error("Save template error:", err);
+        }
+      }
+      if (typeof onReload === "function") onReload();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={{background:"#FFFFFF",borderRadius:12,border:"1.5px solid #0D9488",padding:14,boxShadow:"0 3px 12px rgba(13,148,136,0.15)",display:"flex",flexDirection:"column",gap:10,marginTop:6}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1.5px solid #F0FDFA",paddingBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:"1.4rem"}}>🧾</span>
+          <div>
+            <div style={{fontSize:".9rem",fontWeight:800,color:"#0F766E"}}>
+              Real-Time Payment Confirmation & Receipt Studio
+            </div>
+            <div style={{fontSize:".72rem",color:"#64748B"}}>
+              Pull official receipt blanks from Media Library to generate instant payment confirmations
+            </div>
+          </div>
+        </div>
+        <span style={{background:C?.donorPosterTemplateUrl ? "#DCFCE7" : "#F1F5F9",color:C?.donorPosterTemplateUrl ? "#15803D" : "#475569",fontSize:".68rem",padding:"3px 8px",borderRadius:6,fontWeight:800}}>
+          {C?.donorPosterTemplateUrl ? "Custom Blank Active" : "Default Blank"}
+        </span>
+      </div>
+
+      {notice && (
+        <div style={{fontSize:".75rem",fontWeight:800,color:"#065F46",background:"#ECFDF5",padding:"6px 10px",borderRadius:6,border:"1px solid #A7F3D0"}}>
+          {notice}
+        </div>
+      )}
+
+      {/* Control Actions Bar */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          style={{display:"none"}}
+          onChange={handleFileUpload}
+        />
+        <button
+          type="button"
+          onClick={() => setShowTplMediaModal(true)}
+          style={{padding:"7px 12px",borderRadius:6,background:"#0D9488",color:"white",border:"none",fontWeight:800,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 2px 6px rgba(13,148,136,0.25)"}}
+        >
+          <span>🖼️ Pull from Media Library</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          style={{padding:"7px 12px",borderRadius:6,background:"#FFFFFF",color:"#0D9488",border:"1.5px solid #0D9488",fontWeight:800,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
+        >
+          <span>📤 Upload Local Blank</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowMapperModal(true)}
+          style={{padding:"7px 12px",borderRadius:6,background:"#EFF6FF",color:"#1D4ED8",border:"1.5px solid #93C5FD",fontWeight:800,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}
+        >
+          <span>🎯 Drag & Position Poster Fields</span>
+        </button>
+      </div>
+
+      {/* Live Sample Confirmation Preview */}
+      <div style={{marginTop:4}}>
+        <div style={{fontSize:".74rem",fontWeight:700,color:"#475569",marginBottom:6}}>
+          ⚡ Live Sample Payment Confirmation (How donors will receive it in real-time):
+        </div>
+        <OfflineDonationSuccessCard donation={sampleDonation} C={C} setC={setC} auth={auth} onReload={onReload} />
+      </div>
+
+      {showTplMediaModal && (
+        <MediaLibraryModal
+          isOpen={showTplMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowTplMediaModal(false)}
+          onSelect={async (asset) => {
+            setShowTplMediaModal(false);
+            if (!asset) return;
+            const mediaRef = 'media://' + asset.id;
+            if (C) {
+              const newC = { ...C, donorPosterTemplateUrl: mediaRef };
+              if (typeof setC === "function") setC(newC);
+              try {
+                if (typeof fbSave === "function") await fbSave(newC, auth?.idToken);
+                setNotice("✅ Receipt template updated from Media Library! Real-time confirmation re-rendered.");
+                setTimeout(() => setNotice(""), 4500);
+              } catch(e) {
+                console.error("Save template error:", e);
+              }
+            }
+            if (typeof onReload === "function") onReload();
+          }}
+        />
+      )}
+
+      {showMapperModal && (
+        <DonorPosterVisualMapperModal
+          C={C}
+          setC={setC}
+          auth={auth}
+          onClose={() => setShowMapperModal(false)}
+          onSaveSuccess={() => {
+            if (typeof onReload === "function") onReload();
           }}
         />
       )}
@@ -61490,7 +61853,7 @@ function DynamicChatbotFormCard({ formDef, attachedFormId, destination = "donati
 
   if (submittedResult) {
     if (submittedResult.type === "donation") {
-      return <OfflineDonationSuccessCard donation={submittedResult.data} C={C} setC={setC} />;
+      return <OfflineDonationSuccessCard donation={submittedResult.data} C={C} setC={setC} auth={auth} />;
     }
     return (
       <div style={{background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:10,padding:14,marginTop:6,boxShadow:"0 2px 8px rgba(34,197,94,0.15)"}}>
@@ -61763,6 +62126,7 @@ function QuestionButtonsCard({ onAction, isAnyAdmin, isDonationCollector, allCom
       items: [
         { cmd: "/don_entry", label: "Offline Donation Entry Form", icon: "➕", collectorOnly: true },
         { cmd: "/don_list", label: "Donor Registry & Broadcast", icon: "📋", adminOnly: true },
+        { cmd: "/receipt_template", label: "Receipt Blank & Template Studio", icon: "🧾", adminOnly: false },
         { cmd: "/donate", label: "Bank Account & QR Code", icon: "💳", adminOnly: false }
       ]
     },
@@ -62401,6 +62765,15 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
       adminOnly: false
     });
     list.push({
+      cmd: "/receipt_template",
+      order: 12,
+      icon: "🧾",
+      label: "Payment Confirmation & Receipt Template Studio",
+      desc: "Pull receipt / certificate blanks from Media Library & adjust positions in real-time",
+      action: "/receipt_template",
+      adminOnly: false
+    });
+    list.push({
       cmd: "/help",
       order: 9999,
       icon: "⚡",
@@ -62669,6 +63042,21 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           sender: "bot",
           type: "question_buttons_card",
           text: "Here are all available **Interactive Question Buttons**. Simply tap any button below to instantly receive the information:",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+      return;
+    }
+
+    if (qLower === "/receipt" || qLower === "/receipt_template" || qLower === "/receipttemplate" || qLower === "/poster_template" || qLower === "/cert_template" || qLower === "receipt template" || qLower === "receipt") {
+      setLoading(false);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: "m_rcpt_" + Date.now(),
+          sender: "bot",
+          type: "receipt_template_studio",
+          text: "🧾 **Real-Time Payment Confirmation & Receipt Template Studio**\nPull any official receipt or certificate blank from your Media Library to generate instant payment confirmations for donors in real time.",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -64411,7 +64799,12 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
 
                         {/* If Message has Offline Donation Success Confirmation */}
                         {m.type === "offline_donation_success" && m.cardData?.donation && (
-                          <OfflineDonationSuccessCard donation={m.cardData.donation} C={C} setC={setC} />
+                          <OfflineDonationSuccessCard donation={m.cardData.donation} C={C} setC={setC} auth={auth} />
+                        )}
+
+                        {/* If Message has Receipt Template Studio Card */}
+                        {m.type === "receipt_template_studio" && (
+                          <ReceiptTemplateStudioCard C={C} setC={setC} auth={auth} />
                         )}
 
                         {/* If Message has Donation Summary Card */}
