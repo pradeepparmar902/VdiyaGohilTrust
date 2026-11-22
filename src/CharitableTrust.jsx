@@ -57711,23 +57711,31 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
 
     // Default percentage positions if not customized
     const pos = {
-      name: { x: 42.5, y: 52.6, fontSize: 21, color: "#0A2540", visible: true, ...customPositions?.name },
-      nameGu: { x: 42.5, y: 55.2, fontSize: 18, color: "#064E3B", visible: true, ...customPositions?.nameGu },
-      amount: { x: 39.5, y: 63.8, fontSize: 23, color: "#0F172A", visible: true, ...customPositions?.amount },
-      acknowledgment: { x: 50, y: 81.2, fontSize: 13.5, color: "#1E293B", visible: true, ...customPositions?.acknowledgment },
-      receiptDetails: { x: 50, y: 83.2, fontSize: 13.5, color: "#334155", visible: true, ...customPositions?.receiptDetails },
-      date: { x: 60, y: 84.5, fontSize: 13, color: "#334155", visible: false, ...customPositions?.date },
-      vibhag: { x: 30, y: 84.5, fontSize: 13, color: "#334155", visible: false, ...customPositions?.vibhag },
+      name: { x: 42.5, y: 52.6, fontSize: 21, color: "#0A2540", visible: true, align: "center", ...customPositions?.name },
+      nameGu: { x: 42.5, y: 55.2, fontSize: 18, color: "#064E3B", visible: true, align: "center", ...customPositions?.nameGu },
+      amount: { x: 39.5, y: 63.8, fontSize: 23, color: "#0F172A", visible: true, align: "center", ...customPositions?.amount },
+      acknowledgment: { x: 50, y: 81.2, fontSize: 13.5, color: "#1E293B", visible: true, align: "center", ...customPositions?.acknowledgment },
+      receiptDetails: { x: 50, y: 83.2, fontSize: 13.5, color: "#334155", visible: true, align: "center", ...customPositions?.receiptDetails },
+      date: { x: 60, y: 84.5, fontSize: 13, color: "#334155", visible: false, align: "center", ...customPositions?.date },
+      vibhag: { x: 30, y: 84.5, fontSize: 13, color: "#334155", visible: false, align: "center", ...customPositions?.vibhag },
     };
 
     const canvas = document.createElement("canvas");
-    canvas.width = 994;
-    canvas.height = 1024;
     const ctx = canvas.getContext("2d");
 
     const img = new Image();
     img.onload = async () => {
       if (!objectUrl.startsWith('data:')) URL.revokeObjectURL(objectUrl);
+
+      // Natural dimensions of the template image — 100% distortion-free!
+      const canvasW = img.naturalWidth || img.width || 1024;
+      const canvasH = img.naturalHeight || img.height || 553;
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+
+      // Scale factor relative to standard 1000px canvas for font sizing
+      const scale = canvasW / 1000;
+
       // Pre-load fonts BEFORE any text drawing so measureText() returns accurate widths
       try {
         if (typeof document !== 'undefined' && document.fonts) {
@@ -57738,8 +57746,9 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
           ]);
         }
       } catch(fe) { /* ignore font-loading errors, continue with fallback */ }
+
       try {
-        ctx.drawImage(img, 0, 0, 994, 1024);
+        ctx.drawImage(img, 0, 0, canvasW, canvasH);
         
         const dName = String(donation.name || donation['Full Name'] || 'Respected Donor').trim().toUpperCase();
         const dNameGuRaw = String(donation.nameGu || donation.donorNameGu || '').trim();
@@ -57748,35 +57757,17 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
         // 1. Donor Name - English (Line 1)
         if (pos.name.visible !== false) {
           ctx.save();
-          let fSize = Number(pos.name.fontSize) || 21;
-          if (dName.length > 28) fSize = Math.max(15, fSize - 4);
-          ctx.font = `bold ${fSize}px 'Playfair Display', Georgia, serif`;
-          ctx.textAlign = "center";
+          let fSize = (Number(pos.name.fontSize) || 21) * scale;
+          ctx.font = `bold ${Math.round(fSize)}px 'Playfair Display', Georgia, Arial, serif`;
+          ctx.textAlign = pos.name.align || "center";
+          ctx.textBaseline = "middle";
           ctx.direction = "ltr";
-          let px = (pos.name.x / 100) * 994;
-          let py = (pos.name.y / 100) * 1024;
+          let px = (pos.name.x / 100) * canvasW;
+          let py = (pos.name.y / 100) * canvasH;
 
-          // Inner gold frame safe bounds: [165px, 825px]
-          const minLeft = 165;
-          const maxRight = 825;
-          const maxNameWidth = 650;
-
-          // Auto-shrink font if name exceeds printable width
-          let mWidth = ctx.measureText(dName).width;
-          while (mWidth > maxNameWidth && fSize > 12) {
-            fSize -= 0.5;
-            ctx.font = `bold ${fSize}px 'Playfair Display', Georgia, serif`;
-            mWidth = ctx.measureText(dName).width;
-          }
-
-          // Boundary clamp: Keep strictly inside inner poster frame
-          let halfW = mWidth / 2;
-          if (px + halfW > maxRight) px = maxRight - halfW;
-          if (px - halfW < minLeft) px = minLeft + halfW;
-
-          // Crisp subtle white backing stroke for high contrast
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-          ctx.lineWidth = 3;
+          // Crisp subtle white backing stroke for high contrast on any background
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.lineWidth = Math.max(2, 3 * scale);
           ctx.lineJoin = "round";
           ctx.strokeText(dName, px, py);
 
@@ -57788,51 +57779,20 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
         // 2. Donor Name - Gujarati (Line 2)
         if (pos.nameGu.visible !== false && dNameGu) {
           ctx.save();
-          let fSizeGu = Number(pos.nameGu.fontSize) || 18;
-          if (dNameGu.length > 28) fSizeGu = Math.max(14, fSizeGu - 3);
-          ctx.font = `bold ${fSizeGu}px 'Noto Sans Gujarati', 'Shruti', 'Gujarati MT', sans-serif`;
-          ctx.textAlign = "center";
+          let fSizeGu = (Number(pos.nameGu.fontSize) || 18) * scale;
+          ctx.font = `bold ${Math.round(fSizeGu)}px 'Noto Sans Gujarati', 'Shruti', 'Gujarati MT', sans-serif`;
+          ctx.textAlign = pos.nameGu.align || "center";
+          ctx.textBaseline = "middle";
           ctx.direction = "ltr";
 
           const guDisplay = dNameGu.startsWith("(") ? dNameGu : `(${dNameGu})`;
-
-          // Inner gold frame safe bounds: tightened for Gujarati script
-          const minLeftGu = 170;
-          const maxRightGu = 800;
-          const safeWidthGu = maxRightGu - minLeftGu; // 630px
-
-          // Use stored x and y positions from admin adjustment tool
-          let pxGu = (pos.nameGu.x / 100) * 994;
-          // y: use stored y, but fall just below English name if not independently set
+          let pxGu = (pos.nameGu.x / 100) * canvasW;
           let pyGu = customPositions?.nameGu?.y
-            ? (pos.nameGu.y / 100) * 1024
-            : ((pos.name.y / 100) * 1024) + 24;
+            ? (pos.nameGu.y / 100) * canvasH
+            : ((pos.name.y / 100) * canvasH) + (26 * scale);
 
-          // Auto-shrink font so text fits within the 630px safe width
-          let mWidthGu = ctx.measureText(guDisplay).width;
-          // Conservative half-width: works even if Noto Sans Gujarati font is not loaded
-          // ~8px per char average ensures we don't let text spill out
-          const conservativeHalfW = Math.max(mWidthGu / 2, guDisplay.length * 8);
-          let effectiveWidth = conservativeHalfW * 2;
-          while (effectiveWidth > safeWidthGu && fSizeGu > 11) {
-            fSizeGu -= 0.5;
-            ctx.font = `bold ${fSizeGu}px 'Noto Sans Gujarati', 'Shruti', 'Gujarati MT', sans-serif`;
-            mWidthGu = ctx.measureText(guDisplay).width;
-            effectiveWidth = Math.max(mWidthGu, guDisplay.length * (fSizeGu * 0.75));
-          }
-
-          // Clamp center x so text doesn't exceed safe frame bounds
-          const halfW = Math.max(ctx.measureText(guDisplay).width / 2, guDisplay.length * 8);
-          pxGu = Math.max(minLeftGu + halfW, Math.min(maxRightGu - halfW, pxGu));
-
-          // HARD CLIP: Physically prevent ANY pixel from being drawn outside the safe zone
-          // This is the ultimate safety net regardless of font measurement accuracy
-          ctx.beginPath();
-          ctx.rect(minLeftGu, pyGu - fSizeGu * 2, safeWidthGu, fSizeGu * 4);
-          ctx.clip();
-
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.lineWidth = Math.max(2, 2.5 * scale);
           ctx.lineJoin = "round";
           ctx.strokeText(guDisplay, pxGu, pyGu);
 
@@ -57841,25 +57801,21 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
           ctx.restore();
         }
 
-
-        // 3. Donation Amount on golden INR banner
+        // 3. Donation Amount
         if (pos.amount.visible !== false) {
           const rawAmt = donation.amount !== undefined ? donation.amount : 0;
           const amtStr = `₹ ${Number(rawAmt).toLocaleString('en-IN')}/-`;
           ctx.save();
-          ctx.font = `bold ${Number(pos.amount.fontSize) || 23}px 'Montserrat', Arial, sans-serif`;
-          ctx.textAlign = "center";
+          const fSizeAmt = (Number(pos.amount.fontSize) || 23) * scale;
+          ctx.font = `bold ${Math.round(fSizeAmt)}px 'Montserrat', Arial, sans-serif`;
+          ctx.textAlign = pos.amount.align || "center";
+          ctx.textBaseline = "middle";
           ctx.direction = "ltr";
-          let px = (pos.amount.x / 100) * 994;
-          let py = (pos.amount.y / 100) * 1024;
+          let px = (pos.amount.x / 100) * canvasW;
+          let py = (pos.amount.y / 100) * canvasH;
 
-          const halfW = ctx.measureText(amtStr).width / 2;
-          if (px + halfW > 825) px = 825 - halfW;
-          if (px - halfW < 165) px = 165 + halfW;
-
-          // Crisp white backing stroke for bold contrast
           ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-          ctx.lineWidth = 3.5;
+          ctx.lineWidth = Math.max(2, 3.5 * scale);
           ctx.lineJoin = "round";
           ctx.strokeText(amtStr, px, py);
 
@@ -57872,10 +57828,12 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
         if (pos.acknowledgment.visible !== false) {
           ctx.save();
           ctx.fillStyle = pos.acknowledgment.color || "#1E293B";
-          ctx.font = `italic ${Number(pos.acknowledgment.fontSize) || 13.5}px 'Montserrat', Arial, sans-serif`;
-          ctx.textAlign = "center";
-          const px = (pos.acknowledgment.x / 100) * 994;
-          const py = (pos.acknowledgment.y / 100) * 1024;
+          const fSizeAck = (Number(pos.acknowledgment.fontSize) || 13.5) * scale;
+          ctx.font = `italic ${Math.round(fSizeAck)}px 'Montserrat', Arial, sans-serif`;
+          ctx.textAlign = pos.acknowledgment.align || "center";
+          ctx.textBaseline = "middle";
+          const px = (pos.acknowledgment.x / 100) * canvasW;
+          const py = (pos.acknowledgment.y / 100) * canvasH;
           ctx.fillText("Presented with heartfelt gratitude for supporting the Education Activity 2026.", px, py);
           ctx.restore();
         }
@@ -57891,10 +57849,12 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
 
           ctx.save();
           ctx.fillStyle = pos.receiptDetails.color || "#334155";
-          ctx.font = `italic ${Number(pos.receiptDetails.fontSize) || 13.5}px 'Montserrat', Arial, sans-serif`;
-          ctx.textAlign = "center";
-          const px = (pos.receiptDetails.x / 100) * 994;
-          const py = (pos.receiptDetails.y / 100) * 1024;
+          const fSizeRec = (Number(pos.receiptDetails.fontSize) || 13.5) * scale;
+          ctx.font = `italic ${Math.round(fSizeRec)}px 'Montserrat', Arial, sans-serif`;
+          ctx.textAlign = pos.receiptDetails.align || "center";
+          ctx.textBaseline = "middle";
+          const px = (pos.receiptDetails.x / 100) * canvasW;
+          const py = (pos.receiptDetails.y / 100) * canvasH;
           ctx.fillText(`Receipt #: ${receiptNo}   •   Vibhag: ${vibhag}   •   Date: ${dateStr}`, px, py);
           ctx.restore();
         }
@@ -57910,7 +57870,11 @@ export const generateDonorPosterCanvas = (donation, templateImgUrl, customPositi
         const fallbackImg = new Image();
         fallbackImg.crossOrigin = 'anonymous';
         fallbackImg.onload = () => {
-          ctx.drawImage(fallbackImg, 0, 0, 994, 1024);
+          const canvasW = fallbackImg.naturalWidth || 1024;
+          const canvasH = fallbackImg.naturalHeight || 553;
+          canvas.width = canvasW;
+          canvas.height = canvasH;
+          ctx.drawImage(fallbackImg, 0, 0, canvasW, canvasH);
           resolve(canvas.toDataURL('image/png'));
         };
         fallbackImg.onerror = reject;
@@ -58215,6 +58179,7 @@ export const generateMergedDonorPosterCanvas = (certificateDataUrl, photoDataUrl
 // ── Visual Drag & Drop Poster Designer Component ──
 export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuccess }) {
   const [localTplUrl, setLocalTplUrl] = useState(() => resolveMediaUrl(C?.donorPosterTemplateUrl || getAppreciationTemplateDefaultUrl(), C));
+  const [naturalSize, setNaturalSize] = useState({ w: 1024, h: 553 });
   const [showTplMediaModal, setShowTplMediaModal] = useState(false);
   const [imgError, setImgError] = useState(false);
   const tplFileInputRef = useRef(null);
@@ -58248,11 +58213,11 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
   };
 
   const defaultPositions = {
-    name: { x: 42.5, y: 52.6, fontSize: 21, color: "#0A2540", visible: true, label: "👤 Name (English)" },
-    nameGu: { x: 42.5, y: 55.2, fontSize: 18, color: "#064E3B", visible: true, label: "🇮🇳 Name (ગુજરાતી)" },
-    amount: { x: 39.5, y: 63.8, fontSize: 23, color: "#0F172A", visible: true, label: "💰 Amount (INR)" },
-    acknowledgment: { x: 50, y: 81.2, fontSize: 13.5, color: "#1E293B", visible: true, label: "📜 Acknowledgment" },
-    receiptDetails: { x: 50, y: 83.2, fontSize: 13.5, color: "#334155", visible: true, label: "🧾 Receipt Details" },
+    name: { x: 74.5, y: 52.1, fontSize: 24, color: "#0A2540", visible: true, align: "center", label: "👤 Name (English)" },
+    nameGu: { x: 74.5, y: 58.2, fontSize: 18, color: "#064E3B", visible: false, align: "center", label: "🇮🇳 Name (ગુજરાતી)" },
+    amount: { x: 62.0, y: 64.0, fontSize: 23, color: "#0F172A", visible: true, align: "left", label: "💰 Amount (INR)" },
+    acknowledgment: { x: 50.0, y: 81.2, fontSize: 13.5, color: "#1E293B", visible: false, align: "center", label: "📜 Acknowledgment" },
+    receiptDetails: { x: 50.0, y: 88.0, fontSize: 13.5, color: "#334155", visible: false, align: "center", label: "🧾 Receipt Details" },
   };
 
   const [positions, setPositions] = useState(() => {
@@ -58283,8 +58248,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
     const rect = containerRef.current.getBoundingClientRect();
     let x = ((e.clientX - rect.left) / rect.width) * 100;
     let y = ((e.clientY - rect.top) / rect.height) * 100;
-    x = Math.max(18, Math.min(82, x));
-    y = Math.max(12, Math.min(88, y));
+    x = Math.max(0.5, Math.min(99.5, x));
+    y = Math.max(0.5, Math.min(99.5, y));
     setPositions(prev => ({
       ...prev,
       [dragging]: { ...prev[dragging], x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) }
@@ -58325,7 +58290,7 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
 
   return (
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(15,23,42,0.8)",backdropFilter:"blur(4px)",zIndex:999999,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
-      <div style={{background:"white",borderRadius:16,maxWidth:820,width:"100%",padding:18,boxShadow:"0 25px 50px rgba(0,0,0,0.35)",maxHeight:"94vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{background:"white",borderRadius:16,maxWidth:860,width:"100%",padding:18,boxShadow:"0 25px 50px rgba(0,0,0,0.35)",maxHeight:"94vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
         
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,borderBottom:"1px solid #E2E8F0",paddingBottom:8}}>
@@ -58333,10 +58298,10 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
             <span style={{fontSize:"1.2rem"}}>🎯</span>
             <div>
               <h3 style={{margin:0,fontSize:"1rem",fontWeight:800,color:"#0F172A"}}>
-                Drag & Position Poster Fields (2-Line Name & Amount)
+                Drag & Position Poster Fields (Real-Time 1:1 Accurate)
               </h3>
               <p style={{margin:0,fontSize:".74rem",color:"#64748B"}}>
-                Drag English name, Gujarati name, and amount badges to position them accurately on certificate blanks.
+                Drag fields directly over your blank. The position you set here is pixel-identical to the generated certificate.
               </p>
             </div>
           </div>
@@ -58354,7 +58319,7 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
           {/* Interactive Drag Canvas */}
           <div style={{flex:1.4,display:"flex",flexDirection:"column",alignItems:"center"}}>
             {/* Template Blank Selection Toolbar */}
-            <div style={{width:"100%",maxWidth:420,marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#EFF6FF",padding:"6px 10px",borderRadius:8,border:"1px solid #BFDBFE"}}>
+            <div style={{width:"100%",maxWidth:naturalSize.w > naturalSize.h ? 520 : 420,marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,background:"#EFF6FF",padding:"6px 10px",borderRadius:8,border:"1px solid #BFDBFE"}}>
               <div style={{fontSize:".74rem",fontWeight:800,color:"#1E40AF",display:"flex",alignItems:"center",gap:5}}>
                 <span>🖼️</span>
                 <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>
@@ -58396,8 +58361,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
               style={{
                 position:"relative",
                 width:"100%",
-                maxWidth:420,
-                aspectRatio:"994/1024", // Match exact poster canvas dimensions — eliminates letterboxing
+                maxWidth: naturalSize.w > naturalSize.h ? 520 : 420,
+                aspectRatio: `${naturalSize.w} / ${naturalSize.h}`, // Matches exact template aspect ratio — zero squishing!
                 borderRadius:10,
                 overflow:"hidden",
                 border:"2px dashed #93C5FD",
@@ -58410,8 +58375,13 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
               <img 
                 src={localTplUrl} 
                 alt="Appreciation Poster Template" 
-                style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"fill",display:imgError?"none":"block",pointerEvents:"none"}} 
-                onLoad={() => setImgError(false)}
+                style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"contain",display:imgError?"none":"block",pointerEvents:"none"}} 
+                onLoad={(e) => {
+                  const nw = e.target.naturalWidth || 1024;
+                  const nh = e.target.naturalHeight || 553;
+                  setNaturalSize({ w: nw, h: nh });
+                  setImgError(false);
+                }}
                 onError={() => { setImgError(true); }}
               />
 
@@ -58430,11 +58400,19 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                 </div>
               )}
 
-              {/* Draggable Field Tags */}
+              {/* Draggable Field Tags (Showing Real Sample Text on Drag) */}
               {Object.entries(positions).map(([k, p]) => {
                 if (p.visible === false) return null;
                 const isSelected = activeFieldKey === k;
                 const isCurDragging = dragging === k;
+                const alignMode = p.align || "center";
+                const transformCss = alignMode === "left" ? "translate(0%, -50%)" : alignMode === "right" ? "translate(-100%, -50%)" : "translate(-50%, -50%)";
+
+                let sampleContent = p.label || k;
+                if (k === "name") sampleContent = "👤 Pradeep Parmar";
+                else if (k === "nameGu") sampleContent = "🇮🇳 (પ્રદીપ પરમાર)";
+                else if (k === "amount") sampleContent = "💰 ₹ 5,000/-";
+                else if (k === "receiptDetails") sampleContent = "🧾 REC-101 • 2026-11-22";
 
                 return (
                   <div
@@ -58444,8 +58422,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                       position:"absolute",
                       left:`${p.x}%`,
                       top:`${p.y}%`,
-                      transform:"translate(-50%, -50%)",
-                      background: isCurDragging ? "#EA580C" : isSelected ? "#2563EB" : k === "nameGu" ? "#065F46" : "rgba(15, 23, 42, 0.9)",
+                      transform: transformCss,
+                      background: isCurDragging ? "#EA580C" : isSelected ? "#2563EB" : k === "nameGu" ? "#065F46" : "rgba(15, 23, 42, 0.88)",
                       color:"white",
                       padding:"3px 8px",
                       borderRadius:6,
@@ -58463,8 +58441,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                     }}
                     title="Click to select or drag to move"
                   >
-                    <span>⠿</span>
-                    <span>{p.label || k}</span>
+                    <span>⋮⋮</span>
+                    <span>{sampleContent}</span>
                   </div>
                 );
               })}
@@ -58492,18 +58470,76 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                     cursor:"pointer",
                     background: activeFieldKey === k ? "#2563EB" : "white",
                     color: activeFieldKey === k ? "white" : "#334155",
-                    border: activeFieldKey === k ? "1px solid #1D4ED8" : "1px solid #CBD5E1"
+                    border: activeFieldKey === k ? "1px solid #1D4ED8" : "1px solid #CBD5E1",
+                    opacity: p.visible === false ? 0.6 : 1
                   }}
                 >
-                  {p.label || k}
+                  {p.label || k} {p.visible === false ? "(off)" : ""}
                 </button>
               ))}
             </div>
 
             {/* Selected Field Coordinates & Styling */}
             <div style={{background:"white",borderRadius:8,padding:10,border:"1px solid #E2E8F0",display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{fontSize:".76rem",fontWeight:800,color:"#1E40AF"}}>
-                Editing: {activeField.label || activeFieldKey}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #F1F5F9",paddingBottom:4}}>
+                <div style={{fontSize:".76rem",fontWeight:800,color:"#1E40AF"}}>
+                  Editing: {activeField.label || activeFieldKey}
+                </div>
+                {/* Show/Hide Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const curVis = activeField.visible !== false;
+                    setPositions(prev => ({
+                      ...prev,
+                      [activeFieldKey]: { ...prev[activeFieldKey], visible: !curVis }
+                    }));
+                  }}
+                  style={{
+                    padding:"2px 8px",
+                    borderRadius:5,
+                    fontSize:".68rem",
+                    fontWeight:800,
+                    cursor:"pointer",
+                    background: activeField.visible !== false ? "#DCFCE7" : "#FEE2E2",
+                    color: activeField.visible !== false ? "#15803D" : "#DC2626",
+                    border: activeField.visible !== false ? "1px solid #86EFAC" : "1px solid #FCA5A5"
+                  }}
+                >
+                  {activeField.visible !== false ? "✓ Enabled" : "✕ Hidden"}
+                </button>
+              </div>
+
+              {/* Text Alignment (Left, Center, Right) */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:".7rem",color:"#475569",fontWeight:700}}>Text Alignment:</span>
+                <div style={{display:"flex",gap:3}}>
+                  {["left", "center", "right"].map(al => (
+                    <button
+                      key={al}
+                      type="button"
+                      onClick={() => {
+                        setPositions(prev => ({
+                          ...prev,
+                          [activeFieldKey]: { ...prev[activeFieldKey], align: al }
+                        }));
+                      }}
+                      style={{
+                        padding:"2px 8px",
+                        borderRadius:4,
+                        fontSize:".68rem",
+                        fontWeight:700,
+                        cursor:"pointer",
+                        background: (activeField.align || "center") === al ? "#2563EB" : "#F1F5F9",
+                        color: (activeField.align || "center") === al ? "white" : "#475569",
+                        border: "none",
+                        textTransform:"capitalize"
+                      }}
+                    >
+                      {al}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* X & Y Sliders */}
@@ -58514,8 +58550,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                 </div>
                 <input 
                   type="range" 
-                  min="2" 
-                  max="98" 
+                  min="0.5" 
+                  max="99.5" 
                   step="0.5" 
                   value={activeField.x}
                   onChange={e => {
@@ -58536,8 +58572,8 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                 </div>
                 <input 
                   type="range" 
-                  min="2" 
-                  max="98" 
+                  min="0.5" 
+                  max="99.5" 
                   step="0.5" 
                   value={activeField.y}
                   onChange={e => {
@@ -58560,7 +58596,7 @@ export function DonorPosterVisualMapperModal({ C, setC, auth, onClose, onSaveSuc
                 <input 
                   type="range" 
                   min="10" 
-                  max="36" 
+                  max="48" 
                   step="1" 
                   value={activeField.fontSize || 22}
                   onChange={e => {
