@@ -26240,6 +26240,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
   const [searchFilter, setSearchFilter] = useState("");
   const [selectedWhatsAppTplId, setSelectedWhatsAppTplId] = useState("tpl_edu_appeal");
   const [showWaMediaModal, setShowWaMediaModal] = useState(false);
+  const [showKbQrMediaModal, setShowKbQrMediaModal] = useState(false);
   const [cmdColFilter, setCmdColFilter] = useState("all");
   const [titleColFilter, setTitleColFilter] = useState("all");
   const [answerColFilter, setAnswerColFilter] = useState("all");
@@ -26614,6 +26615,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
     customWaAppeal: "",
     customWaSignatory: "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
     customWaUpiId: "mumba98697331@barodampay",
+    customWaQrUrl: "",
     customWaIncludeQr: true,
     connectedEventId: "",
     connectedSubWorkspaceId: "",
@@ -27778,6 +27780,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
       customWaAppeal: kbForm.customWaAppeal || "",
       customWaSignatory: kbForm.customWaSignatory || "",
       customWaUpiId: kbForm.customWaUpiId || "mumba98697331@barodampay",
+      customWaQrUrl: kbForm.customWaQrUrl || "",
       customWaIncludeQr: kbForm.customWaIncludeQr !== undefined ? kbForm.customWaIncludeQr : true,
       attachedFormId: (kbForm.actionType === "form" || kbForm.actionType === "summary") ? (kbForm.attachedFormId || "") : (kbForm.actionType === "donation" && kbForm.attachedFormId === "builtin_offline_donation" ? "builtin_offline_donation" : ""),
       storageDestination: kbForm.storageDestination || ((kbForm.actionType === "form" || kbForm.actionType === "summary") ? "registrations" : "donations"),
@@ -27854,6 +27857,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
       customWaAppeal: "",
       customWaSignatory: "લિ. સેન્ટ્રલ વર્કિંગ કમિટી",
       customWaUpiId: "mumba98697331@barodampay",
+      customWaQrUrl: "",
       customWaIncludeQr: true,
       connectedEventId: "",
       connectedSubWorkspaceId: "",
@@ -29801,6 +29805,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
             customWaAppeal: item.customWaAppeal !== undefined ? item.customWaAppeal : (matchedTpl?.appeal || item.answer || ""),
             customWaSignatory: item.customWaSignatory !== undefined ? item.customWaSignatory : (matchedTpl?.signatory || "લિ. સેન્ટ્રલ વર્કિંગ કમિટી"),
             customWaUpiId: item.customWaUpiId || matchedTpl?.upiId || "mumba98697331@barodampay",
+            customWaQrUrl: item.customWaQrUrl || matchedTpl?.gpayScannerUrl || "",
             customWaIncludeQr: item.customWaIncludeQr !== undefined ? item.customWaIncludeQr : (matchedTpl?.includeGPay !== false)
           });
           setIsStudioOpen(true);
@@ -29844,6 +29849,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
             customWaAppeal: defaultTpl.appeal,
             customWaSignatory: defaultTpl.signatory,
             customWaUpiId: defaultTpl.upiId,
+            customWaQrUrl: defaultTpl.gpayScannerUrl || "",
             customWaIncludeQr: true,
             connectedEventId: "",
             connectedSubWorkspaceId: "",
@@ -31419,7 +31425,7 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </span>
                           </div>
 
-                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:12,alignItems:"center"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:14,alignItems:"flex-start"}}>
                             <div>
                               <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:4}}>
                                 Official UPI ID for Direct Pay:
@@ -31437,16 +31443,69 @@ function ChatbotAccessManager({ C, setC, auth }) {
                             </div>
 
                             {kbForm.customWaIncludeQr !== false && (
-                              <div style={{display:"flex",alignItems:"center",gap:10,background:"#F0FDF4",border:"1px dashed #86EFAC",borderRadius:8,padding:"8px 12px"}}>
-                                <img
-                                  src="https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/main/docs/assets/mmp-qr-standee.jpg"
-                                  alt="Bank of Baroda BHIM UPI QR Standee"
-                                  style={{width:42,height:52,borderRadius:4,objectFit:"cover",border:"1px solid #CBD5E1",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}
-                                  onError={e => { e.currentTarget.style.display = 'none'; }}
-                                />
-                                <div style={{fontSize:".74rem",color:"#065F46",lineHeight:1.35}}>
-                                  <strong>Bank of Baroda BHIM UPI Scanner</strong><br/>
-                                  Will display with 1-click payment link in chatbot & broadcast.
+                              <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"10px 12px"}}>
+                                <label style={{fontSize:".73rem",fontWeight:700,color:"#065F46",display:"block",marginBottom:6}}>
+                                  Official QR Code / Standee Image:
+                                </label>
+                                
+                                <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
+                                  <img
+                                    src={resolveMediaUrl(kbForm.customWaQrUrl || "./mmp_bhim_qr.png", C)}
+                                    alt="QR Scanner Preview"
+                                    style={{width:48,height:60,borderRadius:5,objectFit:"contain",border:"1.5px solid #86EFAC",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}
+                                    onError={e => { e.currentTarget.src = "https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/main/docs/assets/mmp-qr-standee.jpg"; }}
+                                  />
+                                  <div style={{flex:1}}>
+                                    <div style={{fontSize:".74rem",color:"#065F46",fontWeight:700}}>
+                                      {kbForm.customWaQrUrl ? (kbForm.customWaQrUrl.startsWith('media://') ? "📁 Media Library QR Asset" : "🖼️ Custom QR Image") : "🏦 Bank of Baroda QR Standee (Default)"}
+                                    </div>
+                                    <div style={{fontSize:".68rem",color:"#475569",marginTop:2}}>
+                                      Displays with 1-click payment link in chatbot cards & WhatsApp broadcasts.
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* QR Import / Pick Buttons */}
+                                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowKbQrMediaModal(true)}
+                                    style={{padding:"4px 9px",borderRadius:5,background:"#EEF2FF",color:"#4F46E5",border:"1px solid #C7D2FE",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}
+                                    title="Choose official QR code from Media Library"
+                                  >
+                                    <span>📁</span> Choose from Media Library
+                                  </button>
+
+                                  <label style={{padding:"4px 9px",borderRadius:5,background:"#15803D",color:"white",fontSize:".7rem",fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>
+                                    <span>📤</span> Upload Custom QR
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      style={{display:"none"}}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        try {
+                                          const url = await fbUploadLogo(file, auth?.idToken);
+                                          setKbForm({ ...kbForm, customWaQrUrl: url });
+                                          alert("✅ Custom QR Code successfully uploaded!");
+                                        } catch(err) {
+                                          alert("QR Upload failed: " + err.message);
+                                        }
+                                      }}
+                                    />
+                                  </label>
+
+                                  {kbForm.customWaQrUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setKbForm({ ...kbForm, customWaQrUrl: "" })}
+                                      style={{padding:"4px 8px",borderRadius:5,background:"#F1F5F9",color:"#475569",border:"1px solid #CBD5E1",fontSize:".7rem",fontWeight:700,cursor:"pointer"}}
+                                      title="Reset to default Bank of Baroda standee"
+                                    >
+                                      🔄 Reset to Default
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -35501,6 +35560,24 @@ function ChatbotAccessManager({ C, setC, auth }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Media Library Modal for Question Studio QR Code Picker ── */}
+      {showKbQrMediaModal && (
+        <MediaLibraryModal
+          isOpen={showKbQrMediaModal}
+          C={C}
+          setC={setC}
+          auth={auth}
+          targetCategory="banner"
+          onClose={() => setShowKbQrMediaModal(false)}
+          onSelect={(asset) => {
+            if (asset && asset.id) {
+              setKbForm(prev => ({ ...prev, customWaQrUrl: 'media://' + asset.id }));
+            }
+            setShowKbQrMediaModal(false);
+          }}
+        />
       )}
 
     </div>
@@ -59482,7 +59559,7 @@ function WhatsAppBroadcastCard({ cardData, C }) {
     <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #E2E8F0",display:"flex",flexDirection:"column",gap:8}}>
       {includeQr && (
         <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"8px 10px",display:"flex",alignItems:"center",gap:10}}>
-          <img src="./mmp_bhim_qr.png" alt="Bank of Baroda QR" style={{width:44,height:44,objectFit:"contain",borderRadius:6,border:"1px solid #CBD5E1",background:"white"}} onError={(e)=>{e.target.style.display='none';}} />
+          <img src={resolveMediaUrl(cardData.customWaQrUrl || foundTpl?.gpayScannerUrl || "./mmp_bhim_qr.png", C)} alt="QR Scanner" style={{width:44,height:44,objectFit:"contain",borderRadius:6,border:"1px solid #CBD5E1",background:"white"}} onError={(e)=>{e.target.style.display='none';}} />
           <div style={{flex:1}}>
             <div style={{fontSize:".74rem",fontWeight:800,color:"#166534"}}>💳 Bank of Baroda BHIM UPI / GPay</div>
             <div style={{fontSize:".68rem",color:"#15803D",fontFamily:"monospace"}}>UPI: {upi}</div>
@@ -63368,6 +63445,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           customWaSignatory: matchedKb?.customWaSignatory,
           customWaIncludeQr: matchedKb?.customWaIncludeQr,
           customWaUpiId: matchedKb?.customWaUpiId,
+          customWaQrUrl: matchedKb?.customWaQrUrl,
           matchedKb: matchedKb
         };
       } else {
@@ -63458,6 +63536,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             customWaSignatory: matchedKb?.customWaSignatory,
             customWaIncludeQr: matchedKb?.customWaIncludeQr,
             customWaUpiId: matchedKb?.customWaUpiId,
+            customWaQrUrl: matchedKb?.customWaQrUrl,
             matchedKb: matchedKb
           };
         } catch (err) {
@@ -63630,6 +63709,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
             customWaSignatory: matchedKb?.customWaSignatory,
             customWaIncludeQr: matchedKb?.customWaIncludeQr,
             customWaUpiId: matchedKb?.customWaUpiId,
+            customWaQrUrl: matchedKb?.customWaQrUrl,
             matchedKb: matchedKb
           };
         }
@@ -64080,6 +64160,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
           customWaAppeal: matchedKb.customWaAppeal,
           customWaSignatory: matchedKb.customWaSignatory,
           customWaUpiId: matchedKb.customWaUpiId,
+          customWaQrUrl: matchedKb.customWaQrUrl,
           customWaIncludeQr: matchedKb.customWaIncludeQr
         };
       } else {
