@@ -60516,68 +60516,81 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   };
 
   return (
-    <div style={{background:"white",border:"1.5px solid #CBD5E1",borderRadius:12,padding:12,marginTop:6}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
-        <div>
+    <div style={{background:"white",border:"1.5px solid #CBD5E1",borderRadius:12,padding:12,marginTop:6,boxSizing:"border-box",width:"100%",maxWidth:"100%",overflow:"hidden"}}>
+      {/* 1. Header: Title, Event Scope, and Total Amount Badge */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:140}}>
           <div style={{fontSize:".84rem",fontWeight:800,color:"#0F172A",display:"flex",alignItems:"center",gap:6}}>
             <span>📋</span> {donorData.isFormMode ? `Submissions Registry (${filtered.length} Entries)` : `Donor Registry (${filtered.length} of ${donors.length})`}
           </div>
           {donorData.eventLabel && (
-            <div style={{fontSize:".72rem",color:"#2563EB",fontWeight:800,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
+            <div style={{fontSize:".72rem",color:"#2563EB",fontWeight:800,marginTop:3,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
               <span>📌 Event Scope:</span>
-              <span style={{background:"#DBEAFE",color:"#1E40AF",padding:"1px 6px",borderRadius:4}}>{donorData.eventLabel}</span>
+              <span style={{background:"#DBEAFE",color:"#1E40AF",padding:"1px 6px",borderRadius:4,wordBreak:"break-word"}}>{donorData.eventLabel}</span>
             </div>
           )}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          {!donorData.isFormMode && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowPosterMapperModal(true)}
-                style={{padding:"3px 8px",borderRadius:5,background:"#EFF6FF",border:"1px solid #93C5FD",color:"#1D4ED8",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-                title="Drag and drop variables to position Name & Amount on poster"
-              >
-                <span>🎯</span> Adjust Positions
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPosterTplUploadModal(true)}
-                style={{padding:"3px 8px",borderRadius:5,background:"#F0FDF4",border:"1px solid #86EFAC",color:"#15803D",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-                title="Upload or change Appreciation Certificate background template"
-              >
-                <span>🎨</span> Poster Template
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={handleCopyWhatsApp}
-            style={{padding:"3px 8px",borderRadius:5,background:copied ? "#DCFCE7" : "#F1F5F9",border:copied ? "1px solid #16A34A" : "1px solid #CBD5E1",color:copied ? "#166534" : "#334155",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-            title="Copy formatted registry message for WhatsApp"
-          >
-            <span>{copied ? "✅" : "📋"}</span> {copied ? "Copied!" : "Copy WhatsApp"}
-          </button>
-          <button
-            type="button"
-            onClick={handleShareWhatsApp}
-            style={{padding:"3px 8px",borderRadius:5,background:"#25D366",color:"white",border:"none",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-            title="Share directly via WhatsApp"
-          >
-            <span>📱</span> Share
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowWhatsAppEditorModal(true)}
-            style={{padding:"3px 8px",borderRadius:5,background:"#FEF3C7",border:"1.5px solid #F59E0B",color:"#B45309",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}
-            title="Customize WhatsApp Templates & Variables"
-          >
-            <span>💬</span> WhatsApp Editor
-          </button>
-          <span style={{fontSize:".78rem",fontWeight:800,color:"#15803D"}}>
-            {donorData.isFormMode ? `📋 ${filtered.length} Submissions` : `₹${donorData.totalAmount.toLocaleString('en-IN')} Total`}
-          </span>
+        <div style={{background:"#DCFCE7",border:"1px solid #86EFAC",color:"#15803D",padding:"3px 8px",borderRadius:12,fontSize:".76rem",fontWeight:800,whiteSpace:"nowrap",alignSelf:"flex-start"}}>
+          {donorData.isFormMode ? `📋 ${filtered.length} Submissions` : `₹${donorData.totalAmount.toLocaleString('en-IN')} Total`}
         </div>
+      </div>
+
+      {/* 2. Responsive Action Toolbar: Contained & Wrapping */}
+      <div style={{
+        display:"flex",
+        flexWrap:"wrap",
+        gap:6,
+        alignItems:"center",
+        background:"#F8FAFC",
+        border:"1px solid #E2E8F0",
+        borderRadius:8,
+        padding:"6px 8px",
+        marginBottom:10
+      }}>
+        {!donorData.isFormMode && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowPosterMapperModal(true)}
+              style={{padding:"4px 8px",borderRadius:5,background:"#EFF6FF",border:"1px solid #93C5FD",color:"#1D4ED8",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3}}
+              title="Drag and drop variables to position Name & Amount on poster"
+            >
+              <span>🎯</span> Adjust Positions
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPosterTplUploadModal(true)}
+              style={{padding:"4px 8px",borderRadius:5,background:"#F0FDF4",border:"1px solid #86EFAC",color:"#15803D",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3}}
+              title="Upload or change Appreciation Certificate background template"
+            >
+              <span>🎨</span> Poster Template
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={handleCopyWhatsApp}
+          style={{padding:"4px 8px",borderRadius:5,background:copied ? "#DCFCE7" : "white",border:copied ? "1px solid #16A34A" : "1px solid #CBD5E1",color:copied ? "#166534" : "#334155",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3}}
+          title="Copy formatted registry message for WhatsApp"
+        >
+          <span>{copied ? "✅" : "📋"}</span> {copied ? "Copied!" : "Copy WhatsApp"}
+        </button>
+        <button
+          type="button"
+          onClick={handleShareWhatsApp}
+          style={{padding:"4px 8px",borderRadius:5,background:"#25D366",color:"white",border:"none",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3,boxShadow:"0 1px 3px rgba(37,211,102,0.25)"}}
+          title="Share directly via WhatsApp"
+        >
+          <span>📱</span> Share
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowWhatsAppEditorModal(true)}
+          style={{padding:"4px 8px",borderRadius:5,background:"#FEF3C7",border:"1.5px solid #F59E0B",color:"#B45309",fontSize:".68rem",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:3}}
+          title="Customize WhatsApp Templates & Variables"
+        >
+          <span>💬</span> WhatsApp Editor
+        </button>
       </div>
 
       <input
@@ -60728,9 +60741,9 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
           filtered.map((d, di) => {
             const isOff = d.isOffline || d.paymentMode === "Offline" || String(d.paymentMethod || "").toLowerCase().includes("offline");
             return (
-              <div key={di} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 10px",fontSize:".76rem"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                  <div style={{fontWeight:800,color:"#0F172A"}}>
+              <div key={di} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"8px 10px",fontSize:".76rem",boxSizing:"border-box"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:6,marginBottom:4}}>
+                  <div style={{fontWeight:800,color:"#0F172A",flex:1,minWidth:120}}>
                     {di + 1}. {d.name}
                     {(d.nameGu || d.donorNameGu) && (
                       <span style={{display:"block",fontSize:".74rem",color:"#15803D",fontWeight:700,marginTop:2}}>
@@ -60738,12 +60751,12 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
                       </span>
                     )}
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontWeight:800,color:"#15803D",fontSize:".82rem"}}>₹{Number(d.amount).toLocaleString('en-IN')}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                    <span style={{fontWeight:800,color:"#15803D",fontSize:".82rem",marginRight:2}}>₹{Number(d.amount).toLocaleString('en-IN')}</span>
                     <button
                       type="button"
                       onClick={() => setActivePosterDonor(d)}
-                      style={{background:"#F0FDF4",border:"1px solid #86EFAC",color:"#166534",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:3}}
+                      style={{background:"#F0FDF4",border:"1px solid #86EFAC",color:"#166534",fontSize:".68rem",padding:"2px 6px",borderRadius:4,cursor:"pointer",fontWeight:800,display:"inline-flex",alignItems:"center",gap:3}}
                       title="View, download, or share Certificate of Appreciation poster for this donor"
                     >
                       <span>🖼️</span> Poster
