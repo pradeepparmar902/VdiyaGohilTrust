@@ -57097,7 +57097,11 @@ const generateVibhagSummaryWhatsAppText = (summaryData, C) => {
   const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
     ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
     : "https://mmp-cwc.com/donate/";
-  const targetDonateUrl = foundTpl?.donateLink || C?.whatsappTemplates?.donateLink || donateUrl;
+  const resolvedVibhagQr = resolveMediaUrl(summaryData?.customWaQrUrl || foundTpl?.gpayScannerUrl, C);
+  const hasCustomVibhagQr = resolvedVibhagQr && (resolvedVibhagQr.startsWith("http://") || resolvedVibhagQr.startsWith("https://"));
+  const targetDonateUrl = hasCustomVibhagQr
+    ? `${donateUrl}?qr=${encodeURIComponent(resolvedVibhagQr)}&vpa=${encodeURIComponent(upiId)}`
+    : (foundTpl?.donateLink || C?.whatsappTemplates?.donateLink || donateUrl);
   const qrHeader = foundTpl?.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
   const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
     ? "https://pradeepparmar902.github.io/MY_Community_Website/"
@@ -59523,20 +59527,22 @@ function WhatsAppBroadcastCard({ cardData, C }) {
   const customTpls = C?.whatsappBroadcastTemplates || [];
   const foundTpl = customTpls.find(t => t.id === cardData.tplId);
 
-  const getBroadcastMessage = () => {
-    const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
-      : "https://mmp-cwc.com/donate/";
-    const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/"
-      : "https://mmp-cwc.com";
+  const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
+    : "https://mmp-cwc.com/donate/";
+  const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/"
+    : "https://mmp-cwc.com";
 
-    const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
-    const resolvedCardQr = resolveMediaUrl(cardData.customWaQrUrl || foundTpl?.gpayScannerUrl, C);
-    const hasCustomCardQr = resolvedCardQr && (resolvedCardQr.startsWith("http://") || resolvedCardQr.startsWith("https://"));
-    const targetDonateUrl = hasCustomCardQr
-      ? `${donateUrl}?qr=${encodeURIComponent(resolvedCardQr)}&vpa=${encodeURIComponent(upi)}`
-      : (foundTpl?.donateLink || tpls.donateLink || donateUrl);
+  const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
+  const resolvedCardQr = resolveMediaUrl(cardData.customWaQrUrl || foundTpl?.gpayScannerUrl, C);
+  const hasCustomCardQr = resolvedCardQr && (resolvedCardQr.startsWith("http://") || resolvedCardQr.startsWith("https://"));
+  const targetDonateUrl = hasCustomCardQr
+    ? `${donateUrl}?qr=${encodeURIComponent(resolvedCardQr)}&vpa=${encodeURIComponent(upi)}`
+    : (foundTpl?.donateLink || tpls.donateLink || donateUrl);
+  const includeQr = cardData.customWaIncludeQr !== undefined ? cardData.customWaIncludeQr : (foundTpl?.includeGPay !== false);
+
+  const getBroadcastMessage = () => {
     const header = (cardData.customWaHeader !== undefined && cardData.customWaHeader !== "") 
       ? cardData.customWaHeader 
       : (foundTpl?.header || tpls.gujaratiHeader || ".  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸");
@@ -59547,7 +59553,6 @@ function WhatsAppBroadcastCard({ cardData, C }) {
       ? cardData.customWaSignatory 
       : (foundTpl?.signatory || tpls.gujaratiSignatory || "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી");
     const qrHeader = foundTpl?.qrHeader || tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
-    const includeQr = cardData.customWaIncludeQr !== undefined ? cardData.customWaIncludeQr : (foundTpl?.includeGPay !== false);
 
     const parts = [];
     if (includeQr) {
@@ -59579,10 +59584,6 @@ function WhatsAppBroadcastCard({ cardData, C }) {
     const msg = getBroadcastMessage();
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
-
-  const targetDonateUrl = foundTpl?.donateLink || tpls.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/");
-  const upi = cardData.customWaUpiId || foundTpl?.upiId || tpls.upiId || "mumba98697331@barodampay";
-  const includeQr = cardData.customWaIncludeQr !== undefined ? cardData.customWaIncludeQr : (foundTpl?.includeGPay !== false);
 
   return (
     <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #E2E8F0",display:"flex",flexDirection:"column",gap:8}}>
@@ -59661,6 +59662,20 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
   const groupDisplayLabel = primaryGroupGuLabel || primaryGroupLabel || "વિભાગ";
   const groupDisplayLabelEn = primaryGroupLabel || "Vibhag";
 
+  const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
+    : "https://mmp-cwc.com/donate/";
+  const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/"
+    : "https://mmp-cwc.com";
+
+  const upi = customWaUpiId || C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
+  const resolvedSummaryQr = resolveMediaUrl(customWaQrUrl || summaryData?.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
+  const hasCustomSummaryQr = resolvedSummaryQr && (resolvedSummaryQr.startsWith("http://") || resolvedSummaryQr.startsWith("https://"));
+  const qrLink = hasCustomSummaryQr
+    ? `${donateUrl}?qr=${encodeURIComponent(resolvedSummaryQr)}&vpa=${encodeURIComponent(upi)}`
+    : (C?.whatsappTemplates?.donateLink || donateUrl);
+
   const activeFields = (Array.isArray(summaryData.selectedFields) && summaryData.selectedFields.length > 0)
     ? summaryData.selectedFields
     : (summaryData.matchedKb && Array.isArray(summaryData.matchedKb.selectedFields) && summaryData.matchedKb.selectedFields.length > 0)
@@ -59732,20 +59747,6 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
   };
 
   const getFormattedSummaryText = () => {
-    const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
-      : "https://mmp-cwc.com/donate/";
-    const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/"
-      : "https://mmp-cwc.com";
-
-    const upi = customWaUpiId || C?.whatsappTemplates?.upiId || "mumba98697331@barodampay";
-    const resolvedCustomQr = resolveMediaUrl(customWaQrUrl || summaryData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
-    const hasCustomQr = resolvedCustomQr && (resolvedCustomQr.startsWith("http://") || resolvedCustomQr.startsWith("https://"));
-    const qrLink = hasCustomQr
-      ? `${donateUrl}?qr=${encodeURIComponent(resolvedCustomQr)}&vpa=${encodeURIComponent(upi)}`
-      : (C?.whatsappTemplates?.donateLink || donateUrl);
-
     // 1. QR Standee & Direct Pay URL
     let msg = "";
     if (customWaIncludeQr !== false) {
@@ -60062,7 +60063,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
             </div>
           </div>
           <a
-            href={qrLink || C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+            href={qrLink}
             target="_blank"
             rel="noreferrer"
             style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
@@ -60364,6 +60365,19 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   const [customSignatory, setCustomSignatory] = useState(donorData.customWaSignatory !== undefined && donorData.customWaSignatory !== null ? donorData.customWaSignatory : (tpls.gujaratiSignatory !== undefined ? tpls.gujaratiSignatory : "લિ. વિનોદભાઈ મકવાણા / સેન્ટ્રલ વર્કિંગ કમિટી"));
   const [customQrHeader, setCustomQrHeader] = useState(tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*");
   const [customUpiId, setCustomUpiId] = useState(donorData.customWaUpiId || tpls.upiId || "mumba98697331@barodampay");
+
+  const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
+    : "https://mmp-cwc.com/donate/";
+  const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
+    ? "https://pradeepparmar902.github.io/MY_Community_Website/"
+    : "https://mmp-cwc.com";
+  const upiId = customUpiId || tpls.upiId || "mumba98697331@barodampay";
+  const resolvedDonorQr = resolveMediaUrl(donorData?.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
+  const hasCustomDonorQr = resolvedDonorQr && (resolvedDonorQr.startsWith("http://") || resolvedDonorQr.startsWith("https://"));
+  const targetDonateUrl = hasCustomDonorQr
+    ? `${donateUrl}?qr=${encodeURIComponent(resolvedDonorQr)}&vpa=${encodeURIComponent(upiId)}`
+    : (tpls.donateLink || donateUrl);
   const defaultPosterCaptionMsg = "શૈક્ષણિક કાર્યક્રમ વિદ્યાર્થી ગુણ ગૌરવ પુરસ્કાર માટે ડોનેશન (દાન) આપનાર દાતા ને આરીતે સર્ટિફિકેટ આપી તેમને નવાજવામા આવશે\n\nઆભાર 🌷🙏";
   const [customPosterCaptionMsg, setCustomPosterCaptionMsg] = useState(tpls.posterCaptionMsg || defaultPosterCaptionMsg);
   const [customAppreciationMsg, setCustomAppreciationMsg] = useState(tpls.appreciationMsg || "🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\n         [NGO]\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\n☸~~~~~~~~~~~~~~~~~☸\n\nવિષય: શૈક્ષણિક કાર્યક્રમ દાન રસીદ & સન્માન પત્રક\n\nનમસ્તે શ્રીમાન/શ્રીમતી *{NAME}*,\nવિદ્યાર્થી ગુણગૌરવ પુરસ્કાર ૨૦૨૬ માટે આપના ઉદાર દાન બદલ મુંબઈ મેઘવાળ પંચાયત આપનો હૃદયપૂર્વક આભાર માને છે.\n\n🧾 *દાન પાવતી વિગત:*\n• દાતા: *{NAME}*\n• રકમ: *₹{AMOUNT}/-*\n• પાવતી નં.: *{RECEIPT}*\n• વિભાગ: *{VIBHAG}*\n• તારીખ: *{DATE}*\n• હેતુ: *{PURPOSE}*\n\n📜 આપનું ડિજિટલ સન્માન પ્રમાણપત્ર (Certificate of Appreciation) તૈયાર થઈ ગયું છે.\n\nલિ. સેન્ટ્રલ વર્કિંગ કમિટી\nમુંબઈ મેઘવાળ પંચાયત\n🌐 https://www.mmp-cwc.com");
@@ -60398,13 +60412,6 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
   const getFormattedDonorListText = () => {
     const totalAmt = Number(donorData.totalAmount || 0).toLocaleString('en-IN');
     const count = filtered.length;
-
-    const donateUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/"
-      : "https://mmp-cwc.com/donate/";
-    const portalUrl = (typeof window !== "undefined" && window.location.hostname.includes("github.io"))
-      ? "https://pradeepparmar902.github.io/MY_Community_Website/"
-      : "https://mmp-cwc.com";
 
     if (donorData.isFormMode) {
       const header = customHeader || (tpls.gujaratiHeader !== undefined ? tpls.gujaratiHeader : `.  🌷 || મુંબઈ મેઘવાળ પંચાયત || 🌷\r\n         [NGO]\r\n   •••• સેન્ટ્રલ વર્કિંગ કમિટી ••••\r\n☸~~~~~~~~~~~~~~~~~☸`);
@@ -60553,12 +60560,6 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
       const rowPattern = customRowPattern || tpls.rowPattern || "₹ {AMOUNT}/- {NAME}";
       const totalPattern = tpls.totalLabel || "💰 *કુલ દાન રકમ: ₹{TOTAL}* ({COUNT} દાતાઓ)";
       const qrHeader = customQrHeader || tpls.qrHeader || "💳 *GPay / BHIM QR સ્કેનર & Direct Pay:*";
-      const upiId = customUpiId || tpls.upiId || "mumba98697331@barodampay";
-      const resolvedDonorQr = resolveMediaUrl(donorData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl, C);
-      const hasCustomDonorQr = resolvedDonorQr && (resolvedDonorQr.startsWith("http://") || resolvedDonorQr.startsWith("https://"));
-      const targetDonateUrl = hasCustomDonorQr
-        ? `${donateUrl}?qr=${encodeURIComponent(resolvedDonorQr)}&vpa=${encodeURIComponent(upiId)}`
-        : (tpls.donateLink || donateUrl);
 
       // Ensure Donate QR Link is at the top so WhatsApp ALWAYS generates the Bank of Baroda QR Standee Preview
       let msg = `💳 *દાન QR સ્કેનર:* ${targetDonateUrl}\n\n`;
@@ -61571,7 +61572,7 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
               </div>
             </div>
             <a
-              href={targetDonateUrl || C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+              href={targetDonateUrl}
               target="_blank"
               rel="noreferrer"
               style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
