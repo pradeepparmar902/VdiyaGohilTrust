@@ -31450,10 +31450,18 @@ function ChatbotAccessManager({ C, setC, auth }) {
                                 
                                 <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
                                   <img
-                                    src={resolveMediaUrl(kbForm.customWaQrUrl || "./mmp_bhim_qr.png", C)}
+                                    src={resolveMediaUrl(kbForm.customWaQrUrl || "./mmp_bhim_qr.png", C) || "./mmp_bhim_qr.png"}
                                     alt="QR Scanner Preview"
-                                    style={{width:48,height:60,borderRadius:5,objectFit:"contain",border:"1.5px solid #86EFAC",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}
-                                    onError={e => { e.currentTarget.src = "https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/main/docs/assets/mmp-qr-standee.jpg"; }}
+                                    style={{width:52,height:64,borderRadius:6,objectFit:"contain",border:"1.5px solid #86EFAC",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}
+                                    onError={e => {
+                                      if (!e.currentTarget.dataset.retried) {
+                                        e.currentTarget.dataset.retried = "1";
+                                        e.currentTarget.src = "https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/master/public/mmp_bhim_qr.png";
+                                      } else if (e.currentTarget.dataset.retried === "1") {
+                                        e.currentTarget.dataset.retried = "2";
+                                        e.currentTarget.src = "https://mmp-cwc.com/mmp_bhim_qr.png";
+                                      }
+                                    }}
                                   />
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:".74rem",color:"#065F46",fontWeight:700}}>
@@ -35569,11 +35577,12 @@ function ChatbotAccessManager({ C, setC, auth }) {
           C={C}
           setC={setC}
           auth={auth}
-          targetCategory="banner"
+          targetCategory="all"
           onClose={() => setShowKbQrMediaModal(false)}
           onSelect={(asset) => {
-            if (asset && asset.id) {
-              setKbForm(prev => ({ ...prev, customWaQrUrl: 'media://' + asset.id }));
+            if (asset) {
+              const chosen = asset.id ? ('media://' + asset.id) : (asset.url || "");
+              setKbForm(prev => ({ ...prev, customWaQrUrl: chosen }));
             }
             setShowKbQrMediaModal(false);
           }}
@@ -59625,6 +59634,7 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
     totalAmount, totalCount, onlineAmount, onlineCount, offlineAmount, offlineCount,
     vibhagBreakdown, eventLabel, donors, summaryType,
     customWaHeader, customWaAppeal, customWaSignatory, customWaIncludeQr, customWaUpiId,
+    customWaQrUrl,
     primaryGroupKey, primaryGroupLabel, primaryGroupGuLabel
   } = summaryData;
 
@@ -60006,6 +60016,38 @@ function DonationSummaryCard({ summaryData, onAction, C }) {
           ➕ Add Offline
         </button>
       </div>
+
+      {/* ── Visual QR Code & UPI Direct Pay Banner ── */}
+      {customWaIncludeQr !== false && (
+        <div style={{marginTop:10,background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
+          <img
+            src={resolveMediaUrl(customWaQrUrl || summaryData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl || "./mmp_bhim_qr.png", C) || "./mmp_bhim_qr.png"}
+            alt="Bank of Baroda UPI QR"
+            style={{width:48,height:48,objectFit:"contain",borderRadius:6,border:"1px solid #CBD5E1",background:"white",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}
+            onError={e => {
+              if (!e.currentTarget.dataset.retried) {
+                e.currentTarget.dataset.retried = "1";
+                e.currentTarget.src = "https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/master/public/mmp_bhim_qr.png";
+              }
+            }}
+          />
+          <div style={{flex:1}}>
+            <div style={{fontSize:".76rem",fontWeight:800,color:"#166534"}}>💳 Bank of Baroda BHIM UPI / GPay</div>
+            <div style={{fontSize:".68rem",color:"#15803D",fontFamily:"monospace",marginTop:2}}>
+              UPI: <strong>{customWaUpiId || C?.whatsappTemplates?.upiId || "mumba98697331@barodampay"}</strong>
+            </div>
+          </div>
+          <a
+            href={C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+            target="_blank"
+            rel="noreferrer"
+            style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
+          >
+            <span>Direct Pay</span>
+            <span>↗</span>
+          </a>
+        </div>
+      )}
 
       {/* WhatsApp Sharing Bar */}
       <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",display:"flex",gap:6,alignItems:"center"}}>
@@ -61479,6 +61521,38 @@ function DonorListCard({ donorData, auth, onRefresh, C, setC }) {
             Include GPay & QR Link
           </label>
         </div>
+
+        {/* ── Visual QR Code & UPI Direct Pay Banner ── */}
+        {(donorData.customWaIncludeQr !== false && includeGPay) && (
+          <div style={{background:"#F0FDF4",border:"1.5px solid #86EFAC",borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:10,marginTop:4}}>
+            <img
+              src={resolveMediaUrl(donorData.customWaQrUrl || C?.whatsappTemplates?.gpayScannerUrl || "./mmp_bhim_qr.png", C) || "./mmp_bhim_qr.png"}
+              alt="Bank of Baroda UPI QR"
+              style={{width:48,height:48,objectFit:"contain",borderRadius:6,border:"1px solid #CBD5E1",background:"white",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}
+              onError={e => {
+                if (!e.currentTarget.dataset.retried) {
+                  e.currentTarget.dataset.retried = "1";
+                  e.currentTarget.src = "https://raw.githubusercontent.com/pradeepparmar902/MY_Community_Website/master/public/mmp_bhim_qr.png";
+                }
+              }}
+            />
+            <div style={{flex:1}}>
+              <div style={{fontSize:".76rem",fontWeight:800,color:"#166534"}}>💳 Bank of Baroda BHIM UPI / GPay</div>
+              <div style={{fontSize:".68rem",color:"#15803D",fontFamily:"monospace",marginTop:2}}>
+                UPI: <strong>{customUpiId || "mumba98697331@barodampay"}</strong>
+              </div>
+            </div>
+            <a
+              href={C?.whatsappTemplates?.donateLink || ((typeof window !== "undefined" && window.location.hostname.includes("github.io")) ? "https://pradeepparmar902.github.io/MY_Community_Website/donate/" : "https://mmp-cwc.com/donate/")}
+              target="_blank"
+              rel="noreferrer"
+              style={{background:"#166534",color:"white",padding:"6px 12px",borderRadius:6,fontSize:".72rem",fontWeight:700,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,boxShadow:"0 2px 4px rgba(22,101,52,0.25)"}}
+            >
+              <span>Direct Pay</span>
+              <span>↗</span>
+            </a>
+          </div>
+        )}
 
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <button
@@ -63760,6 +63834,7 @@ function CommunityChatbot({ C, setC, auth, onShowLogin }) {
               customWaSignatory: matchedKb?.customWaSignatory,
               customWaIncludeQr: matchedKb?.customWaIncludeQr,
               customWaUpiId: matchedKb?.customWaUpiId,
+              customWaQrUrl: matchedKb?.customWaQrUrl,
               matchedKb: matchedKb
             };
           }
